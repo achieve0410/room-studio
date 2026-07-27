@@ -27,7 +27,7 @@ Complete the local checks first. The final section intentionally requires the fu
 - [ ] Protect `main` with required CI status checks and disabled force pushes when the repository plan permits it.
 - [x] Review the Community Standards profile and confirm a 100% health score.
 - [x] Confirm the repository owner's public profile and GitHub-attributed noreply commit email identify the maintainer accurately.
-- [ ] Publish a dedicated private contact for conduct reports before the repository becomes public.
+- [x] Publish a private contact route for conduct reports before the repository becomes public.
 
 ## First release and Codex for OSS evidence
 

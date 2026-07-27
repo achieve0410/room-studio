@@ -20,7 +20,7 @@ Unacceptable behavior includes harassment, threats, discriminatory language, sex
 
 Maintainers may edit, remove, or reject comments, commits, issues, and contributions that violate these expectations and may temporarily or permanently restrict participation.
 
-Report conduct concerns privately using a contact method published on the repository owner's GitHub profile. If no private contact is available, open an issue requesting a private channel without naming people or describing the incident publicly. Reports will be handled as privately and promptly as maintainer capacity allows.
+Report conduct concerns privately to [achieve0410@gmail.com](mailto:achieve0410@gmail.com). Do not include names, incident details, or personal data in a public issue. Reports will be handled as privately and promptly as maintainer capacity allows.
 
 ## Attribution
 
