@@ -1230,8 +1230,12 @@ try {
     const before = parseTransform(initial.mapTransform);
     await dispatchTouch('touchStart', [touchPoint(11, joystickCenter)]);
     await dispatchTouch('touchMove', [touchPoint(11, joystickDiagonal)]);
-    await sleep(420);
-    const moving = parseTransform((await walkthroughState()).mapTransform);
+    const movementDeadline = Date.now() + 5_000;
+    let moving = before;
+    while (Date.now() < movementDeadline && distance(before, moving) <= 0.5) {
+      await sleep(50);
+      moving = parseTransform((await walkthroughState()).mapTransform);
+    }
     await dispatchTouch('touchEnd', []);
     await sleep(220);
     const stopped1 = parseTransform((await walkthroughState()).mapTransform);
