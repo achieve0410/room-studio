@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.omx/
+.gjc/
+pem/
+*.pem
+.room-studio/
+venv/
+.DS_Store
+*.log
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.tailscale.local

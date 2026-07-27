@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible problem in the 2D editor, 3D walkthrough, storage, or deployment.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: checkboxes
+    id: before_submitting
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find the same problem.
+          required: true
+        - label: I removed private floor plans, email addresses, credentials, and private hostnames.
+          required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - 2D editor
+        - 3D walkthrough
+        - Authentication or cloud storage
+        - Local storage
+        - Build or self-hosting
+    validations:
+      required: true
+  - type: dropdown
+    id: input_mode
+    attributes:
+      label: Input mode
+      options:
+        - Mouse and keyboard
+        - Touch
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: Provide the smallest drawing and exact sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and operating system
+      placeholder: Chrome 126 / Android 15, Safari / iOS, Firefox / Linux, etc.
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit or release
+      placeholder: Commit SHA or release tag
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add sanitized screenshots, console output, or deployment details. Report vulnerabilities privately under SECURITY.md.
