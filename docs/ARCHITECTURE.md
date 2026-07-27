@@ -14,11 +14,12 @@ Room Studio is a single-page Vite application built with vanilla JavaScript and 
 
 Local-only mode persists the drawing in browser `localStorage`. It remains the default and must work without network access or cloud configuration.
 
-Cloud mode authenticates through Supabase. Each project has an owner and revision. The client saves through `save_project`, which performs owner verification, optimistic revision checking, and optional immutable version insertion in one transaction. Direct browser writes must not bypass this boundary.
+Cloud mode authenticates through Supabase using PKCE. Each project has an owner and revision. The client saves through `save_project`, which performs owner verification, optimistic revision checking, payload and per-account limits, and bounded version retention in one transaction. RLS restricts reads, while authenticated browser roles have no direct project-table write grants.
 
 ## Rendering and data safety
 
 Loaded drawing data is normalized before entering SVG or Three.js rendering. IDs, text, colors, dimensions, rotations, and structure relationships are treated as untrusted, including data loaded from the operator's database.
+The production document applies a CSP baseline before loading application code. Because drawing data and Supabase sessions are origin-scoped, deployments must use a dedicated origin rather than a path shared with unrelated applications.
 
 ## Compatibility
 

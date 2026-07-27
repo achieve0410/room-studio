@@ -8,8 +8,5 @@ pem/
 venv/
 .DS_Store
 *.log
-.env
-.env.local
-.env.development.local
-.env.production.local
-.env.tailscale.local
+.env*
+!.env.example

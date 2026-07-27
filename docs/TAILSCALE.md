@@ -49,6 +49,8 @@ Available variables:
 - `ROOM_STUDIO_LOOPBACK_PORT`
 - `ROOM_STUDIO_RUNTIME_DIR`
 
+`ROOM_STUDIO_LOOPBACK_HOST` accepts only `127.0.0.1` or `localhost`; binding Vite to a LAN-facing address would violate the tailnet-only boundary. Runtime metadata and logs are created with private permissions, and the script refuses symlinked runtime paths or files.
+
 The script passes the selected MagicDNS host to Vite as `ROOM_STUDIO_ALLOWED_HOSTS`. For a manually launched preview, set a comma-separated allowlist yourself:
 
 ```bash

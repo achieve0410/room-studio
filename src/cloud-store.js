@@ -1,6 +1,9 @@
 const DEFAULT_PROJECT_NAME = '내 집 도면';
 const runtimeEnv = import.meta.env ?? {};
 
+export function resolveAuthRedirectUrl(baseUrl, currentUrl) {
+  return new URL(baseUrl || '/', currentUrl).href;
+}
 export function normalizeProjectName(value) {
   const name = String(value ?? '').trim().replace(/\s+/g, ' ');
   return name.slice(0, 80) || DEFAULT_PROJECT_NAME;
@@ -92,19 +95,20 @@ export function createCloudStore({ client } = {}) {
   };
 }
 
-export function hasCloudConfiguration() {
-  return Boolean(runtimeEnv.VITE_SUPABASE_URL && runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY);
+export function hasCloudConfiguration(env = runtimeEnv) {
+  return Boolean(env.VITE_SUPABASE_URL && env.VITE_SUPABASE_PUBLISHABLE_KEY);
 }
 
-export async function createConfiguredCloudStore() {
-  if (!hasCloudConfiguration()) return null;
-  const { createClient } = await import('@supabase/supabase-js');
+export async function createConfiguredCloudStore({ env = runtimeEnv, clientFactory = null } = {}) {
+  if (!hasCloudConfiguration(env)) return null;
+  const createClient = clientFactory ?? (await import('@supabase/supabase-js')).createClient;
   return createCloudStore({
-    client: createClient(runtimeEnv.VITE_SUPABASE_URL, runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY, {
+    client: createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        flowType: 'pkce',
       },
     }),
   });

@@ -5,6 +5,7 @@ This repository is software, not a hosted service. Each person or organization t
 ## Local-only mode
 
 With no Supabase configuration, the editor stores the current drawing in that browser's `localStorage`. Clearing site data removes that local copy. The project database does not receive the drawing.
+`localStorage` is isolated by origin, not by URL path. A deployment that shares an origin with unrelated applications allows those applications to read or modify the drawing and any origin-scoped authentication state. Use a dedicated HTTPS origin for Room Studio.
 
 ## Supabase mode
 

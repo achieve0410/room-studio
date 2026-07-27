@@ -1,9 +1,10 @@
 #!/bin/sh
 
 set -u
+umask 077
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
-ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd -P) || exit 1
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
+ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd -P) || exit 1
 LOOPBACK_HOST=${ROOM_STUDIO_LOOPBACK_HOST:-127.0.0.1}
 LOOPBACK_PORT=${ROOM_STUDIO_LOOPBACK_PORT:-4173}
 TAILSCALE_HOST=${ROOM_STUDIO_TAILSCALE_HOST:-}
@@ -41,12 +42,20 @@ require_tools() {
   need ps
   need curl
   need tailscale
+  need awk
+  need sed
+  need sort
   is_numeric "$LOOPBACK_PORT" || die "ROOM_STUDIO_LOOPBACK_PORT must be numeric"
   is_numeric "$HTTPS_PORT" || die "ROOM_STUDIO_HTTPS_PORT must be numeric"
   [ "$LOOPBACK_PORT" -ge 1 ] && [ "$LOOPBACK_PORT" -le 65535 ] \
     || die "ROOM_STUDIO_LOOPBACK_PORT must be between 1 and 65535"
   [ "$HTTPS_PORT" -ge 1 ] && [ "$HTTPS_PORT" -le 65535 ] \
     || die "ROOM_STUDIO_HTTPS_PORT must be between 1 and 65535"
+  case "$LOOPBACK_HOST" in
+    127.0.0.1|localhost) ;;
+    *) die "ROOM_STUDIO_LOOPBACK_HOST must remain loopback-only (127.0.0.1 or localhost)" ;;
+  esac
+  validate_runtime_paths
   detect_tailscale_host
 }
 
@@ -55,6 +64,19 @@ is_numeric() {
     ''|*[!0-9]*) return 1 ;;
     *) return 0 ;;
   esac
+}
+validate_runtime_paths() {
+  [ ! -L "$RUNTIME_DIR" ] || die "refusing symlink runtime directory: $RUNTIME_DIR"
+  [ ! -L "$PID_FILE" ] || die "refusing symlink PID metadata: $PID_FILE"
+  [ ! -L "$PID_FILE.tmp" ] || die "refusing symlink temporary PID metadata: $PID_FILE.tmp"
+  [ ! -L "$LOG_FILE" ] || die "refusing symlink preview log: $LOG_FILE"
+}
+
+prepare_runtime_dir() {
+  validate_runtime_paths
+  mkdir -p "$RUNTIME_DIR" || die "cannot create runtime dir: $RUNTIME_DIR"
+  chmod 700 "$RUNTIME_DIR" || die "cannot secure runtime dir: $RUNTIME_DIR"
+  validate_runtime_paths
 }
 
 detect_tailscale_host() {
@@ -294,7 +316,7 @@ rollback_start_failure() {
 }
 
 start_preview_child() {
-  mkdir -p "$RUNTIME_DIR" || die "cannot create runtime dir: $RUNTIME_DIR"
+  prepare_runtime_dir
   [ -x "$VITE_BIN" ] || die "missing executable Vite binary: $VITE_BIN"
   old_pwd=$(pwd) || die "cannot read current directory"
   cd "$ROOT" || die "cannot enter repo root: $ROOT"
@@ -339,9 +361,11 @@ cmd_start() {
   existing_pid=$(preflight_preview_port) || exit 1
   if [ -n "$existing_pid" ]; then
     host_header_ok || die "existing validated preview PID $existing_pid did not return HTTP 200"
-    mkdir -p "$RUNTIME_DIR" || die "cannot create runtime dir: $RUNTIME_DIR"
-    printf '%s\n' "$existing_pid" > "$PID_FILE.tmp" && mv "$PID_FILE.tmp" "$PID_FILE" \
-      || die "cannot write PID metadata"
+    prepare_runtime_dir
+    if ! printf '%s\n' "$existing_pid" > "$PID_FILE.tmp"; then
+      die "cannot write temporary PID metadata"
+    fi
+    mv "$PID_FILE.tmp" "$PID_FILE" || die "cannot write PID metadata"
     preview_pid=$existing_pid
     started_child=''
   else
@@ -352,10 +376,12 @@ cmd_start() {
     if ! wait_for_valid_preview "$preview_pid"; then
       rollback_start_failure "Vite preview did not pass ownership and HTTP checks; see $LOG_FILE" "$preview_pid" no
     fi
-    printf '%s\n' "$preview_pid" > "$PID_FILE.tmp" && mv "$PID_FILE.tmp" "$PID_FILE" \
-      || {
-        rollback_start_failure "cannot write PID metadata" "$preview_pid" no
-      }
+    if ! printf '%s\n' "$preview_pid" > "$PID_FILE.tmp"; then
+      rollback_start_failure "cannot write temporary PID metadata" "$preview_pid" no
+    fi
+    if ! mv "$PID_FILE.tmp" "$PID_FILE"; then
+      rollback_start_failure "cannot write PID metadata" "$preview_pid" no
+    fi
   fi
 
   if ! tailscale serve --bg --https="$HTTPS_PORT" "http://$LOOPBACK_HOST:$LOOPBACK_PORT"; then
@@ -384,7 +410,9 @@ cmd_stop() {
       [ -f "$PID_FILE" ] \
         || die "refusing to disable Tailscale HTTPS $HTTPS_PORT without preview PID metadata"
       stop_pid=$(sed -n '1p' "$PID_FILE" 2>/dev/null)
-      is_numeric "$stop_pid" && validate_preview_pid "$stop_pid" \
+      is_numeric "$stop_pid" \
+        || die "refusing to disable Tailscale HTTPS $HTTPS_PORT with invalid PID metadata"
+      validate_preview_pid "$stop_pid" \
         || die "refusing to disable Tailscale HTTPS $HTTPS_PORT without a validated preview process"
       disable_https_listener || die "failed to disable Tailscale HTTPS $HTTPS_PORT"
       ;;

@@ -1,10 +1,54 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCloudStore, hasCloudConfiguration, normalizeProjectName, prepareLayoutSnapshot } from '../src/cloud-store.js';
+import {
+  createCloudStore,
+  createConfiguredCloudStore,
+  hasCloudConfiguration,
+  normalizeProjectName,
+  prepareLayoutSnapshot,
+  resolveAuthRedirectUrl,
+} from '../src/cloud-store.js';
 
 test('cloud store stays disabled without public Supabase configuration', () => {
   assert.equal(createCloudStore(), null);
-  assert.equal(hasCloudConfiguration(), false);
+  assert.equal(hasCloudConfiguration({}), false);
+});
+test('auth redirects preserve the configured deployment base path', () => {
+  assert.equal(
+    resolveAuthRedirectUrl('./', 'https://room.example/tools/room-studio/?code=secret#fragment'),
+    'https://room.example/tools/room-studio/',
+  );
+  assert.equal(
+    resolveAuthRedirectUrl('/room-studio/', 'https://room.example/other/path'),
+    'https://room.example/room-studio/',
+  );
+});
+
+test('configured cloud clients use public values and PKCE', async () => {
+  let options;
+  const store = await createConfiguredCloudStore({
+    env: {
+      VITE_SUPABASE_URL: 'https://project.supabase.co',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+    },
+    clientFactory(url, key, clientOptions) {
+      options = { url, key, clientOptions };
+      return { auth: {} };
+    },
+  });
+  assert.ok(store);
+  assert.deepEqual(options, {
+    url: 'https://project.supabase.co',
+    key: 'sb_publishable_test',
+    clientOptions: {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+      },
+    },
+  });
 });
 
 test('project names are trimmed, collapsed, bounded, and never blank', () => {

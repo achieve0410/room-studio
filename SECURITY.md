@@ -25,6 +25,9 @@ The maintainer will acknowledge a complete report as capacity allows, coordinate
 
 - `VITE_*` values are public browser configuration.
 - Supabase `service_role` keys and OAuth client secrets must never enter the repository or browser bundle.
+- Authentication redirects use PKCE and must return to an explicitly allowlisted deployment base URL.
+- Production deployments must use a dedicated HTTPS origin and enforce CSP, framing, MIME-sniffing, referrer, permissions, and transport-security headers.
+- Database writes reject malformed, unsupported, or oversized layouts, cap project creation per account, and bound retained project versions.
 - Cloud project writes must use RLS and the revision-checked `save_project` RPC.
-- Tailscale sharing must remain tailnet-only; the helper script does not enable Funnel.
+- Tailscale sharing must remain tailnet-only; the helper binds only to `127.0.0.1` or `localhost`, rejects symlinked runtime metadata, and does not enable Funnel.
 - Operators are responsible for OAuth redirect allowlists, database backups, account lifecycle, and their own privacy notices.

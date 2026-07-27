@@ -1,5 +1,5 @@
 import './styles.css';
-import { createConfiguredCloudStore, hasCloudConfiguration, normalizeProjectName } from './cloud-store.js';
+import { createConfiguredCloudStore, hasCloudConfiguration, normalizeProjectName, resolveAuthRedirectUrl } from './cloud-store.js';
 import {
   alignDoorToWall,
   GRID_CM,
@@ -318,6 +318,7 @@ let mobileContextMenu = null;
 let mobileMoveArmed = false;
 const app = document.querySelector('#app');
 const cloudConfigured = hasCloudConfiguration();
+const cloudAuthRedirectUrl = resolveAuthRedirectUrl(import.meta.env.BASE_URL, window.location.href);
 let cloudStore = null;
 let cloudSession = null;
 let cloudProjects = [];
@@ -2518,7 +2519,7 @@ function bindEvents() {
     button.disabled = true;
     setCloudFeedback('로그인 링크를 보내는 중…');
     try {
-      await cloudStore.signInWithMagicLink(new FormData(form).get('email'), window.location.origin);
+      await cloudStore.signInWithMagicLink(new FormData(form).get('email'), cloudAuthRedirectUrl);
       form.reset();
       setCloudFeedback('이메일을 확인해 로그인 링크를 열어주세요.', 'success');
     } catch (error) {
@@ -2531,7 +2532,7 @@ function bindEvents() {
     event.currentTarget.disabled = true;
     setCloudFeedback('Google 로그인으로 이동하는 중…');
     try {
-      await cloudStore.signInWithGoogle(window.location.origin);
+      await cloudStore.signInWithGoogle(cloudAuthRedirectUrl);
     } catch (error) {
       event.currentTarget.disabled = false;
       setCloudFeedback(error.message || 'Google 로그인을 시작하지 못했습니다.', 'error');
