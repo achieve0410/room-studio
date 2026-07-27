@@ -1,0 +1,42 @@
+{
+  "name": "room-studio",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A mobile-friendly open-source 2D/3D room planning and walkthrough tool.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/achieve0410/room-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/achieve0410/room-studio/issues"
+  },
+  "homepage": "https://achieve0410.github.io/room-studio/",
+  "keywords": [
+    "floor-plan",
+    "interior-design",
+    "room-planner",
+    "threejs",
+    "webgl"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22.12 <25"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "node --check src/main.js && node --check src/cloud-store.js && node --check src/geometry.js && node --check src/walkthrough3d.js && node --check vite.config.js && sh -n scripts/tailscale-private-serve.sh",
+    "test": "node --test",
+    "test:browser:mobile": "node scripts/mobile-browser-audit.mjs",
+    "check": "npm run lint && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "vite": "^7.0.5"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
+    "three": "^0.185.1"
+  }
+}

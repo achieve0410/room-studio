@@ -1,0 +1,40 @@
+name: Feature proposal
+description: Propose a scoped improvement with a concrete room-planning use case.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: user_problem
+    attributes:
+      label: User problem
+      description: Describe who is blocked and what they cannot do today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_behavior
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest interaction or capability that solves the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: impact_areas
+    attributes:
+      label: Impact areas
+      options:
+        - label: 2D editor
+        - label: 3D walkthrough
+        - label: Mobile or touch
+        - label: Accessibility
+        - label: Persisted drawing schema
+        - label: Supabase or authentication
+        - label: Self-hosting
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include diagrams or sanitized examples, not real private floor plans.

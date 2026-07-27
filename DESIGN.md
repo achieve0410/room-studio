@@ -1,0 +1,84 @@
+# Design
+
+## Source of truth
+- Status: Active
+- Last refreshed: 2026-07-20
+- Primary product surfaces: 2D 공간·가구·벽·문 편집기, 상세 조정 패널, 3D 1인칭 둘러보기
+- Evidence reviewed: `src/main.js`, `src/styles.css`, `src/walkthrough3d.js`, 390×844 모바일 렌더링
+
+## Brand
+- Personality: 차분하고 정밀한 인테리어 작업 도구
+- Trust signals: cm 단위 수치, 충돌·높이 경고, 자동 저장 상태
+- Avoid: 장난감 같은 색상, 과도한 애니메이션, 편집 도면을 가리는 장식
+
+## Product goals
+- Goals: 공간과 가구를 빠르게 구성하고 실제 수용 가능성을 2D·3D로 판단
+- Non-goals: 자유 곡선 CAD, 건축 인허가 도면 제작
+- Success signals: 모바일에서 도면·라이브러리·상세 편집을 한두 번의 탭으로 오갈 수 있음
+
+## Personas and jobs
+- Primary personas: 이사·인테리어를 준비하며 휴대폰과 데스크톱을 함께 사용하는 일반 사용자
+- User jobs: 방 크기 구성, 가구 배치, 치수 조정, 충돌 확인, 3D 체감
+- Key contexts of use: 현장에서 치수를 보며 한 손 또는 두 손으로 휴대폰 사용
+
+## Information architecture
+- Primary navigation: 모바일 하단의 도면·공간·가구·상세 탭, 데스크톱 3열 작업 공간
+- Core routes/screens: 단일 2D 편집 화면, 전체 화면 3D 둘러보기
+- Content hierarchy: 도면 > 즉시 편집 명령 > 선택 대상 상세 > 공간·가구 라이브러리 > 통계
+
+## Design principles
+- Canvas first: 모바일에서도 도면을 기본 화면으로 유지한다.
+- Touch explicit: 키보드 보조 동작에는 터치 가능한 대체 버튼을 제공한다.
+- Manual structure: 공간 연결부는 자동 문을 가정하지 않고 사용자가 벽과 문의 위치·폭·방향을 결정한다. 선택된 벽·문은 도면 위 양 끝점과 90도 회전 핸들로 직접 조정하며, 문을 다른 축의 벽 가까이 옮기면 해당 벽의 위치·방향·소유권으로 스냅한다.
+- Door interaction: 여닫이문은 0~120° 각도, 미닫이문은 앞·뒤 두 패널의 0~100% 겹침으로 상태를 저장하며 선택 패널과 모바일 작업 메뉴에서 열고 닫는다. 3D 문짝과 통행 충돌도 같은 상태를 사용한다.
+- Compound circulation: 여러 공간을 합치면 같은 `spaceId`로 정규화하고 공유 경계의 자동 내부벽을 제거해 문 없이 통행한다.
+- Tradeoffs: 모바일에서는 동시에 모든 패널을 보여주기보다 하단 탭으로 한 패널씩 집중한다.
+
+## Visual language
+- Color: 기존 종이색 배경, 먹색 텍스트, 주황 강조색 유지
+- Typography: 기존 Pretendard/시스템 글꼴과 Georgia 제목 유지
+- Spacing/layout rhythm: 4·8·12·16px 기반, 모바일 터치 목표 최소 44px
+- Shape/radius/elevation: 얕은 테두리와 낮은 모서리 반경, 패널에만 제한된 그림자
+- Motion: 150~220ms의 짧은 패널·상태 전환
+- Imagery/iconography: 텍스트와 단순 기호 중심
+
+## Components
+- Existing components to reuse: 캔버스 툴바, 공간 목록, 가구 라이브러리, 상세 입력, 3D HUD
+- New/changed components: 벽·여닫이문·미닫이문 라이브러리, 문 너비·경첩·열림/이동 방향 상세 필드와 도면 기호, 모바일 하단 내비게이션, 재탭 작업 메뉴, 그룹 선택 작업바, 모바일 3D 방향 패드
+- Variants and states: 선택됨, 선택 대상 즉시 이동, 길게 누르기 이동, 그룹 이동 준비, 비활성, 경고, 열린 모바일 패널
+- Token/component ownership: `src/styles.css`의 기존 CSS 변수와 클래스 사용
+
+## Accessibility
+- Target standard: WCAG 2.1 AA를 지향
+- Keyboard/focus behavior: 기존 단축키 유지, 모든 모바일 기능은 버튼으로도 접근
+- Contrast/readability: 기존 본문 대비 유지, 모바일 보조 글자 최소 10px 이상 우선
+- Screen-reader semantics: 내비게이션·버튼에 명시적 레이블과 선택 상태 제공
+- Reduced motion and sensory considerations: `prefers-reduced-motion` 존중
+
+## Responsive behavior
+- Supported breakpoints/devices: 320px 이상 모바일·태블릿 집중 레이아웃, 901~1180px 유연한 데스크톱/태블릿, 1181px 이상 데스크톱
+- Layout adaptations: 900px 이하에서 도면 중심 화면과 고정 하단 탭, 공간·가구·상세는 스크롤 가능한 오버레이 패널
+- Touch/hover differences: 첫 탭은 선택과 작업 메뉴, 선택된 대상은 바로 드래그 이동, 미선택 대상은 길게 누르기 이동, 빈 도면 탭은 선택 해제, 두 손가락은 5~600% 확대·축소로 동작한다. 핵심 조작은 최소 44px 터치 목표이며 Shift 대신 그룹 선택 작업바를 제공한다.
+
+## Interaction states
+- Loading: 3D 준비 버튼 상태 유지
+- Empty: 기존 빈 상세 안내 유지
+- Error: 충돌·높이·경계 경고 유지
+- Success: 자동 저장 상태와 정상 배치 상태 유지
+- Disabled: 실행 취소·다시 실행 비활성 표시 유지
+- Offline/slow network: 정적 앱과 로컬 저장소 기반으로 핵심 2D 편집 가능
+
+## Content voice
+- Tone: 짧고 직접적인 작업 안내
+- Terminology: 공간, 공간 조각, 가구, 벽, 여닫이문, 미닫이문, 높이 H, 바닥 높이 Z
+- Microcopy rules: 모바일 버튼은 명사 또는 한 동작으로 표기
+
+## Implementation constraints
+- Framework/styling system: Vite, 바닐라 JavaScript, 단일 CSS 파일
+- Design-token constraints: 기존 `--ink`, `--muted`, `--line`, `--paper`, `--accent` 재사용
+- Performance constraints: 새 UI 라이브러리와 의존성 추가 금지
+- Compatibility constraints: 기존 저장 데이터와 데스크톱 편집 동작 보존
+- Test/screenshot expectations: 390×844, 768×1024, 데스크톱에서 레이아웃과 핵심 상호작용 확인
+
+## Open questions
+- [ ] 실제 사용자 테스트 후 모바일 도면 패닝 제스처의 필요성 재평가 / 제품 / 탐색 효율
