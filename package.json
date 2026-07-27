@@ -33,7 +33,7 @@
     "check": "npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
-    "vite": "^7.0.5"
+    "vite": "^8.1.5"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
