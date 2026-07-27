@@ -30,3 +30,11 @@ jobs:
         run: npm run check
       - name: Run browser interaction audit
         run: npm run test:browser:mobile
+      - name: Upload browser audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-audit-${{ github.run_attempt }}
+          path: .omx/artifacts/mobile-ux-hardening/
+          if-no-files-found: warn
+          retention-days: 7

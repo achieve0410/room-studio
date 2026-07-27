@@ -220,6 +220,10 @@ async function loadViewport(url, width, height, touch = width <= 900) {
   await cdp.send('Page.navigate', { url });
   await loaded;
   await doubleRaf();
+  await waitForExpression(
+    `document.querySelector('.mobile-nav') !== null && document.querySelector('.workspace') !== null`,
+    'application shell after page load',
+  );
 }
 
 async function reloadViewport(url, width, height, touch = width <= 900) {
@@ -2014,6 +2018,15 @@ try {
 console.log(`Mobile browser audit artifacts: ${artifactDir}`);
 if (report.assertionCounts) {
   console.log(`Assertions: ${report.assertionCounts.passed}/${report.assertionCounts.total} passed (${report.assertionCounts.failed} failed)`);
+  const failedAssertions = [
+    ...report.viewports.flatMap(({ assertions = [] }) => assertions),
+    ...report.interactionAssertions,
+  ].filter(({ pass }) => !pass);
+  for (const { name, actual, expected } of failedAssertions) {
+    console.error(`Failed assertion: ${name}`);
+    console.error(`  expected: ${JSON.stringify(expected)}`);
+    console.error(`  actual:   ${JSON.stringify(actual)}`);
+  }
 }
 if (report.error) console.error(report.error.stack);
 process.exitCode = exitCode;

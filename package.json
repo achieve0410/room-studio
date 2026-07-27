@@ -29,7 +29,7 @@
     "preview": "vite preview",
     "lint": "node --check src/main.js && node --check src/cloud-store.js && node --check src/geometry.js && node --check src/walkthrough3d.js && node --check vite.config.js && sh -n scripts/tailscale-private-serve.sh",
     "test": "node --test",
-    "test:browser:mobile": "node scripts/mobile-browser-audit.mjs",
+    "test:browser:mobile": "npm run build && node scripts/mobile-browser-audit.mjs",
     "check": "npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
