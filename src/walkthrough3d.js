@@ -389,7 +389,19 @@ function createFloorTexture(zone) {
   return texture;
 }
 
-function buildWallPiece(scene, orientation, start, end, fixed, height, centerHeight, wallMaterial, trimMaterial, thickness = WALL_THICKNESS_M) {
+function buildWallPiece(
+  scene,
+  orientation,
+  start,
+  end,
+  fixed,
+  height,
+  centerHeight,
+  wallMaterial,
+  trimMaterial,
+  thickness = WALL_THICKNESS_M,
+  dollhouseCutaway = false,
+) {
   const length = Math.max(0, end - start) / 100;
   if (length <= 0.01 || height <= 0.01) return;
   const horizontal = orientation === 'horizontal';
@@ -406,7 +418,7 @@ function buildWallPiece(scene, orientation, start, end, fixed, height, centerHei
   );
   wall.castShadow = true;
   wall.receiveShadow = true;
-  wall.userData = { type: 'wall' };
+  wall.userData = { type: 'wall', dollhouseCutaway };
   scene.add(wall);
 
   if (centerHeight === height / 2 && height > 1) {
@@ -417,8 +429,23 @@ function buildWallPiece(scene, orientation, start, end, fixed, height, centerHei
     ), trimMaterial);
     baseboard.position.set(wall.position.x, 0.045, wall.position.z);
     baseboard.receiveShadow = true;
+    baseboard.userData = { type: 'wall-trim', dollhouseCutaway };
     scene.add(baseboard);
   }
+}
+
+function isPositiveFacingExterior(segment, zones) {
+  const midpoint = segment.orientation === 'horizontal'
+    ? { x: (segment.x1 + segment.x2) / 2, y: segment.y }
+    : { x: segment.x, y: (segment.y1 + segment.y2) / 2 };
+  if (segment.orientation === 'horizontal') {
+    const roomAbove = zones.some((zone) => pointInZone({ x: midpoint.x, y: midpoint.y - 1 }, zone));
+    const roomBelow = zones.some((zone) => pointInZone({ x: midpoint.x, y: midpoint.y + 1 }, zone));
+    return roomAbove && !roomBelow;
+  }
+  const roomLeft = zones.some((zone) => pointInZone({ x: midpoint.x - 1, y: midpoint.y }, zone));
+  const roomRight = zones.some((zone) => pointInZone({ x: midpoint.x + 1, y: midpoint.y }, zone));
+  return roomLeft && !roomRight;
 }
 
 function buildDoorLeaf(scene, door, center, doorMaterial, frameMaterial) {
@@ -628,11 +655,13 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(world.x, zoneHeightMeters, world.z);
     ceiling.receiveShadow = true;
+    ceiling.userData = { type: 'ceiling', id: zone.id };
     scene.add(ceiling);
 
     const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.035, 32), lightMaterial);
     fixture.position.set(world.x, zoneHeightMeters - 0.025, world.z);
     fixture.rotation.x = Math.PI;
+    fixture.userData = { type: 'ceiling-fixture', id: zone.id };
     scene.add(fixture);
 
     const light = new THREE.PointLight(0xffdfb0, 2.1, Math.max(zone.width, zone.depth) / 38, 2);
@@ -650,7 +679,13 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
   const openings = [...doors, ...windows];
   const userWalls = structures.filter((structure) => structure.type === 'wall');
   const automaticWallOpenings = (segment) => doorsForAutomaticWallSegment(segment, openings, userWalls);
-  const buildWallSegment = (segment, wallOpenings, heightMeters = wallHeightMeters, thickness = WALL_THICKNESS_M) => {
+  const buildWallSegment = (
+    segment,
+    wallOpenings,
+    heightMeters = wallHeightMeters,
+    thickness = WALL_THICKNESS_M,
+    dollhouseCutaway = false,
+  ) => {
     const horizontal = segment.orientation === 'horizontal';
     const fixed = (horizontal ? segment.y : segment.x) - (horizontal ? center.y : center.x);
     const axisCenter = horizontal ? center.x : center.y;
@@ -658,7 +693,19 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
     layout.spans.forEach((span) => {
       const start = (horizontal ? span.x1 : span.y1) - axisCenter;
       const end = (horizontal ? span.x2 : span.y2) - axisCenter;
-      buildWallPiece(scene, segment.orientation, start, end, fixed, heightMeters, heightMeters / 2, wallMaterial, trimMaterial, thickness);
+      buildWallPiece(
+        scene,
+        segment.orientation,
+        start,
+        end,
+        fixed,
+        heightMeters,
+        heightMeters / 2,
+        wallMaterial,
+        trimMaterial,
+        thickness,
+        dollhouseCutaway,
+      );
     });
     layout.openings.forEach((opening) => {
       const openingStart = opening.start - axisCenter;
@@ -670,10 +717,34 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
         ? Math.max(...opening.doors.map((entry) => entry.type === 'window' ? (entry.sillHeight + entry.height) / 100 : entry.height / 100))
         : DOOR_HEIGHT_M);
       if (openingBottom > 0) {
-        buildWallPiece(scene, segment.orientation, openingStart, openingEnd, fixed, openingBottom, openingBottom / 2, wallMaterial, trimMaterial, thickness);
+        buildWallPiece(
+          scene,
+          segment.orientation,
+          openingStart,
+          openingEnd,
+          fixed,
+          openingBottom,
+          openingBottom / 2,
+          wallMaterial,
+          trimMaterial,
+          thickness,
+          dollhouseCutaway,
+        );
       }
       const lintelHeight = Math.max(0, heightMeters - openingTop);
-      buildWallPiece(scene, segment.orientation, openingStart, openingEnd, fixed, lintelHeight, openingTop + lintelHeight / 2, wallMaterial, trimMaterial, thickness);
+      buildWallPiece(
+        scene,
+        segment.orientation,
+        openingStart,
+        openingEnd,
+        fixed,
+        lintelHeight,
+        openingTop + lintelHeight / 2,
+        wallMaterial,
+        trimMaterial,
+        thickness,
+        dollhouseCutaway,
+      );
       const trimDepth = thickness + 0.035;
       [openingStart, openingEnd].forEach((doorEdge) => {
         const jamb = new THREE.Mesh(new THREE.BoxGeometry(
@@ -682,12 +753,19 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
           horizontal ? trimDepth : 0.055,
         ), trimMaterial);
         jamb.position.set(horizontal ? doorEdge / 100 : fixed / 100, openingBottom + (openingTop - openingBottom) / 2, horizontal ? fixed / 100 : doorEdge / 100);
+        jamb.userData = { type: 'wall-trim', dollhouseCutaway };
         scene.add(jamb);
       });
     });
   };
 
-  getExteriorWallSegments(zones).forEach((segment) => buildWallSegment(segment, automaticWallOpenings(segment)));
+  getExteriorWallSegments(zones).forEach((segment) => buildWallSegment(
+    segment,
+    automaticWallOpenings(segment),
+    wallHeightMeters,
+    WALL_THICKNESS_M,
+    isPositiveFacingExterior(segment, zones),
+  ));
   getInteriorWallSegments(zones).forEach((segment) => buildWallSegment(segment, automaticWallOpenings(segment)));
   userWalls.forEach((wall) => {
     buildWallSegment(
@@ -766,7 +844,51 @@ function miniMapMarkup(zones, layout) {
     </svg>`;
 }
 
-export function openWalkthrough({ zones, items, structures = [], wallHeight = 240, onDoorChange = null, onStructureChange = onDoorChange }) {
+function focusTargetForSelection(focus, zones, items, structures, center, wallHeight) {
+  if (!focus) return null;
+  if (focus.kind === 'zone') {
+    const zone = zones.find(({ id }) => id === focus.id);
+    if (!zone) return null;
+    return {
+      x: (zone.x + zone.width / 2 - center.x) / 100,
+      y: Math.min(1.2, (zone.height ?? wallHeight) / 200),
+      z: (zone.y + zone.depth / 2 - center.y) / 100,
+      name: zone.name,
+    };
+  }
+  if (focus.kind === 'item') {
+    const item = items.find(({ id }) => id === focus.id);
+    if (!item) return null;
+    return {
+      x: (item.x - center.x) / 100,
+      y: ((item.elevation ?? 0) + item.height / 2) / 100,
+      z: (item.y - center.y) / 100,
+      name: item.name,
+    };
+  }
+  if (focus.kind === 'structure') {
+    const structure = structures.find(({ id }) => id === focus.id);
+    if (!structure) return null;
+    return {
+      x: (structure.x - center.x) / 100,
+      y: Math.min(1.2, structure.height / 200),
+      z: (structure.y - center.y) / 100,
+      name: structure.name,
+    };
+  }
+  return null;
+}
+
+export function openWalkthrough({
+  zones,
+  items,
+  structures = [],
+  wallHeight = 240,
+  focus = null,
+  initialMode = 'walk',
+  onDoorChange = null,
+  onStructureChange = onDoorChange,
+}) {
   activeCleanup?.();
 
   const layout = getLayoutBounds(zones);
@@ -783,6 +905,16 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
       <div class="walkthrough-location"><span>NOW EXPLORING</span><strong data-current-room>불러오는 중</strong><small>직접 걸으며 배치를 확인하세요</small></div>
       <div class="walkthrough-status" data-walkthrough-status role="status" aria-live="polite"><i></i> 둘러보기 준비</div>
       <button class="walkthrough-exit" data-walkthrough-exit type="button" aria-label="3D 둘러보기 닫기"><span>나가기</span>×</button>
+      <div class="walkthrough-view-tools" aria-label="3D 보기 도구">
+        <div class="walkthrough-view-modes">
+          <button data-view-mode="walk" type="button">1인칭</button>
+          <button data-view-mode="dollhouse" type="button">돌하우스</button>
+          <button data-view-mode="top" type="button">상공</button>
+        </div>
+        <button data-toggle-ceiling type="button" aria-pressed="false">천장 숨기기</button>
+        <button data-focus-selection type="button" ${focus ? '' : 'disabled'}>선택 보기</button>
+        <button data-save-snapshot type="button">PNG 저장</button>
+      </div>
       <div class="walkthrough-minimap" data-minimap>${miniMapMarkup(zones, layout)}</div>
       <div class="walkthrough-controls" data-walkthrough-controls>
         <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><small>이동</small></span>
@@ -839,10 +971,16 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   const openingPrompt = overlay.querySelector('[data-opening-prompt]');
   const joystick = overlay.querySelector('[data-walkthrough-joystick]');
   const joystickKnob = overlay.querySelector('[data-joystick-knob]');
+  const ceilingButton = overlay.querySelector('[data-toggle-ceiling]');
+  const focusButton = overlay.querySelector('[data-focus-selection]');
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xcbd2d1);
   scene.fog = new THREE.FogExp2(0xcbd2d1, 0.025);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance',
+    preserveDrawingBuffer: true,
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(stage.clientWidth, stage.clientHeight, false);
   renderer.shadowMap.enabled = true;
@@ -874,9 +1012,15 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   let doorLeafSegments = getDoorLeafSegments(doors);
   const openingControllers = buildScene(scene, zones, items, sceneStructures, wallHeight, center);
   const furnitureLabels = [];
+  const ceilingObjects = [];
+  const dollhouseCutawayObjects = [];
   scene.traverse((object) => {
     if (object.userData.type === 'furniture-label') furnitureLabels.push(object);
+    if (object.userData.type === 'ceiling' || object.userData.type === 'ceiling-fixture') ceilingObjects.push(object);
+    if (object.userData.dollhouseCutaway) dollhouseCutawayObjects.push(object);
   });
+  const selectedFocusTarget = focusTargetForSelection(focus, zones, items, sceneStructures, center, wallHeight);
+  focusButton.disabled = !selectedFocusTarget;
   const labelWorldPosition = new THREE.Vector3();
   const raycaster = new THREE.Raycaster();
   const rayPointer = new THREE.Vector2();
@@ -895,6 +1039,10 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
     Math.min(1.18, initialEyeHeightCm / 100 - 0.1),
     (startView.target.y - center.y) / 100,
   );
+  const walkPose = {
+    position: camera.position.clone(),
+    quaternion: camera.quaternion.clone(),
+  };
 
   const keys = new Set();
   const velocity = new THREE.Vector3();
@@ -912,6 +1060,8 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
     resetJoystick();
   };
   const lookTarget = { yaw: camera.rotation.y, pitch: camera.rotation.x };
+  let viewMode = 'walk';
+  let ceilingsVisible = true;
   let animationFrame = 0;
   let previousFrameTime = performance.now();
   let destroyed = false;
@@ -925,6 +1075,80 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   let announcedOpeningId = null;
   let toastTimer = 0;
   let bumpTimer = 0;
+
+  const syncViewToolState = () => {
+    overlay.dataset.viewMode = viewMode;
+    overlay.querySelectorAll('[data-view-mode]').forEach((button) => {
+      const active = button.dataset.viewMode === viewMode;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    ceilingButton.setAttribute('aria-pressed', String(!ceilingsVisible));
+    ceilingButton.textContent = ceilingsVisible ? '천장 숨기기' : '천장 보이기';
+  };
+  const setCeilingsVisible = (visible) => {
+    ceilingsVisible = Boolean(visible);
+    ceilingObjects.forEach((object) => { object.visible = ceilingsVisible; });
+    syncViewToolState();
+  };
+  const setDollhouseCutaway = (active) => {
+    dollhouseCutawayObjects.forEach((object) => { object.visible = !active; });
+    overlay.dataset.dollhouseCutaway = String(Boolean(active));
+  };
+  const hideMenu = () => {
+    menu.classList.add('is-hidden');
+    menu.hidden = true;
+    menu.inert = true;
+    menu.setAttribute('aria-hidden', 'true');
+  };
+  const showMenu = () => {
+    menu.hidden = false;
+    menu.classList.remove('is-hidden');
+    menu.inert = false;
+    menu.setAttribute('aria-hidden', 'false');
+  };
+  const setOverviewCamera = (mode, target = null) => {
+    const targetPoint = target ?? { x: 0, y: 0.65, z: 0, name: mode === 'top' ? '상공 보기' : '돌하우스 보기' };
+    const span = Math.max(layout.width, layout.depth) / 100;
+    camera.up.set(0, 1, 0);
+    camera.fov = mode === 'top' ? 42 : 48;
+    camera.far = 100;
+    if (mode === 'top') {
+      camera.up.set(0, 0, -1);
+      camera.position.set(targetPoint.x, Math.max(5.5, span * 1.35), targetPoint.z + 0.001);
+    } else {
+      camera.position.set(
+        targetPoint.x + Math.max(3.2, span * 0.62),
+        Math.max(5.5, span * 1.05),
+        targetPoint.z + Math.max(3.8, span * 0.78),
+      );
+    }
+    camera.lookAt(targetPoint.x, targetPoint.y, targetPoint.z);
+    camera.updateProjectionMatrix();
+    currentRoom.textContent = targetPoint.name ?? (mode === 'top' ? '상공 보기' : '돌하우스 보기');
+  };
+  const activateOverview = (mode, target = null) => {
+    if (viewMode === 'walk') {
+      walkPose.position.copy(camera.position);
+      walkPose.quaternion.copy(camera.quaternion);
+    }
+    navigationActive = false;
+    draggingLook = false;
+    stopMovement();
+    document.exitPointerLock?.();
+    viewMode = mode;
+    setOverviewCamera(mode, target);
+    setCeilingsVisible(false);
+    setDollhouseCutaway(mode === 'dollhouse');
+    hideMenu();
+    overlay.classList.add('is-active', 'is-overview');
+    overlay.classList.remove('can-use-door');
+    delete overlay.dataset.targetDoorId;
+    delete overlay.dataset.targetWindowId;
+    status.innerHTML = `<i></i> ${target?.name ? `${target.name} 바로 보기` : mode === 'top' ? '상공 시점' : '돌하우스 시점'}`;
+    previousFrameTime = performance.now();
+    syncViewToolState();
+  };
 
   const cameraPoint = (position) => ({ x: position.x * 100 + center.x, y: position.z * 100 + center.y });
   const canMoveTo = (position) => {
@@ -997,7 +1221,7 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
       if (!interactWithCenteredOpening()) status.textContent = '가까운 문이나 창을 화면 중앙에 맞춰 주세요';
       return;
     }
-    if (event.code === 'Escape' && navigationActive) {
+    if (event.code === 'Escape' && overlay.classList.contains('is-active')) {
       pauseNavigation();
       return;
     }
@@ -1015,23 +1239,39 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
     camera.updateProjectionMatrix();
   };
   const activateNavigation = () => {
+    if (viewMode === 'walk') {
+      walkPose.position.copy(camera.position);
+      walkPose.quaternion.copy(camera.quaternion);
+    }
+    viewMode = 'walk';
+    camera.up.set(0, 1, 0);
+    camera.fov = 70;
+    camera.far = 50;
+    camera.position.copy(walkPose.position);
+    camera.quaternion.copy(walkPose.quaternion);
+    camera.updateProjectionMatrix();
+    lookTarget.yaw = camera.rotation.y;
+    lookTarget.pitch = camera.rotation.x;
+    setCeilingsVisible(true);
+    setDollhouseCutaway(false);
     navigationActive = true;
-    menu.classList.add('is-hidden');
-    menu.inert = true;
-    menu.setAttribute('aria-hidden', 'true');
+    hideMenu();
     overlay.classList.add('is-active');
+    overlay.classList.remove('is-overview');
     status.innerHTML = '<i></i> 자유롭게 둘러보는 중';
     previousFrameTime = performance.now();
+    syncViewToolState();
     renderer.domElement.focus({ preventScroll: true });
   };
   const pauseNavigation = () => {
-    if (!navigationActive) return;
+    if (viewMode === 'walk') {
+      walkPose.position.copy(camera.position);
+      walkPose.quaternion.copy(camera.quaternion);
+    }
     navigationActive = false;
     draggingLook = false;
-    menu.classList.remove('is-hidden');
-    menu.inert = false;
-    menu.setAttribute('aria-hidden', 'false');
-    overlay.classList.remove('is-active');
+    showMenu();
+    overlay.classList.remove('is-active', 'is-overview', 'can-use-door');
     status.textContent = '일시 정지';
     stopMovement();
     document.exitPointerLock?.();
@@ -1138,8 +1378,10 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
     animationFrame = requestAnimationFrame(animate);
     const delta = Math.min((frameTime - previousFrameTime) / 1000, 0.05);
     previousFrameTime = frameTime;
-    camera.rotation.y += (lookTarget.yaw - camera.rotation.y) * Math.min(1, delta * 18);
-    camera.rotation.x += (lookTarget.pitch - camera.rotation.x) * Math.min(1, delta * 18);
+    if (viewMode === 'walk') {
+      camera.rotation.y += (lookTarget.yaw - camera.rotation.y) * Math.min(1, delta * 18);
+      camera.rotation.x += (lookTarget.pitch - camera.rotation.x) * Math.min(1, delta * 18);
+    }
     openingControllers.forEach((controller) => controller.tick(delta));
     doorLeafSegments = getDoorLeafSegments(doors);
 
@@ -1167,50 +1409,75 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
       velocity.multiplyScalar(Math.max(0, 1 - delta * 12));
     }
 
-    const point = cameraPoint(camera.position);
-    const room = zones.find((zone) => pointInZone(point, zone));
-    const roomEyeHeightCm = Math.max(80, Math.min(DEFAULT_EYE_HEIGHT_CM, (room?.height ?? wallHeight) - 35));
-    const bob = walking ? Math.sin(stepPhase) * 0.012 : 0;
-    camera.position.y += (roomEyeHeightCm / 100 + bob - camera.position.y) * Math.min(1, delta * 14);
-    announceRoom(room);
-    if (!room) currentRoom.textContent = '공간 경계';
-    const viewDirection = camera.getWorldDirection(new THREE.Vector3());
-    const mapAngle = Math.atan2(viewDirection.x, -viewDirection.z) * 180 / Math.PI;
-    mapPlayer.setAttribute('transform', `translate(${point.x} ${point.y}) rotate(${mapAngle})`);
-    const canvasRect = renderer.domElement.getBoundingClientRect();
-    const centeredOpening = openingAt(canvasRect.left + canvasRect.width / 2, canvasRect.top + canvasRect.height / 2);
-    overlay.classList.toggle('can-use-door', Boolean(centeredOpening));
-    if (centeredOpening) {
-      const targetLabel = centeredOpening.kind === 'window' ? '창' : '문';
-      const openingId = `${centeredOpening.kind}:${centeredOpening.structure.id}`;
-      openingPrompt.textContent = `${targetLabel}을 ${openingPromptCopy}`;
-      if (announcedOpeningId !== openingId) {
-        announcedOpeningId = openingId;
-        openingStatus.textContent = `${targetLabel}을 열거나 닫을 수 있습니다. ${coarsePointer ? '화면 중앙을 탭하세요.' : '클릭하거나 E 키를 누르세요.'}`;
-      }
-      if (centeredOpening.kind === 'window') {
-        overlay.dataset.targetWindowId = centeredOpening.structure.id;
-        delete overlay.dataset.targetDoorId;
+    if (viewMode === 'walk') {
+      const point = cameraPoint(camera.position);
+      const room = zones.find((zone) => pointInZone(point, zone));
+      const roomEyeHeightCm = Math.max(80, Math.min(DEFAULT_EYE_HEIGHT_CM, (room?.height ?? wallHeight) - 35));
+      const bob = walking ? Math.sin(stepPhase) * 0.012 : 0;
+      camera.position.y += (roomEyeHeightCm / 100 + bob - camera.position.y) * Math.min(1, delta * 14);
+      announceRoom(room);
+      if (!room) currentRoom.textContent = '공간 경계';
+      const viewDirection = camera.getWorldDirection(new THREE.Vector3());
+      const mapAngle = Math.atan2(viewDirection.x, -viewDirection.z) * 180 / Math.PI;
+      mapPlayer.setAttribute('transform', `translate(${point.x} ${point.y}) rotate(${mapAngle})`);
+      const canvasRect = renderer.domElement.getBoundingClientRect();
+      const centeredOpening = openingAt(canvasRect.left + canvasRect.width / 2, canvasRect.top + canvasRect.height / 2);
+      overlay.classList.toggle('can-use-door', Boolean(centeredOpening));
+      if (centeredOpening) {
+        const targetLabel = centeredOpening.kind === 'window' ? '창' : '문';
+        const openingId = `${centeredOpening.kind}:${centeredOpening.structure.id}`;
+        openingPrompt.textContent = `${targetLabel}을 ${openingPromptCopy}`;
+        if (announcedOpeningId !== openingId) {
+          announcedOpeningId = openingId;
+          openingStatus.textContent = `${targetLabel}을 열거나 닫을 수 있습니다. ${coarsePointer ? '화면 중앙을 탭하세요.' : '클릭하거나 E 키를 누르세요.'}`;
+        }
+        if (centeredOpening.kind === 'window') {
+          overlay.dataset.targetWindowId = centeredOpening.structure.id;
+          delete overlay.dataset.targetDoorId;
+        } else {
+          overlay.dataset.targetDoorId = centeredOpening.structure.id;
+          delete overlay.dataset.targetWindowId;
+        }
       } else {
-        overlay.dataset.targetDoorId = centeredOpening.structure.id;
+        openingPrompt.textContent = `문이나 창을 ${openingPromptCopy}`;
+        if (announcedOpeningId !== null) {
+          announcedOpeningId = null;
+          openingStatus.textContent = '';
+        }
+        delete overlay.dataset.targetDoorId;
         delete overlay.dataset.targetWindowId;
       }
+      furnitureLabels.forEach((label) => {
+        const distance = camera.position.distanceTo(label.getWorldPosition(labelWorldPosition));
+        const distanceOpacity = Math.max(0, Math.min(1, (distance - 0.7) / 0.9));
+        label.material.opacity = centeredOpening ? Math.min(distanceOpacity, 0.2) : distanceOpacity;
+        label.visible = label.material.opacity > 0.04;
+      });
     } else {
-      openingPrompt.textContent = `문이나 창을 ${openingPromptCopy}`;
-      if (announcedOpeningId !== null) {
-        announcedOpeningId = null;
-        openingStatus.textContent = '';
-      }
+      overlay.classList.remove('can-use-door');
       delete overlay.dataset.targetDoorId;
       delete overlay.dataset.targetWindowId;
+      furnitureLabels.forEach((label) => { label.visible = false; });
     }
-    furnitureLabels.forEach((label) => {
-      const distance = camera.position.distanceTo(label.getWorldPosition(labelWorldPosition));
-      const distanceOpacity = Math.max(0, Math.min(1, (distance - 0.7) / 0.9));
-      label.material.opacity = centeredOpening ? Math.min(distanceOpacity, 0.2) : distanceOpacity;
-      label.visible = label.material.opacity > 0.04;
-    });
     renderer.render(scene, camera);
+  };
+
+  const saveSnapshot = () => {
+    renderer.render(scene, camera);
+    renderer.domElement.toBlob((blob) => {
+      if (!blob) {
+        status.textContent = 'PNG 저장을 준비하지 못했습니다';
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `room-studio-3d-${new Date().toISOString().slice(0, 19).replaceAll(':', '-')}.png`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      overlay.dataset.lastSnapshot = 'png';
+      status.innerHTML = '<i></i> 현재 3D 화면을 PNG로 저장했습니다';
+    }, 'image/png');
   };
 
   const cleanup = () => {
@@ -1264,6 +1531,15 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   joystick.addEventListener('pointerup', onJoystickEnd);
   joystick.addEventListener('pointercancel', onJoystickEnd);
   joystick.addEventListener('lostpointercapture', onJoystickEnd);
+  overlay.querySelectorAll('[data-view-mode]').forEach((button) => button.addEventListener('click', () => {
+    if (button.dataset.viewMode === 'walk') activateNavigation();
+    else activateOverview(button.dataset.viewMode);
+  }));
+  ceilingButton.addEventListener('click', () => setCeilingsVisible(!ceilingsVisible));
+  focusButton.addEventListener('click', () => {
+    if (selectedFocusTarget) activateOverview('dollhouse', selectedFocusTarget);
+  });
+  overlay.querySelector('[data-save-snapshot]').addEventListener('click', saveSnapshot);
   overlay.querySelector('[data-walkthrough-start]').addEventListener('click', async () => {
     if (overlay.requestFullscreen && !document.fullscreenElement) {
       try {
@@ -1275,6 +1551,11 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
     activateNavigation();
   });
   overlay.querySelectorAll('[data-walkthrough-exit]').forEach((button) => button.addEventListener('click', cleanup));
+  if (initialMode === 'dollhouse' || initialMode === 'top') {
+    activateOverview(initialMode);
+  } else {
+    syncViewToolState();
+  }
   overlay.dataset.walkthroughReady = 'true';
   requestAnimationFrame(() => overlay.classList.add('is-ready'));
   animate();
