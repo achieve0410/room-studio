@@ -3,10 +3,16 @@
 [한국어](README.ko.md)
 [![CI](https://github.com/achieve0410/room-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/achieve0410/room-studio/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Live demo](https://img.shields.io/badge/demo-open-DA7956.svg)](https://achieve0410.github.io/room-studio/)
 
 Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines orthogonal room shapes, furniture, walls, swing or sliding doors, sash-style sliding windows, height validation, and a first-person WebGL walkthrough without requiring a desktop CAD application.
 
 > Room Studio is a planning and visualization aid, not a substitute for architectural, structural, accessibility, or permit drawings.
+
+## Live demo
+
+Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). The demo has no Supabase configuration or login: drawings remain in that browser's `localStorage`, and clearing site data removes them. Do not enter a private or security-sensitive floor plan.
+
 ## Screenshots
 
 | 2D editor | First-person 3D walkthrough |

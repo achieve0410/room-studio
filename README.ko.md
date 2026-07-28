@@ -3,8 +3,14 @@
 [English](README.md)
 [![CI](https://github.com/achieve0410/room-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/achieve0410/room-studio/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![공개 데모](https://img.shields.io/badge/demo-open-DA7956.svg)](https://achieve0410.github.io/room-studio/)
 
 여러 직사각형 조각을 하나의 공간으로 합쳐 직교 다각형 평면을 만들고, 공간과 가구의 높이를 함께 확인하는 2D/3D 배치 시뮬레이터입니다.
+
+## 공개 데모
+
+[Room Studio 공개 데모](https://achieve0410.github.io/room-studio/)를 바로 사용할 수 있습니다. 공개 데모에는 Supabase 설정과 로그인 기능이 없으며, 도면은 해당 브라우저의 `localStorage`에만 남습니다. 사이트 데이터를 삭제하면 도면도 삭제되므로 실제 주소나 보안상 민감한 도면은 입력하지 마세요.
+
 ## 화면
 
 | 2D 편집기 | 1인칭 3D 워크스루 |

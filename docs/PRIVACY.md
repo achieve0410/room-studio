@@ -7,6 +7,12 @@ This repository is software, not a hosted service. Each person or organization t
 With no Supabase configuration, the editor stores the current drawing in that browser's `localStorage`. Clearing site data removes that local copy. The project database does not receive the drawing.
 `localStorage` is isolated by origin, not by URL path. A deployment that shares an origin with unrelated applications allows those applications to read or modify the drawing and any origin-scoped authentication state. Use a dedicated HTTPS origin for Room Studio.
 
+## Official public demo
+
+The project demo at `https://achieve0410.github.io/room-studio/` is built without Supabase configuration. It has no Room Studio account system, project database, advertising, or application analytics. Drawings remain in browser `localStorage`.
+
+GitHub Pages provides the static files and may process ordinary request information under GitHub's own terms and privacy practices. The demo must remain local-only while it uses the shared `github.io` origin. Do not enable authentication or cloud drawing storage there.
+
 ## Supabase mode
 
 When an operator enables Supabase, the deployment may store:
