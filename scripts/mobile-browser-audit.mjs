@@ -275,7 +275,18 @@ async function dispatchTouch(type, points) {
 }
 
 async function keyEvent(type, key, code, modifiers = 0) {
-  const keyCodes = { Escape: 27, ArrowRight: 39, KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyY: 89, KeyZ: 90 };
+  const keyCodes = {
+    Escape: 27,
+    ArrowRight: 39,
+    KeyC: 67,
+    KeyD: 68,
+    KeyV: 86,
+    KeyW: 87,
+    KeyA: 65,
+    KeyS: 83,
+    KeyY: 89,
+    KeyZ: 90,
+  };
   await cdp.send('Input.dispatchKeyEvent', {
     type,
     key,
@@ -1209,7 +1220,7 @@ try {
   async function openWalkthrough() {
     await mouseClick(await centerOf('#open-walkthrough'));
     await waitForExpression(`document.querySelector('[data-walkthrough-ready="true"]') !== null`, '3D walkthrough ready');
-    await mouseClick(await centerOf('[data-walkthrough-start]'));
+    await mouseClick(await centerOf('[data-view-mode="walk"]'));
     await waitForExpression(`document.querySelector('.walkthrough-overlay.is-active') !== null`, '3D navigation active');
     await sleep(120);
   }
@@ -2085,6 +2096,190 @@ try {
   report.screenshots.push(boundaryDoorScreenshot ?? await screenshot('desktop-attached-boundary-doors-3d'));
   await mouseClick(await centerOf('[data-walkthrough-exit]'));
   await waitForExpression(`document.querySelector('[data-walkthrough]') === null`, 'attached boundary door 3D cleanup');
+
+  // E: Precision & Preview release gates.
+  await loadViewport(pageUrl, 1440, 1000, false);
+  await evaluate(`new Promise((resolve, reject) => {
+    const source = document.createElement('canvas');
+    source.width = 320;
+    source.height = 240;
+    const context = source.getContext('2d');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, source.width, source.height);
+    context.strokeStyle = '#222';
+    context.lineWidth = 8;
+    context.strokeRect(24, 24, 272, 192);
+    context.beginPath();
+    context.moveTo(160, 24);
+    context.lineTo(160, 216);
+    context.stroke();
+    source.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('fixture canvas did not produce a blob'));
+        return;
+      }
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([blob], 'fixture-floor-plan.png', { type: 'image/png' }));
+      const input = document.querySelector('#background-file');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      resolve();
+    }, 'image/png');
+  })`);
+  await waitForExpression(
+    `Boolean(JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}))?.backgroundPlan)`,
+    'background plan import',
+  );
+  const importedBackground = await evaluate(`(() => {
+    const background = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).backgroundPlan;
+    return {
+      name: background.name,
+      width: background.width,
+      depth: background.depth,
+      locked: background.locked,
+      dataLength: background.dataUrl.length,
+      rendered: Boolean(document.querySelector('[data-background-plan]')),
+    };
+  })()`);
+  report.interactionAssertions.push(assertion(
+    'E PNG floor plan import is optimized, persisted, rendered, and locked by default',
+    importedBackground.name === 'fixture-floor-plan.png'
+      && importedBackground.dataLength <= 700_000
+      && importedBackground.rendered
+      && importedBackground.locked,
+    importedBackground,
+    'named JPEG data URL <=700KB, rendered in SVG, locked by default',
+  ));
+
+  await evaluate(`(() => {
+    const input = document.querySelector('#calibration-distance');
+    input.value = '200';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('#calibrate-background').click();
+  })()`);
+  const calibrationPoints = await evaluate(`(() => {
+    const svg = document.querySelector('#plan-canvas');
+    const background = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).backgroundPlan;
+    const first = new DOMPoint(background.x + 20, background.y + 20).matrixTransform(svg.getScreenCTM());
+    const second = new DOMPoint(background.x + 120, background.y + 20).matrixTransform(svg.getScreenCTM());
+    return [{ x: first.x, y: first.y }, { x: second.x, y: second.y }];
+  })()`);
+  await mouseClick(calibrationPoints[0]);
+  await mouseClick(calibrationPoints[1]);
+  const calibratedBackground = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).backgroundPlan`);
+  report.interactionAssertions.push(assertion(
+    'E two-point calibration scales the imported plan around the reference point',
+    Math.abs(calibratedBackground.width - importedBackground.width * 2) < 0.01
+      && Math.abs(calibratedBackground.depth - importedBackground.depth * 2) < 0.01,
+    { before: importedBackground, after: calibratedBackground },
+    'width and depth double when a 100cm on-canvas segment is calibrated to 200cm',
+  ));
+
+  await mouseClick(await centerOf('#add-dimension'));
+  const dimensionPoints = await evaluate(`(() => {
+    const svg = document.querySelector('#plan-canvas');
+    const first = new DOMPoint(20, 20).matrixTransform(svg.getScreenCTM());
+    const second = new DOMPoint(50, 60).matrixTransform(svg.getScreenCTM());
+    return [{ x: first.x, y: first.y }, { x: second.x, y: second.y }];
+  })()`);
+  await mouseClick(dimensionPoints[0]);
+  await mouseClick(dimensionPoints[1]);
+  const dimensionState = await evaluate(`(() => {
+    const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
+    const dimension = saved.dimensions.at(-1);
+    return {
+      count: saved.dimensions.length,
+      length: Math.hypot(dimension.x2 - dimension.x1, dimension.y2 - dimension.y1),
+      rendered: Boolean(document.querySelector('[data-dimension-id]')),
+      inspector: document.querySelector('.dimension-result')?.textContent.replace(/\\s+/g, ' ').trim() ?? '',
+    };
+  })()`);
+  report.interactionAssertions.push(assertion(
+    'E two clicks create a persistent exact dimension line with an inspector reading',
+    dimensionState.count === 1 && Math.abs(dimensionState.length - 50) < 0.01
+      && dimensionState.rendered && dimensionState.inspector.includes('50cm'),
+    dimensionState,
+    'one rendered 50cm dimension with a 50cm inspector reading',
+  ));
+
+  await evaluate(`document.querySelector('[data-add-type="sofa"]').click()`);
+  const precisionItemBefore = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.at(-1)`);
+  await keyStroke('ArrowRight', 'ArrowRight');
+  const precisionItemNudged = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.at(-1)`);
+  await evaluate(`document.querySelector('[data-toggle-selection-lock]').click()`);
+  await keyStroke('ArrowRight', 'ArrowRight');
+  const precisionItemLocked = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.at(-1)`);
+  const itemCountBeforeDuplicate = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.length`);
+  await mouseClick(await centerOf('#duplicate-selection'));
+  const duplicateState = await evaluate(`(() => {
+    const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
+    return { count: saved.items.length, source: saved.items.at(-2), clone: saved.items.at(-1) };
+  })()`);
+  await keyStroke('c', 'KeyC', 4);
+  await keyStroke('v', 'KeyV', 4);
+  const pastedItemCount = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.length`);
+  report.interactionAssertions.push(assertion(
+    'E 1cm nudge, locking, duplicate, and copy/paste preserve protected originals',
+    precisionItemNudged.x === precisionItemBefore.x + 1
+      && precisionItemLocked.x === precisionItemNudged.x
+      && precisionItemLocked.locked
+      && duplicateState.count === itemCountBeforeDuplicate + 1
+      && duplicateState.clone.locked === false
+      && duplicateState.clone.x === duplicateState.source.x + 20
+      && pastedItemCount === duplicateState.count + 1,
+    {
+      before: precisionItemBefore,
+      nudged: precisionItemNudged,
+      locked: precisionItemLocked,
+      duplicateState,
+      pastedItemCount,
+    },
+    'Arrow moves 1cm, locked item stays fixed, duplicate is unlocked +20cm, paste adds another item',
+  ));
+
+  await mouseClick(await centerOf('#open-walkthrough'));
+  await waitForExpression(`document.querySelector('[data-walkthrough-ready="true"]') !== null`, 'Precision & Preview 3D ready');
+  const previewInitial = await evaluate(`(() => ({
+    mode: document.querySelector('[data-walkthrough]')?.dataset.viewMode,
+    cutaway: document.querySelector('[data-walkthrough]')?.dataset.dollhouseCutaway,
+    ceilingHidden: document.querySelector('[data-toggle-ceiling]')?.getAttribute('aria-pressed'),
+    focusDisabled: document.querySelector('[data-focus-selection]')?.disabled,
+  }))()`);
+  await mouseClick(await centerOf('[data-view-mode="top"]'));
+  const previewTop = await evaluate(`(() => ({
+    mode: document.querySelector('[data-walkthrough]')?.dataset.viewMode,
+    overview: document.querySelector('[data-walkthrough]')?.classList.contains('is-overview'),
+    cutaway: document.querySelector('[data-walkthrough]')?.dataset.dollhouseCutaway,
+  }))()`);
+  await mouseClick(await centerOf('[data-focus-selection]'));
+  const previewFocus = await evaluate(`(() => ({
+    mode: document.querySelector('[data-walkthrough]')?.dataset.viewMode,
+    cutaway: document.querySelector('[data-walkthrough]')?.dataset.dollhouseCutaway,
+    status: document.querySelector('[data-walkthrough-status]')?.textContent.replace(/\\s+/g, ' ').trim(),
+  }))()`);
+  await mouseClick(await centerOf('[data-save-snapshot]'));
+  await waitForExpression(`document.querySelector('[data-walkthrough]')?.dataset.lastSnapshot === 'png'`, '3D PNG snapshot');
+  const previewSnapshot = await evaluate(`document.querySelector('[data-walkthrough]')?.dataset.lastSnapshot`);
+  report.interactionAssertions.push(assertion(
+    'E 3D preview switches among dollhouse, top, and focused selection views with ceilings hidden',
+    previewInitial.mode === 'dollhouse' && previewInitial.cutaway === 'true'
+      && previewInitial.ceilingHidden === 'true' && !previewInitial.focusDisabled
+      && previewTop.mode === 'top' && previewTop.overview && previewTop.cutaway === 'false'
+      && previewFocus.mode === 'dollhouse' && previewFocus.cutaway === 'true'
+      && previewFocus.status.includes('바로 보기'),
+    { previewInitial, previewTop, previewFocus },
+    'dollhouse opens first, top uses overview, focus returns to named dollhouse view, ceilings stay hidden',
+  ));
+  report.interactionAssertions.push(assertion(
+    'E current 3D canvas saves as PNG',
+    previewSnapshot === 'png',
+    previewSnapshot,
+    'png',
+  ));
+  report.screenshots.push(await screenshot('desktop-precision-preview-3d'));
+  await mouseClick(await centerOf('[data-walkthrough-exit]'));
+  await waitForExpression(`document.querySelector('[data-walkthrough]') === null`, 'Precision & Preview 3D cleanup');
+
   report.interactionAssertions.push(noConsoleAssertion('D desktop scenario', browserErrors.slice(desktopErrorStart)));
 
   report.interactionAssertions.push(noConsoleAssertion('Global browser audit', browserErrors));

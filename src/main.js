@@ -1,6 +1,13 @@
 import './styles.css';
 import { createConfiguredCloudStore, hasCloudConfiguration, normalizeProjectName, resolveAuthRedirectUrl } from './cloud-store.js';
 import {
+  calibrateBackgroundPlan,
+  createLayoutClipboard,
+  formatMeasurement,
+  measurementLength,
+  pasteLayoutClipboard,
+} from './layout-tools.js';
+import {
   alignDoorToWall,
   GRID_CM,
   RESIZE_DIRECTIONS,
@@ -58,6 +65,8 @@ const spaceColors = ['#d9d2c2', '#ced8cf', '#e7cfb6', '#c8d7dd', '#d8c9d5', '#dd
 const DEFAULT_ZONE_COLOR = '#d9d2c2';
 const DEFAULT_ITEM_COLOR = '#d8b596';
 const DOOR_WALL_SNAP_CM = 30;
+const MAX_BACKGROUND_DATA_URL_LENGTH = 700_000;
+const BACKGROUND_MAX_IMAGE_EDGE = 1600;
 
 const furnitureTemplates = [
   { type: 'bed', name: '침대', shape: 'roundRect', width: 160, depth: 200, height: 55, color: '#d8b596' },
@@ -123,6 +132,7 @@ const normalizeStructure = (structure, wallHeight) => {
     y: numberValue(structure.y, 0, -5000, 5000),
     height: numberValue(structure.height, structure.type === 'wall' ? wallHeight : structure.type === 'window' ? 120 : 205, structure.type === 'window' ? 50 : 100, 600),
     orientation,
+    locked: Boolean(structure.locked),
   };
   if (structure.type === 'wall') {
     return {
@@ -148,6 +158,36 @@ const normalizeStructure = (structure, wallHeight) => {
     hinge: END_DIRECTIONS[structure.hinge] ? structure.hinge : 'start',
     openSide: Number(structure.openSide) === 1 ? 1 : -1,
     openAngle: numberValue(structure.openAngle, 0, 0, 120),
+  };
+};
+const normalizeDimension = (dimension, usedIds) => {
+  if (!dimension || typeof dimension !== 'object') return null;
+  return {
+    id: uniqueEntityId(dimension.id, 'dimension', usedIds),
+    name: typeof dimension.name === 'string' ? dimension.name.slice(0, 80) : '치수',
+    x1: numberValue(dimension.x1, 0, -5000, 5000),
+    y1: numberValue(dimension.y1, 0, -5000, 5000),
+    x2: numberValue(dimension.x2, 100, -5000, 5000),
+    y2: numberValue(dimension.y2, 0, -5000, 5000),
+    locked: Boolean(dimension.locked),
+  };
+};
+const normalizeBackgroundPlan = (backgroundPlan) => {
+  if (!backgroundPlan || typeof backgroundPlan !== 'object') return null;
+  if (
+    typeof backgroundPlan.dataUrl !== 'string'
+    || backgroundPlan.dataUrl.length > MAX_BACKGROUND_DATA_URL_LENGTH
+    || !/^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(backgroundPlan.dataUrl)
+  ) return null;
+  return {
+    dataUrl: backgroundPlan.dataUrl,
+    name: typeof backgroundPlan.name === 'string' ? backgroundPlan.name.slice(0, 120) : '배경 도면',
+    x: numberValue(backgroundPlan.x, 0, -5000, 5000),
+    y: numberValue(backgroundPlan.y, 0, -5000, 5000),
+    width: numberValue(backgroundPlan.width, 800, 20, 10000),
+    depth: numberValue(backgroundPlan.depth, 600, 20, 10000),
+    opacity: numberValue(backgroundPlan.opacity, 0.45, 0.05, 1),
+    locked: backgroundPlan.locked !== false,
   };
 };
 
@@ -207,6 +247,8 @@ function defaultState(zones = apartmentZones()) {
     zones,
     items: [bed, sofa, table],
     structures: [],
+    dimensions: [],
+    backgroundPlan: null,
     selection: { kind: 'item', id: sofa.id },
     wallHeight: 240,
   };
@@ -219,6 +261,7 @@ function loadState() {
       const wallHeight = numberValue(saved.wallHeight, 240, 100, 600);
       const zoneIds = new Set();
       const itemIds = new Set();
+      const dimensionIds = new Set();
       const generatedSpaceIds = new Map();
       const zones = saved.zones.map((source) => {
         const zone = source && typeof source === 'object' ? source : {};
@@ -241,6 +284,7 @@ function loadState() {
           depth: numberValue(zone.depth, 300, 100, 1200),
           height: numberValue(zone.height, wallHeight, 100, 600),
           color: normalizeHexColor(zone.color, DEFAULT_ZONE_COLOR),
+          locked: Boolean(zone.locked),
         };
       });
       const items = saved.items.map((source) => {
@@ -259,6 +303,7 @@ function loadState() {
           elevation: numberValue(item.elevation, 0, 0, 400),
           rotation,
           color: normalizeHexColor(item.color, DEFAULT_ITEM_COLOR),
+          locked: Boolean(item.locked),
         };
       });
       const normalizedStructures = (Array.isArray(saved.structures) ? saved.structures : [])
@@ -282,7 +327,21 @@ function loadState() {
         const sillHeight = Math.min(aligned.sillHeight, Math.max(0, wall.height - 50));
         return { ...aligned, sillHeight, height: Math.min(aligned.height, Math.max(50, wall.height - sillHeight)) };
       });
-      return { ...defaultState(zones), ...saved, zones, items, structures, wallHeight, selection: null };
+      const dimensions = (Array.isArray(saved.dimensions) ? saved.dimensions : [])
+        .map((dimension) => normalizeDimension(dimension, dimensionIds))
+        .filter(Boolean);
+      const backgroundPlan = normalizeBackgroundPlan(saved.backgroundPlan);
+      return {
+        ...defaultState(zones),
+        ...saved,
+        zones,
+        items,
+        structures,
+        dimensions,
+        backgroundPlan,
+        wallHeight,
+        selection: null,
+      };
     }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
@@ -295,6 +354,7 @@ let drag = null;
 let resize = null;
 let rotateGesture = null;
 let marquee = null;
+let backgroundDrag = null;
 let alignmentGuides = [];
 let selectionKeys = new Set(state.selection ? [`${state.selection.kind}:${state.selection.id}`] : []);
 const historyPast = [];
@@ -319,6 +379,11 @@ let pinch = null;
 let entityPress = null;
 let mobileContextMenu = null;
 let mobileMoveArmed = false;
+let precisionTool = null;
+let calibrationDistanceCm = 100;
+let internalClipboard = null;
+let pasteCount = 0;
+let editorNotice = '';
 const app = document.querySelector('#app');
 const cloudConfigured = hasCloudConfiguration();
 const cloudAuthRedirectUrl = resolveAuthRedirectUrl(import.meta.env.BASE_URL, window.location.href);
@@ -353,6 +418,8 @@ const layoutSnapshot = () => ({
   zones: state.zones.map((zone) => ({ ...zone })),
   items: state.items.map((item) => ({ ...item })),
   structures: state.structures.map((structure) => ({ ...structure })),
+  dimensions: state.dimensions.map((dimension) => ({ ...dimension })),
+  backgroundPlan: state.backgroundPlan ? { ...state.backgroundPlan } : null,
   wallHeight: state.wallHeight,
 });
 const snapshotsMatch = (first, second) => JSON.stringify(first) === JSON.stringify(second);
@@ -372,7 +439,9 @@ function restoreSnapshot(snapshot, destination) {
   selectionKeys = new Set();
   drag = null;
   resize = null;
+  backgroundDrag = null;
   marquee = null;
+  precisionTool = null;
   alignmentGuides = [];
   mobileContextMenu = null;
   mobileMoveArmed = false;
@@ -393,7 +462,13 @@ function selectedEntries() {
     const separator = key.indexOf(':');
     const kind = key.slice(0, separator);
     const id = key.slice(separator + 1);
-    const collection = kind === 'zone' ? state.zones : kind === 'item' ? state.items : state.structures;
+    const collection = kind === 'zone'
+      ? state.zones
+      : kind === 'item'
+        ? state.items
+        : kind === 'structure'
+          ? state.structures
+          : state.dimensions;
     const entity = collection.find((entry) => entry.id === id);
     return entity ? [{ kind, id, entity }] : [];
   });
@@ -426,7 +501,9 @@ function clearSelection() {
 }
 
 function rotateSelection() {
-  const itemIds = new Set(selectedEntries().filter((entry) => entry.kind === 'item').map((entry) => entry.id));
+  const itemIds = new Set(selectedEntries()
+    .filter((entry) => entry.kind === 'item' && !entry.entity.locked)
+    .map((entry) => entry.id));
   if (!itemIds.size) return;
   const previous = layoutSnapshot();
   state.items = state.items.map((item) => itemIds.has(item.id)
@@ -440,20 +517,30 @@ function rotateSelection() {
 
 function rotateItemBy(id, degrees) {
   const item = state.items.find((entry) => entry.id === id);
-  if (!item) return;
+  if (!item || item.locked) return;
   pendingFocus = { kind: 'item-rotate', id };
   updateItem(id, { rotation: normalizeAngle(item.rotation + degrees) });
 }
 
 function selectedEntity() {
   if (!state.selection) return null;
-  const collection = state.selection.kind === 'zone' ? state.zones : state.selection.kind === 'item' ? state.items : state.structures;
+  const collection = state.selection.kind === 'zone'
+    ? state.zones
+    : state.selection.kind === 'item'
+      ? state.items
+      : state.selection.kind === 'structure'
+        ? state.structures
+        : state.dimensions;
   return collection.find((entry) => entry.id === state.selection.id) ?? null;
 }
 
 function saveState() {
-  const { zones, items, structures, wallHeight } = state;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ zones, items, structures, wallHeight }));
+  const {
+    zones, items, structures, dimensions, backgroundPlan, wallHeight,
+  } = state;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    zones, items, structures, dimensions, backgroundPlan, wallHeight,
+  }));
   layoutChangeVersion += 1;
   if (!suppressCloudSave && cloudSession) {
     cloudDirty = true;
@@ -831,9 +918,240 @@ function updateStructure(id, updates, options = {}) {
   updateState({ structures }, options);
 }
 
+function updateDimension(id, updates, options = {}) {
+  const dimensions = state.dimensions.map((dimension) => {
+    if (dimension.id !== id) return dimension;
+    return {
+      ...dimension,
+      ...updates,
+      name: typeof updates.name === 'string' ? updates.name.slice(0, 80) : dimension.name,
+      x1: numberValue(updates.x1, dimension.x1, -5000, 5000),
+      y1: numberValue(updates.y1, dimension.y1, -5000, 5000),
+      x2: numberValue(updates.x2, dimension.x2, -5000, 5000),
+      y2: numberValue(updates.y2, dimension.y2, -5000, 5000),
+      locked: updates.locked === undefined ? dimension.locked : Boolean(updates.locked),
+    };
+  });
+  updateState({ dimensions }, options);
+}
+
+function updateBackgroundPlan(updates, options = {}) {
+  if (!state.backgroundPlan) return;
+  const backgroundPlan = {
+    ...state.backgroundPlan,
+    ...updates,
+  };
+  backgroundPlan.x = numberValue(backgroundPlan.x, state.backgroundPlan.x, -5000, 5000);
+  backgroundPlan.y = numberValue(backgroundPlan.y, state.backgroundPlan.y, -5000, 5000);
+  backgroundPlan.width = numberValue(backgroundPlan.width, state.backgroundPlan.width, 20, 10000);
+  backgroundPlan.depth = numberValue(backgroundPlan.depth, state.backgroundPlan.depth, 20, 10000);
+  backgroundPlan.opacity = numberValue(backgroundPlan.opacity, state.backgroundPlan.opacity, 0.05, 1);
+  backgroundPlan.locked = Boolean(backgroundPlan.locked);
+  updateState({ backgroundPlan }, options);
+}
+
+function setSelectionLocked(locked) {
+  const entries = selectedEntries();
+  if (!entries.length) return;
+  const idsByKind = {
+    zone: new Set(entries.filter(({ kind }) => kind === 'zone').map(({ id }) => id)),
+    item: new Set(entries.filter(({ kind }) => kind === 'item').map(({ id }) => id)),
+    structure: new Set(entries.filter(({ kind }) => kind === 'structure').map(({ id }) => id)),
+    dimension: new Set(entries.filter(({ kind }) => kind === 'dimension').map(({ id }) => id)),
+  };
+  const selectedWallIds = new Set(state.structures
+    .filter((structure) => idsByKind.structure.has(structure.id) && structure.type === 'wall')
+    .map(({ id }) => id));
+  state.structures
+    .filter((structure) => selectedWallIds.has(structure.wallId))
+    .forEach((structure) => idsByKind.structure.add(structure.id));
+  updateState({
+    zones: state.zones.map((zone) => idsByKind.zone.has(zone.id) ? { ...zone, locked } : zone),
+    items: state.items.map((item) => idsByKind.item.has(item.id) ? { ...item, locked } : item),
+    structures: state.structures.map((structure) => idsByKind.structure.has(structure.id) ? { ...structure, locked } : structure),
+    dimensions: state.dimensions.map((dimension) => idsByKind.dimension.has(dimension.id) ? { ...dimension, locked } : dimension),
+  }, { preserveMultiSelection: true });
+}
+
+function toggleSelectionLocked() {
+  const entries = selectedEntries();
+  if (!entries.length) return;
+  setSelectionLocked(!entries.every(({ entity }) => entity.locked));
+}
+
+function applyClipboard(clipboard, offset, notice) {
+  const previous = layoutSnapshot();
+  const pasted = pasteLayoutClipboard(previous, clipboard, { offset, idFactory: uid });
+  if (!pasted.selection.length) return false;
+  selectionKeys = new Set(pasted.selection.map(({ kind, id }) => selectionKey(kind, id)));
+  const primary = pasted.selection.at(-1);
+  editorNotice = notice ?? `${pasted.selection.length}개 대상을 붙여넣었습니다.`;
+  updateState({
+    ...pasted.layout,
+    selection: { kind: primary.kind, id: primary.id },
+  }, { historySnapshot: previous, preserveMultiSelection: true });
+  return true;
+}
+
+function copySelection() {
+  const selection = selectedEntries().map(({ kind, id }) => ({ kind, id }));
+  if (!selection.length) return false;
+  internalClipboard = createLayoutClipboard(layoutSnapshot(), selection);
+  pasteCount = 0;
+  editorNotice = `${selection.length}개 대상을 복사했습니다.`;
+  render();
+  return true;
+}
+
+function pasteSelection() {
+  if (!internalClipboard) return false;
+  pasteCount += 1;
+  return applyClipboard(internalClipboard, GRID_CM * 2 * pasteCount);
+}
+
+function duplicateSelection() {
+  const selection = selectedEntries().map(({ kind, id }) => ({ kind, id }));
+  if (!selection.length) return false;
+  const clipboard = createLayoutClipboard(layoutSnapshot(), selection);
+  return applyClipboard(clipboard, GRID_CM * 2, `${selection.length}개 대상을 복제했습니다.`);
+}
+
+function imageFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('이미지를 읽지 못했습니다.'));
+    image.src = url;
+  });
+}
+
+async function encodeBackgroundImage(file) {
+  if (!['image/png', 'image/jpeg'].includes(file?.type)) throw new Error('PNG 또는 JPG 이미지만 가져올 수 있습니다.');
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await imageFromUrl(objectUrl);
+    let scale = Math.min(1, BACKGROUND_MAX_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+    let dataUrl = '';
+    let width;
+    let height;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      width = Math.max(1, Math.round(image.naturalWidth * scale));
+      height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      dataUrl = canvas.toDataURL('image/jpeg', attempt < 4 ? 0.84 : 0.72);
+      if (dataUrl.length <= MAX_BACKGROUND_DATA_URL_LENGTH) break;
+      scale *= 0.78;
+    }
+    if (dataUrl.length > MAX_BACKGROUND_DATA_URL_LENGTH) throw new Error('이미지 용량을 줄이지 못했습니다. 더 작은 도면을 사용해주세요.');
+    return { dataUrl, width, height };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function importBackgroundPlan(file) {
+  const encoded = await encodeBackgroundImage(file);
+  const bounds = getLayoutBounds(state.zones);
+  const aspectRatio = encoded.width / encoded.height;
+  let width = Math.max(400, bounds.width);
+  let depth = width / aspectRatio;
+  if (depth > Math.max(400, bounds.depth * 1.4)) {
+    depth = Math.max(400, bounds.depth);
+    width = depth * aspectRatio;
+  }
+  const backgroundPlan = {
+    dataUrl: encoded.dataUrl,
+    name: file.name,
+    x: bounds.left + (bounds.width - width) / 2,
+    y: bounds.top + (bounds.depth - depth) / 2,
+    width,
+    depth,
+    opacity: 0.45,
+    locked: true,
+  };
+  editorNotice = '배경 도면을 가져왔습니다. 실제 길이를 입력하고 2점을 찍어 축척을 맞추세요.';
+  updateState({ backgroundPlan });
+}
+
+function startPrecisionTool(type) {
+  if (type === 'background' && !state.backgroundPlan) return;
+  precisionTool = { type, points: [] };
+  mobileContextMenu = null;
+  editorNotice = type === 'background'
+    ? `도면에서 ${calibrationDistanceCm}cm에 해당하는 두 점을 찍으세요.`
+    : '치수의 시작점과 끝점을 찍으세요.';
+  render();
+}
+
+function handlePrecisionPoint(event) {
+  if (!precisionTool || (event.button !== undefined && event.button !== 0)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const point = svgPoint(event);
+  precisionTool.points.push({ x: point.x, y: point.y });
+  if (precisionTool.points.length < 2) {
+    editorNotice = '첫 점을 지정했습니다. 두 번째 점을 찍으세요.';
+    render();
+    return;
+  }
+  const [first, second] = precisionTool.points;
+  const type = precisionTool.type;
+  precisionTool = null;
+  if (type === 'background') {
+    const calibrated = calibrateBackgroundPlan(state.backgroundPlan, first, second, calibrationDistanceCm);
+    if (!calibrated) {
+      editorNotice = '서로 다른 두 점을 지정해주세요.';
+      render();
+      return;
+    }
+    if (
+      calibrated.width < 20
+      || calibrated.depth < 20
+      || calibrated.width > 10000
+      || calibrated.depth > 10000
+      || calibrated.x < -5000
+      || calibrated.y < -5000
+      || calibrated.x > 5000
+      || calibrated.y > 5000
+    ) {
+      editorNotice = '축척 결과가 편집 범위를 벗어납니다. 기준점을 더 멀리 찍어주세요.';
+      render();
+      return;
+    }
+    editorNotice = `배경 도면 축척을 ${calibrationDistanceCm}cm 기준으로 맞췄습니다.`;
+    updateState({ backgroundPlan: calibrated });
+    return;
+  }
+  if (measurementLength(first, second) < 0.1) {
+    editorNotice = '치수선의 시작점과 끝점을 서로 다르게 지정해주세요.';
+    render();
+    return;
+  }
+  const dimension = {
+    id: uid('dimension'),
+    name: `치수 ${state.dimensions.length + 1}`,
+    x1: first.x,
+    y1: first.y,
+    x2: second.x,
+    y2: second.y,
+    locked: false,
+  };
+  editorNotice = `${formatMeasurement(measurementLength(first, second))} 치수선을 추가했습니다.`;
+  updateState({
+    dimensions: [...state.dimensions, dimension],
+    selection: { kind: 'dimension', id: dimension.id },
+  });
+}
+
 function rotateStructure(id) {
   const structure = state.structures.find((entry) => entry.id === id);
-  if (!structure) return;
+  if (!structure || structure.locked) return;
   updateStructure(id, {
     orientation: structure.orientation === 'horizontal' ? 'vertical' : 'horizontal',
     ...(structure.type !== 'wall' ? { wallId: null } : {}),
@@ -925,6 +1243,11 @@ function selectedSpacesCanMerge() {
 
 function mergeSelectedSpaces() {
   const selectedZones = selectedEntries().filter((entry) => entry.kind === 'zone').map((entry) => entry.entity);
+  if (selectedZones.some((zone) => zone.locked)) {
+    editorNotice = '잠긴 공간은 합칠 수 없습니다.';
+    render();
+    return;
+  }
   const selectedSpaceIds = new Set(selectedZones.map(spaceIdOf));
   if (selectedSpaceIds.size < 2 || !selectedSpacesCanMerge()) return;
   const primary = state.selection?.kind === 'zone'
@@ -1095,6 +1418,11 @@ function addWindow() {
 
 function deleteSelectedZonePart() {
   if (state.selection?.kind !== 'zone') return;
+  if (selectedEntity()?.locked) {
+    editorNotice = '잠긴 공간 조각은 삭제할 수 없습니다.';
+    render();
+    return;
+  }
   updateState({ zones: state.zones.filter((zone) => zone.id !== state.selection.id), selection: null });
 }
 
@@ -1103,22 +1431,49 @@ function deleteSelectedSpace() {
   const selected = selectedEntity();
   if (!selected) return;
   const spaceId = spaceIdOf(selected);
+  if (state.zones.some((zone) => spaceIdOf(zone) === spaceId && zone.locked)) {
+    editorNotice = '잠긴 조각이 있는 공간은 삭제할 수 없습니다.';
+    render();
+    return;
+  }
   updateState({ zones: state.zones.filter((zone) => spaceIdOf(zone) !== spaceId), selection: null });
 }
 
 function deleteSelection() {
-  const entries = selectedEntries();
-  if (!entries.length) return;
+  const entries = selectedEntries().filter(({ entity }) => !entity.locked);
+  if (!entries.length) {
+    editorNotice = '잠긴 대상은 삭제할 수 없습니다.';
+    render();
+    return;
+  }
   const zoneIds = new Set(entries.filter((entry) => entry.kind === 'zone').map((entry) => entry.id));
   const itemIds = new Set(entries.filter((entry) => entry.kind === 'item').map((entry) => entry.id));
   const structureIds = new Set(entries.filter((entry) => entry.kind === 'structure').map((entry) => entry.id));
+  const dimensionIds = new Set(entries.filter((entry) => entry.kind === 'dimension').map((entry) => entry.id));
+  state.structures
+    .filter((structure) => structure.locked && structure.wallId)
+    .forEach((structure) => structureIds.delete(structure.wallId));
   updateState({
     zones: state.zones.filter((zone) => !zoneIds.has(zone.id)),
     items: state.items.filter((item) => !itemIds.has(item.id)),
     structures: state.structures.filter((structure) => (
       !structureIds.has(structure.id) && !structureIds.has(structure.wallId)
     )),
+    dimensions: state.dimensions.filter((dimension) => !dimensionIds.has(dimension.id)),
     selection: null,
+  });
+}
+
+function clearUnlockedFurniture() {
+  const remainingItems = state.items.filter((item) => item.locked);
+  const selectedItemRemoved = state.selection?.kind === 'item'
+    && !remainingItems.some((item) => item.id === state.selection.id);
+  editorNotice = remainingItems.length
+    ? `잠긴 가구 ${remainingItems.length}개를 남기고 비웠습니다.`
+    : '가구를 모두 비웠습니다.';
+  updateState({
+    items: remainingItems,
+    selection: selectedItemRemoved ? null : state.selection,
   });
 }
 
@@ -1146,8 +1501,32 @@ function svgPointFromClient(point) {
   return svgPointValue.matrixTransform(svg.getScreenCTM().inverse());
 }
 
+function editorContentBounds() {
+  const bounds = [getLayoutBounds(state.zones)];
+  if (state.backgroundPlan) {
+    bounds.push({
+      left: state.backgroundPlan.x,
+      right: state.backgroundPlan.x + state.backgroundPlan.width,
+      top: state.backgroundPlan.y,
+      bottom: state.backgroundPlan.y + state.backgroundPlan.depth,
+    });
+  }
+  state.dimensions.forEach((dimension) => bounds.push({
+    left: Math.min(dimension.x1, dimension.x2),
+    right: Math.max(dimension.x1, dimension.x2),
+    top: Math.min(dimension.y1, dimension.y2),
+    bottom: Math.max(dimension.y1, dimension.y2),
+  }));
+  const combined = unionBounds(bounds);
+  return {
+    ...combined,
+    width: Math.max(1, combined.right - combined.left),
+    depth: Math.max(1, combined.bottom - combined.top),
+  };
+}
+
 function canvasBaseViewBox() {
-  const bounds = getLayoutBounds(state.zones);
+  const bounds = editorContentBounds();
   return {
     left: bounds.left - CANVAS_PADDING,
     top: bounds.top - CANVAS_PADDING,
@@ -1185,7 +1564,7 @@ function applyCanvasViewBox(viewBox) {
 }
 
 function setCanvasZoom(nextZoom, anchorEvent = null) {
-  if (drag || resize || rotateGesture || marquee || gestureMode === 'pinch') return;
+  if (drag || resize || rotateGesture || marquee || backgroundDrag || gestureMode === 'pinch') return;
   const current = currentCanvasViewBox();
   const anchor = anchorEvent
     ? svgPoint(anchorEvent)
@@ -1250,6 +1629,9 @@ function syncSelectionClasses() {
   document.querySelectorAll('[data-structure-id]').forEach((node) => {
     node.classList.toggle('is-selected', isSelected('structure', node.dataset.structureId));
   });
+  document.querySelectorAll('[data-dimension-id]').forEach((node) => {
+    node.classList.toggle('is-selected', isSelected('dimension', node.dataset.dimensionId));
+  });
 }
 
 function syncValidationClasses() {
@@ -1300,21 +1682,23 @@ function transformHudContent(mode = 'selected') {
   };
   if (!selectionKeys.size) return null;
   if (selectionKeys.size > 1) {
+    const lockedCount = selectedEntries().filter(({ entity }) => entity.locked).length;
     return {
       label: modeLabels[mode] ?? modeLabels.selected,
       primary: `${selectionKeys.size}개 함께 선택`,
       secondary: mode === 'move' && drag
         ? `ΔX ${Math.round(drag.currentDelta.x)} · ΔY ${Math.round(drag.currentDelta.y)}cm`
-        : '본체를 끌어 함께 이동',
+        : lockedCount ? `${lockedCount}개 잠김 · 나머지만 이동` : '본체를 끌어 함께 이동',
     };
   }
   const entity = selectedEntity();
   if (!entity || !state.selection) return null;
+  const lockLabel = entity.locked ? ' · 잠김' : '';
   if (state.selection.kind === 'zone') {
     return {
       label: modeLabels[mode] ?? modeLabels.selected,
       primary: `${Math.round(entity.width)} × ${Math.round(entity.depth)}cm`,
-      secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · H ${Math.round(entity.height ?? 240)}cm`,
+      secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · H ${Math.round(entity.height ?? 240)}cm${lockLabel}`,
     };
   }
   if (state.selection.kind === 'structure') {
@@ -1322,13 +1706,23 @@ function transformHudContent(mode = 'selected') {
     return {
       label: modeLabels[mode] ?? modeLabels.selected,
       primary: `${STRUCTURE_LABELS[entity.type]} ${Math.round(size)}cm`,
-      secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · ${ORIENTATIONS[entity.orientation]}`,
+      secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · ${ORIENTATIONS[entity.orientation]}${lockLabel}`,
+    };
+  }
+  if (state.selection.kind === 'dimension') {
+    return {
+      label: modeLabels[mode] ?? modeLabels.selected,
+      primary: formatMeasurement(measurementLength(
+        { x: entity.x1, y: entity.y1 },
+        { x: entity.x2, y: entity.y2 },
+      )),
+      secondary: `${entity.name}${lockLabel}`,
     };
   }
   return {
     label: modeLabels[mode] ?? modeLabels.selected,
     primary: `${Math.round(entity.width)} × ${Math.round(entity.depth)}cm`,
-    secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · ${Math.round(entity.rotation)}°`,
+    secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · ${Math.round(entity.rotation)}°${lockLabel}`,
   };
 }
 
@@ -1479,6 +1873,7 @@ function resetTemporaryGestureState() {
   resize = null;
   rotateGesture = null;
   marquee = null;
+  backgroundDrag = null;
   pan = null;
   pinch = null;
   alignmentGuides = [];
@@ -1494,6 +1889,8 @@ function restoreGestureSnapshot() {
     state = { ...state, ...resize.historySnapshot };
   } else if (rotateGesture?.historySnapshot) {
     state = { ...state, ...rotateGesture.historySnapshot };
+  } else if (backgroundDrag?.historySnapshot) {
+    state = { ...state, ...backgroundDrag.historySnapshot };
   } else if (marquee) {
     selectionKeys = getRolledBackSelection(marquee.baseSelection);
     const primary = selectedEntries().at(-1);
@@ -1625,12 +2022,74 @@ function finishPointerContact(event) {
     if (wasTap) clearSelection();
     return true;
   }
-  if (!activePointers.size && !drag && !resize && !rotateGesture && !marquee) gestureMode = 'idle';
+  if (!activePointers.size && !drag && !resize && !rotateGesture && !marquee && !backgroundDrag) gestureMode = 'idle';
   return false;
+}
+
+function startBackgroundDrag(event) {
+  if (!state.backgroundPlan || state.backgroundPlan.locked || precisionTool) return;
+  if (event.button !== undefined && event.button !== 0) return;
+  if (!beginPointerContact(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  backgroundDrag = {
+    startPointer: svgPoint(event),
+    origin: { ...state.backgroundPlan },
+    historySnapshot: layoutSnapshot(),
+    hasMoved: false,
+  };
+  gestureMode = 'edit';
+  captureActivePointers(event);
+}
+
+function moveBackgroundDrag(event) {
+  if (!backgroundDrag) return;
+  const point = svgPoint(event);
+  const delta = {
+    x: point.x - backgroundDrag.startPointer.x,
+    y: point.y - backgroundDrag.startPointer.y,
+  };
+  if (!backgroundDrag.hasMoved && Math.hypot(delta.x, delta.y) < 1) return;
+  backgroundDrag.hasMoved = true;
+  state.backgroundPlan = {
+    ...state.backgroundPlan,
+    x: backgroundDrag.origin.x + delta.x,
+    y: backgroundDrag.origin.y + delta.y,
+  };
+  const image = document.querySelector('[data-background-plan]');
+  image?.setAttribute('x', state.backgroundPlan.x);
+  image?.setAttribute('y', state.backgroundPlan.y);
+}
+
+function finishBackgroundDrag() {
+  if (!backgroundDrag) return;
+  const previous = backgroundDrag.historySnapshot;
+  if (backgroundDrag.hasMoved) {
+    state.backgroundPlan = {
+      ...state.backgroundPlan,
+      x: snap(state.backgroundPlan.x),
+      y: snap(state.backgroundPlan.y),
+    };
+    commitHistory(previous);
+    saveState();
+  }
+  backgroundDrag = null;
+  gestureMode = activePointers.size ? 'idle-await-release' : 'idle';
+  render();
 }
 
 function startDrag(event, kind, id, options = {}) {
   if (event.button !== undefined && event.button !== 0) return;
+  const collection = kind === 'zone' ? state.zones : kind === 'item' ? state.items : state.structures;
+  const entity = collection.find((entry) => entry.id === id);
+  if (!entity) return;
+  if (entity.locked) {
+    event.preventDefault();
+    selectEntity(kind, id, options.additive ?? usesAdditiveSelection(event));
+    editorNotice = `${entity.name}은(는) 잠겨 있습니다.`;
+    render();
+    return;
+  }
   if (!options.contactStarted && !beginPointerContact(event)) return;
   event.preventDefault();
   const selectionSnapshot = options.selectionSnapshot ?? new Set(selectionKeys);
@@ -1650,10 +2109,7 @@ function startDrag(event, kind, id, options = {}) {
     selectEntity(kind, id);
   }
   const point = svgPoint(event);
-  const collection = kind === 'zone' ? state.zones : kind === 'item' ? state.items : state.structures;
-  const entity = collection.find((entry) => entry.id === id);
-  if (!entity) return;
-  const entries = selectedEntries();
+  const entries = selectedEntries().filter((entry) => !entry.entity.locked);
   const zoneOrigins = new Map(entries.filter((entry) => entry.kind === 'zone').map((entry) => [entry.id, { ...entry.entity }]));
   const itemOrigins = new Map(entries.filter((entry) => entry.kind === 'item').map((entry) => [entry.id, { ...entry.entity }]));
   const structureOrigins = new Map(entries.filter((entry) => entry.kind === 'structure').map((entry) => [entry.id, { ...entry.entity }]));
@@ -1664,7 +2120,7 @@ function startDrag(event, kind, id, options = {}) {
     });
   });
   zoneOrigins.forEach((zone) => {
-    state.items.filter((item) => pointInZone({ x: item.x, y: item.y }, zone)).forEach((item) => {
+    state.items.filter((item) => !item.locked && pointInZone({ x: item.x, y: item.y }, zone)).forEach((item) => {
       if (!itemOrigins.has(item.id)) itemOrigins.set(item.id, { ...item });
     });
   });
@@ -1722,6 +2178,17 @@ function beginLongPressDrag() {
 }
 
 function startEntityPress(event, kind, id) {
+  const collection = kind === 'zone' ? state.zones : kind === 'item' ? state.items : state.structures;
+  const entity = collection.find((entry) => entry.id === id);
+  if (entity?.locked) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectEntity(kind, id, usesAdditiveSelection(event));
+    mobileContextMenu = isMobileLayout() ? { kind, id } : null;
+    editorNotice = `${entity.name}은(는) 잠겨 있습니다.`;
+    render();
+    return;
+  }
   if (event.pointerType !== 'touch' || !isMobileLayout()) {
     startDrag(event, kind, id);
     return;
@@ -1799,7 +2266,7 @@ function startItemRotation(event, id) {
   event.preventDefault();
   event.stopPropagation();
   const item = state.items.find((entry) => entry.id === id);
-  if (!item) return;
+  if (!item || item.locked) return;
   rotateGesture = {
     id,
     origin: { ...item },
@@ -1852,7 +2319,7 @@ function startResize(event, kind, id, handle) {
   event.stopPropagation();
   const collection = kind === 'zone' ? state.zones : kind === 'item' ? state.items : state.structures;
   const entity = collection.find((entry) => entry.id === id);
-  if (!entity) return;
+  if (!entity || entity.locked) return;
   resize = { kind, id, handle, origin: { ...entity }, historySnapshot: layoutSnapshot() };
   gestureMode = 'resize';
   dismissMobileContextMenuForGesture();
@@ -2038,6 +2505,9 @@ function moveMarquee(event) {
   state.structures.forEach((structure) => {
     if (contains(structureBounds(structure))) nextSelection.add(selectionKey('structure', structure.id));
   });
+  state.dimensions.forEach((dimension) => {
+    if (contains(dimensionBounds(dimension))) nextSelection.add(selectionKey('dimension', dimension.id));
+  });
   selectionKeys = nextSelection;
   const primary = selectedEntries().at(-1);
   state.selection = primary ? { kind: primary.kind, id: primary.id } : null;
@@ -2146,6 +2616,44 @@ function wallSegmentMarkup(segment) {
     : `<line x1="${segment.x}" y1="${segment.y1}" x2="${segment.x}" y2="${segment.y2}" />`;
 }
 
+function dimensionBounds(dimension) {
+  return {
+    left: Math.min(dimension.x1, dimension.x2),
+    right: Math.max(dimension.x1, dimension.x2),
+    top: Math.min(dimension.y1, dimension.y2),
+    bottom: Math.max(dimension.y1, dimension.y2),
+  };
+}
+
+function dimensionMarkup(dimension) {
+  const length = measurementLength(
+    { x: dimension.x1, y: dimension.y1 },
+    { x: dimension.x2, y: dimension.y2 },
+  );
+  const angle = Math.atan2(dimension.y2 - dimension.y1, dimension.x2 - dimension.x1) * 180 / Math.PI;
+  const middleX = (dimension.x1 + dimension.x2) / 2;
+  const middleY = (dimension.y1 + dimension.y2) / 2;
+  const selected = isSelected('dimension', dimension.id);
+  return `<g class="plan-dimension ${selected ? 'is-selected' : ''} ${dimension.locked ? 'is-locked' : ''}"
+      data-dimension-id="${dimension.id}">
+    <title>${escapeHtml(dimension.name)} ${formatMeasurement(length)}${dimension.locked ? ' · 잠김' : ''}</title>
+    <line class="dimension-hit-target" x1="${dimension.x1}" y1="${dimension.y1}" x2="${dimension.x2}" y2="${dimension.y2}" />
+    <line class="dimension-line" x1="${dimension.x1}" y1="${dimension.y1}" x2="${dimension.x2}" y2="${dimension.y2}" />
+    <line class="dimension-tick" x1="-7" y1="0" x2="7" y2="0" transform="translate(${dimension.x1} ${dimension.y1}) rotate(${angle + 90})" />
+    <line class="dimension-tick" x1="-7" y1="0" x2="7" y2="0" transform="translate(${dimension.x2} ${dimension.y2}) rotate(${angle + 90})" />
+    <text x="${middleX}" y="${middleY - 9}">${formatMeasurement(length)}${dimension.locked ? ' · 🔒' : ''}</text>
+  </g>`;
+}
+
+function precisionMarkup() {
+  if (!precisionTool?.points.length) return '';
+  const [first] = precisionTool.points;
+  return `<g class="precision-points" pointer-events="none">
+    <circle cx="${first.x}" cy="${first.y}" r="7" />
+    <text x="${first.x + 11}" y="${first.y - 11}">1</text>
+  </g>`;
+}
+
 function endDirectionLabel(orientation, value) {
   if (orientation === 'vertical') return value === 'start' ? '위쪽' : '아래쪽';
   return value === 'start' ? '왼쪽' : '오른쪽';
@@ -2189,7 +2697,7 @@ function doorSymbolMarkup(door, options = {}) {
   const label = options.label === false
     ? ''
     : `<text x="0" y="${door.doorType === 'sliding' ? 22 : Number(door.openSide) === 1 ? -18 : 18}">${options.label ?? DOOR_TYPES[door.doorType].replace(/문$/, '')}</text>`;
-  return `<g class="plan-structure plan-door door-${door.doorType}${selected}" ${attributes}>
+  return `<g class="plan-structure plan-door door-${door.doorType}${selected} ${door.locked ? 'is-locked' : ''}" ${attributes}>
     ${options.interactive ? `<title>${escapeHtml(door.name)} ${DOOR_TYPES[door.doorType]}</title>` : ''}
     ${options.interactive ? `<line class="structure-hit-target" x1="${-half}" y1="0" x2="${half}" y2="0" />` : ''}
     ${symbol}
@@ -2205,7 +2713,7 @@ function windowSymbolMarkup(windowStructure, options = {}) {
   const fixedCenter = direction * windowStructure.width / 4;
   const movingCenter = -direction * windowStructure.width / 4 + direction * windowStructure.width / 2 * ratio;
   const selected = options.selected ? ' is-selected' : '';
-  return `<g class="plan-structure plan-window${selected}" data-structure-id="${windowStructure.id}" transform="translate(${windowStructure.x} ${windowStructure.y}) rotate(${windowStructure.orientation === 'vertical' ? 90 : 0})">
+  return `<g class="plan-structure plan-window${selected} ${windowStructure.locked ? 'is-locked' : ''}" data-structure-id="${windowStructure.id}" transform="translate(${windowStructure.x} ${windowStructure.y}) rotate(${windowStructure.orientation === 'vertical' ? 90 : 0})">
     <title>${escapeHtml(windowStructure.name)} 샷시형 미닫이창</title>
     <line class="structure-hit-target" x1="${-half}" y1="0" x2="${half}" y2="0" />
     <rect class="window-frame" x="${-half}" y="-8" width="${windowStructure.width}" height="16" rx="2" />
@@ -2216,7 +2724,7 @@ function windowSymbolMarkup(windowStructure, options = {}) {
 }
 
 function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
-  const bounds = getLayoutBounds(state.zones);
+  const bounds = editorContentBounds();
   const spaces = groupSpaces(state.zones);
   const padding = CANVAS_PADDING;
   const canvasViewBox = currentCanvasViewBox();
@@ -2245,7 +2753,7 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
     const sizeLabel = details.parts.length > 1
       ? `${details.parts.length}조각 · ${(calculateUnionArea(details.parts) / 10000).toFixed(1)}m² · H ${zone.height ?? 240}cm`
       : `${meters(zone.width)} × ${meters(zone.depth)} · H ${zone.height ?? 240}cm`;
-    return `<g class="plan-zone ${details.parts.length > 1 ? 'is-compound' : ''} ${spaceSelected ? 'is-space-selected' : ''} ${selected ? 'is-selected' : ''} ${zoneOverlaps.has(zone.id) ? 'has-overlap' : ''}" data-zone-id="${zone.id}">
+    return `<g class="plan-zone ${details.parts.length > 1 ? 'is-compound' : ''} ${spaceSelected ? 'is-space-selected' : ''} ${selected ? 'is-selected' : ''} ${zone.locked ? 'is-locked' : ''} ${zoneOverlaps.has(zone.id) ? 'has-overlap' : ''}" data-zone-id="${zone.id}">
       <rect class="zone-hit-target" x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}"
         fill="none" stroke="transparent" stroke-width="44" vector-effect="non-scaling-stroke" pointer-events="stroke" />
       <rect x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}" fill="${zone.color}" />
@@ -2286,38 +2794,44 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
       const end = structure.orientation === 'horizontal' ? span.x2 - structure.x : span.y2 - structure.y;
       return `<line class="structure-hit-target" x1="${start}" y1="0" x2="${end}" y2="0" />`;
     }).join('');
-    return `<g class="plan-structure plan-wall ${selected ? 'is-selected' : ''}" data-structure-id="${structure.id}" transform="translate(${structure.x} ${structure.y}) rotate(${structure.orientation === 'vertical' ? 90 : 0})">
+    return `<g class="plan-structure plan-wall ${selected ? 'is-selected' : ''} ${structure.locked ? 'is-locked' : ''}" data-structure-id="${structure.id}" transform="translate(${structure.x} ${structure.y}) rotate(${structure.orientation === 'vertical' ? 90 : 0})">
       <title>${escapeHtml(structure.name)} 벽</title>
       ${wallHitTargets}
       ${wallStrokes}
-      <text x="0" y="-10">${escapeHtml(structure.name)}</text>
+      <text x="0" y="-10">${escapeHtml(structure.name)} · ${Math.round(structure.length)}cm${structure.locked ? ' · 🔒' : ''}</text>
     </g>`;
   }).join('');
   const items = state.items.map((item) => {
     const selected = isSelected('item', item.id);
-    const classes = ['plan-item', selected ? 'is-selected' : '', collisions.has(item.id) ? 'has-collision' : '', outOfBounds.has(item.id) ? 'is-outside' : '', heightViolations.has(item.id) ? 'is-too-tall' : ''].filter(Boolean).join(' ');
+    const classes = ['plan-item', selected ? 'is-selected' : '', item.locked ? 'is-locked' : '', collisions.has(item.id) ? 'has-collision' : '', outOfBounds.has(item.id) ? 'is-outside' : '', heightViolations.has(item.id) ? 'is-too-tall' : ''].filter(Boolean).join(' ');
     return `<g class="${classes}" data-item-id="${item.id}" transform="translate(${item.x} ${item.y}) rotate(${item.rotation})">
       <g class="item-hit-target">${shapeMarkup(item, { hitTarget: true })}</g>
       <g class="item-shape" fill="${item.color}">${shapeMarkup(item)}</g>
       <g transform="rotate(${-item.rotation})" pointer-events="none">
         <text class="item-label" y="-3">${escapeHtml(item.name)}</text>
-        <text class="item-height" y="15">H ${item.height}cm${item.elevation ? ` · Z ${item.elevation}cm` : ''}</text>
+        <text class="item-height" y="15">H ${item.height}cm${item.elevation ? ` · Z ${item.elevation}cm` : ''}${item.locked ? ' · 🔒' : ''}</text>
       </g>
     </g>`;
   }).join('');
   const groupBoundsMarkup = selectionKeys.size > 1 ? (() => {
     const selectedBounds = selectedEntries().map(({ kind, entity }) => (
-      kind === 'zone' ? zoneBounds(entity) : kind === 'item' ? itemBounds(entity) : structureBounds(entity)
+      kind === 'zone'
+        ? zoneBounds(entity)
+        : kind === 'item'
+          ? itemBounds(entity)
+          : kind === 'structure'
+            ? structureBounds(entity)
+            : dimensionBounds(entity)
     ));
     const selectedBoundsUnion = unionBounds(selectedBounds);
     return `<rect class="group-selection-bounds" x="${selectedBoundsUnion.left}" y="${selectedBoundsUnion.top}"
       width="${selectedBoundsUnion.right - selectedBoundsUnion.left}" height="${selectedBoundsUnion.bottom - selectedBoundsUnion.top}" rx="6" />`;
   })() : '';
-  const resizeOverlay = selectedZone
+  const resizeOverlay = selectedZone && !selectedZone.locked
     ? `<g class="resize-overlay">${resizeHandlesMarkup(selectedZone, 'zone')}</g>`
-    : selectedItem
+    : selectedItem && !selectedItem.locked
       ? `<g class="resize-overlay" transform="translate(${selectedItem.x} ${selectedItem.y}) rotate(${selectedItem.rotation})">${resizeHandlesMarkup(selectedItem, 'item')}</g>`
-      : selectedStructure
+      : selectedStructure && !selectedStructure.locked
         ? `<g class="resize-overlay structure-resize-overlay" transform="translate(${selectedStructure.x} ${selectedStructure.y}) rotate(${selectedStructure.orientation === 'vertical' ? 90 : 0})">${structureHandlesMarkup(selectedStructure)}</g>`
         : '';
   const guideMarkup = alignmentGuides.map((guide) => guide.orientation === 'vertical'
@@ -2328,15 +2842,33 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
     const top = Math.min(marquee.start.y, marquee.current.y);
     return `<rect class="selection-marquee" x="${left}" y="${top}" width="${Math.abs(marquee.current.x - marquee.start.x)}" height="${Math.abs(marquee.current.y - marquee.start.y)}" />`;
   })() : '';
+  const backgroundMarkup = state.backgroundPlan
+    ? `<image class="background-plan ${state.backgroundPlan.locked ? 'is-locked' : ''}" data-background-plan
+        href="${state.backgroundPlan.dataUrl}" x="${state.backgroundPlan.x}" y="${state.backgroundPlan.y}"
+        width="${state.backgroundPlan.width}" height="${state.backgroundPlan.depth}"
+        opacity="${state.backgroundPlan.opacity}" preserveAspectRatio="none"
+        ${state.backgroundPlan.locked ? 'pointer-events="none"' : ''}>
+        <title>${escapeHtml(state.backgroundPlan.name)}${state.backgroundPlan.locked ? ' · 잠김' : ' · 드래그하여 이동'}</title>
+      </image>`
+    : '';
+  const dimensions = state.dimensions.map(dimensionMarkup).join('');
   return `<svg id="plan-canvas" class="plan-svg" viewBox="${viewBox}" tabindex="0" aria-label="다중 공간 가구 배치도">
     <defs><pattern id="grid" width="${GRID_CM}" height="${GRID_CM}" patternUnits="userSpaceOnUse"><path d="M ${GRID_CM} 0 L 0 0 0 ${GRID_CM}" fill="none" stroke="#d7d3c9" stroke-width="0.7" /></pattern></defs>
     <rect class="grid-background" x="${canvasViewBox.left}" y="${canvasViewBox.top}" width="${canvasViewBox.width}" height="${canvasViewBox.height}" fill="url(#grid)" />
-    ${zones}<g class="structural-walls">${automaticWalls}</g>${spaceOutlines}${items}${structures}${groupBoundsMarkup}${guideMarkup}${resizeOverlay}${marqueeMarkup}
+    ${backgroundMarkup}${zones}<g class="structural-walls">${automaticWalls}</g>${spaceOutlines}${items}${structures}${dimensions}${groupBoundsMarkup}${guideMarkup}${resizeOverlay}${marqueeMarkup}${precisionMarkup()}
   </svg>`;
 }
 
 function optionsMarkup(values, selected) {
   return values.map((value) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${value}</option>`).join('');
+}
+
+function selectionUtilityMarkup(entity = null) {
+  const locked = entity ? entity.locked : selectedEntries().length > 0 && selectedEntries().every(({ entity: entry }) => entry.locked);
+  return `<div class="selection-utility">
+    <button data-duplicate-selection type="button">⧉ 복제</button>
+    <button data-toggle-selection-lock type="button" aria-pressed="${locked}">${locked ? '🔓 잠금 해제' : '🔒 잠금'}</button>
+  </div>`;
 }
 
 function renderInspector(entity) {
@@ -2347,22 +2879,25 @@ function renderInspector(entity) {
     const entries = selectedEntries();
     const zoneCount = entries.filter((entry) => entry.kind === 'zone').length;
     const itemCount = entries.filter((entry) => entry.kind === 'item').length;
-    const structureCount = entries.length - zoneCount - itemCount;
+    const structureCount = entries.filter((entry) => entry.kind === 'structure').length;
+    const dimensionCount = entries.filter((entry) => entry.kind === 'dimension').length;
     const selectedSpaceCount = new Set(entries.filter((entry) => entry.kind === 'zone').map((entry) => spaceIdOf(entry.entity))).size;
     const canMergeSpaces = selectedSpaceCount > 1 && selectedSpacesCanMerge();
     return `<div class="multi-selection-inspector">
       <span>다중 선택</span>
       <strong id="inspector-heading" tabindex="-1">${entries.length}개 대상</strong>
-      <p>${[zoneCount ? `공간 조각 ${zoneCount}개` : '', itemCount ? `가구 ${itemCount}개` : '', structureCount ? `벽·문·창 ${structureCount}개` : ''].filter(Boolean).join(' · ')}</p>
+      <p>${[zoneCount ? `공간 조각 ${zoneCount}개` : '', itemCount ? `가구 ${itemCount}개` : '', structureCount ? `벽·문·창 ${structureCount}개` : '', dimensionCount ? `치수 ${dimensionCount}개` : ''].filter(Boolean).join(' · ')}</p>
       <small>드래그하거나 방향키를 누르면 선택한 대상이 함께 이동합니다.</small>
       ${canMergeSpaces ? '<button data-merge-spaces type="button">선택 공간 합치기 · 경계 개방</button>' : ''}
+      ${selectionUtilityMarkup()}
       <button class="danger-button" data-delete-selection type="button">선택 대상 삭제</button>
     </div>`;
   }
   if (state.selection.kind === 'zone') {
     const parts = zonesInSpace(state.zones, entity);
     const partIndex = parts.findIndex((part) => part.id === entity.id) + 1;
-    return `<div class="selection-heading"><i style="--swatch:${entity.color}"></i><div><span>선택한 공간 · 조각 ${partIndex}/${parts.length}</span><h2 id="inspector-heading" tabindex="-1">${escapeHtml(entity.name)}</h2></div></div>
+    return `<div class="selection-heading"><i style="--swatch:${entity.color}"></i><div><span>선택한 공간 · 조각 ${partIndex}/${parts.length}${entity.locked ? ' · 잠김' : ''}</span><h2 id="inspector-heading" tabindex="-1">${escapeHtml(entity.name)}</h2></div></div>
+      <fieldset class="selection-fields" ${entity.locked ? 'disabled' : ''}>
       <div class="field-stack">
         <label>공간 이름<input data-zone-field="name" value="${escapeHtml(entity.name)}" /></label>
         <label>공간 용도<select data-zone-field="type">${optionsMarkup(SPACE_TYPES, entity.type)}</select></label>
@@ -2379,13 +2914,32 @@ function renderInspector(entity) {
         <button data-add-zone-part type="button">＋ 이 공간에 조각 추가</button>
         <button class="danger-button" data-delete-zone-part type="button">선택 조각 삭제</button>
         <button class="danger-button" data-delete-space type="button">공간 전체 삭제</button>
-      </div>`;
+      </div></fieldset>${selectionUtilityMarkup(entity)}`;
+  }
+  if (state.selection.kind === 'dimension') {
+    const length = measurementLength(
+      { x: entity.x1, y: entity.y1 },
+      { x: entity.x2, y: entity.y2 },
+    );
+    return `<div class="selection-heading dimension-heading"><i aria-hidden="true">↔</i><div><span>선택한 치수${entity.locked ? ' · 잠김' : ''}</span><h2 id="inspector-heading" tabindex="-1">${escapeHtml(entity.name)}</h2></div></div>
+      <fieldset class="selection-fields" ${entity.locked ? 'disabled' : ''}>
+        <div class="field-stack"><label>이름<input data-dimension-field="name" value="${escapeHtml(entity.name)}" /></label></div>
+        <div class="field-grid">
+          <label>시작 X <span>cm</span><input type="number" step="1" data-dimension-field="x1" value="${Math.round(entity.x1)}" /></label>
+          <label>시작 Y <span>cm</span><input type="number" step="1" data-dimension-field="y1" value="${Math.round(entity.y1)}" /></label>
+          <label>끝 X <span>cm</span><input type="number" step="1" data-dimension-field="x2" value="${Math.round(entity.x2)}" /></label>
+          <label>끝 Y <span>cm</span><input type="number" step="1" data-dimension-field="y2" value="${Math.round(entity.y2)}" /></label>
+        </div>
+        <p class="dimension-result">측정 거리 <strong>${formatMeasurement(length)}</strong> · ${Math.round(length * 10) / 10}cm</p>
+        <button class="danger-button" data-delete-selection type="button">이 치수선 삭제</button>
+      </fieldset>${selectionUtilityMarkup(entity)}`;
   }
   if (state.selection.kind === 'structure') {
     const isWall = entity.type === 'wall';
     const isWindow = entity.type === 'window';
     const typeLabel = isWall ? '벽' : isWindow ? '미닫이창' : DOOR_TYPES[entity.doorType];
-    return `<div class="selection-heading structure-heading"><i aria-hidden="true">${isWall ? '━' : isWindow ? '▤' : entity.doorType === 'sliding' ? '⇆' : '◜'}</i><div><span>선택한 구조 · ${typeLabel}</span><h2 id="inspector-heading" tabindex="-1">${escapeHtml(entity.name)}</h2></div></div>
+    return `<div class="selection-heading structure-heading"><i aria-hidden="true">${isWall ? '━' : isWindow ? '▤' : entity.doorType === 'sliding' ? '⇆' : '◜'}</i><div><span>선택한 구조 · ${typeLabel}${entity.locked ? ' · 잠김' : ''}</span><h2 id="inspector-heading" tabindex="-1">${escapeHtml(entity.name)}</h2></div></div>
+      <fieldset class="selection-fields" ${entity.locked ? 'disabled' : ''}>
       <div class="field-stack">
         <label>이름<input data-structure-field="name" value="${escapeHtml(entity.name)}" /></label>
         ${!isWall && !isWindow ? `<label>문 방식<select data-structure-field="doorType">${Object.entries(DOOR_TYPES).map(([value, label]) => `<option value="${value}" ${value === entity.doorType ? 'selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}
@@ -2408,9 +2962,11 @@ function renderInspector(entity) {
         ${isWindow ? `<label>창턱 높이 <span>cm</span><input type="number" min="0" max="550" step="5" data-structure-field="sillHeight" value="${entity.sillHeight ?? 90}" /></label>` : ''}
       </div>
       <p class="structure-help">${isWall ? '벽을 선택한 뒤 문이나 창을 추가하면 연결되며, 벽을 이동하면 함께 이동합니다.' : isWindow ? `${entity.wallId ? '선택한 벽에 연결됨' : '공간 경계에 직접 배치'} · 너비·높이·창턱 높이가 3D 샷시에 반영됩니다.` : `${entity.wallId ? '선택한 벽에 연결됨' : '공간 경계에 직접 배치'} · 너비와 방향이 2D 기호·3D 문짝·통행 폭에 반영됩니다.`}</p>
-      <button class="danger-button" data-delete-selection type="button">이 ${typeLabel} 삭제</button>`;
+      <button class="danger-button" data-delete-selection type="button">이 ${typeLabel} 삭제</button>
+      </fieldset>${selectionUtilityMarkup(entity)}`;
   }
-  return `<div class="selection-heading"><i style="--swatch:${entity.color}"></i><div><span>선택한 가구 · ${SHAPES[entity.shape]}</span><h2 id="inspector-heading" tabindex="-1">${escapeHtml(entity.name)}</h2></div></div>
+  return `<div class="selection-heading"><i style="--swatch:${entity.color}"></i><div><span>선택한 가구 · ${SHAPES[entity.shape]}${entity.locked ? ' · 잠김' : ''}</span><h2 id="inspector-heading" tabindex="-1">${escapeHtml(entity.name)}</h2></div></div>
+    <fieldset class="selection-fields" ${entity.locked ? 'disabled' : ''}>
     <div class="field-stack">
       <label>가구 이름<input data-item-field="name" value="${escapeHtml(entity.name)}" /></label>
       <label>바닥 도형<select data-item-field="shape">${Object.entries(SHAPES).map(([value, label]) => `<option value="${value}" ${value === entity.shape ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
@@ -2428,7 +2984,8 @@ function renderInspector(entity) {
       <label>회전 각도 <span>°</span><input type="number" min="0" max="359" step="1" data-item-field="rotation" value="${Math.round(entity.rotation)}" /></label>
       <button id="rotate-item" type="button">↻ 90° 회전</button>
     </div>
-    <button class="danger-button" data-delete-selection type="button">이 가구 삭제</button>`;
+    <button class="danger-button" data-delete-selection type="button">이 가구 삭제</button>
+    </fieldset>${selectionUtilityMarkup(entity)}`;
 }
 
 function renderMobileContextMenu() {
@@ -2448,7 +3005,9 @@ function renderMobileContextMenu() {
       ? '선택한 공간'
       : target.kind === 'item'
         ? '선택한 가구'
-        : target.entity.type === 'wall' ? '선택한 벽' : target.entity.type === 'window' ? '선택한 미닫이창' : `선택한 ${DOOR_TYPES[target.entity.doorType]}`;
+        : target.kind === 'dimension'
+          ? '선택한 치수'
+          : target.entity.type === 'wall' ? '선택한 벽' : target.entity.type === 'window' ? '선택한 미닫이창' : `선택한 ${DOOR_TYPES[target.entity.doorType]}`;
   const openingTarget = !groupContext && target.kind === 'structure' && target.entity.type !== 'wall' ? target.entity : null;
   return `<section class="mobile-context-menu" role="dialog" aria-labelledby="mobile-context-title">
     <div class="mobile-context-heading"><div><span>${typeLabel}</span><strong id="mobile-context-title">${escapeHtml(title)}</strong></div><button data-context-close type="button" aria-label="작업 메뉴 닫기">×</button></div>
@@ -2457,6 +3016,8 @@ function renderMobileContextMenu() {
       ${itemCount ? '<button data-context-action="rotate" type="button" aria-label="선택한 가구 90도 회전"><b aria-hidden="true">↻</b><span>가구 회전</span></button>' : ''}
       ${openingTarget ? `<button data-context-door-opening="0" type="button"><b aria-hidden="true">▯</b><span>${openingTarget.type === 'window' ? '창' : '문'} 닫기</span></button><button data-context-door-opening="${openingTarget.type === 'window' || openingTarget.doorType === 'sliding' ? 100 : 90}" type="button"><b aria-hidden="true">◩</b><span>${openingTarget.type === 'window' ? '창' : '문'} 열기</span></button>` : ''}
       ${!groupContext ? '<button data-context-action="details" type="button"><b aria-hidden="true">⌁</b><span>상세</span></button>' : ''}
+      <button data-context-action="duplicate" type="button"><b aria-hidden="true">⧉</b><span>복제</span></button>
+      <button data-context-action="lock" type="button"><b aria-hidden="true">${entries.every(({ entity }) => entity.locked) ? '🔓' : '🔒'}</b><span>${entries.every(({ entity }) => entity.locked) ? '잠금 해제' : '잠금'}</span></button>
       <button data-context-action="multi" type="button"><b aria-hidden="true">＋</b><span>그룹 선택</span></button>
       <button class="is-danger" data-context-action="delete" type="button"><b aria-hidden="true">⌫</b><span>삭제</span></button>
       ${!groupContext && target.kind === 'zone' ? '<button class="is-danger" data-context-action="delete-space" type="button"><b aria-hidden="true">×</b><span>공간 전체 삭제</span></button>' : ''}
@@ -2474,6 +3035,8 @@ function renderMobileSelectionBar() {
     <div><strong>${mobileMoveArmed ? '대상을 끌어 이동' : '그룹 선택'}</strong><span data-selection-count>${selectionKeys.size}개 선택</span></div>
     <button data-group-action="move" type="button" ${disabled}>이동</button>
     <button data-group-action="rotate" type="button" aria-label="선택한 가구 90도 회전" ${itemCount ? '' : 'disabled'}>회전</button>
+    <button data-group-action="duplicate" type="button" ${disabled}>복제</button>
+    <button data-group-action="lock" type="button" ${disabled}>${selectedEntries().length && selectedEntries().every(({ entity }) => entity.locked) ? '해제' : '잠금'}</button>
     ${canMergeSpaces ? '<button data-group-action="merge-spaces" type="button">공간 합치기</button>' : ''}
     <button class="is-danger" data-group-action="delete" type="button" ${disabled}>삭제</button>
     <button data-group-action="done" type="button">해제</button>
@@ -2547,6 +3110,32 @@ function renderCloudDialog() {
   </div>`;
 }
 
+function renderBlueprintControls() {
+  const background = state.backgroundPlan;
+  return `<div class="blueprint-tools">
+    <div class="blueprint-heading"><strong>실도면 밑그림</strong><small>PNG·JPG</small></div>
+    <label class="blueprint-file-button">도면 이미지 가져오기
+      <input id="background-file" type="file" accept="image/png,image/jpeg" />
+    </label>
+    ${background ? `<div class="blueprint-active">
+      <span title="${escapeHtml(background.name)}">${escapeHtml(background.name)}</span>
+      <div class="blueprint-position">
+        <label>X 위치 <span>cm</span><input id="background-x" type="number" step="1" value="${Math.round(background.x)}" ${background.locked ? 'disabled' : ''} /></label>
+        <label>Y 위치 <span>cm</span><input id="background-y" type="number" step="1" value="${Math.round(background.y)}" ${background.locked ? 'disabled' : ''} /></label>
+      </div>
+      <label>투명도 <b>${Math.round(background.opacity * 100)}%</b><input id="background-opacity" type="range" min="5" max="100" step="5" value="${Math.round(background.opacity * 100)}" /></label>
+      <div class="blueprint-calibration">
+        <label>두 점의 실제 거리 <span>cm</span><input id="calibration-distance" type="number" min="1" max="10000" step="1" value="${calibrationDistanceCm}" /></label>
+        <button id="calibrate-background" class="${precisionTool?.type === 'background' ? 'is-active' : ''}" type="button">⌖ 2점 축척 맞추기</button>
+      </div>
+      <div class="blueprint-actions">
+        <button id="toggle-background-lock" type="button" aria-pressed="${background.locked}">${background.locked ? '🔓 이동 잠금 해제' : '🔒 배경 이동 잠금'}</button>
+        <button id="remove-background" class="danger-button" type="button">배경 제거</button>
+      </div>
+    </div>` : '<p>실제 평면도를 배경에 놓고 두 점의 실제 거리로 축척을 맞출 수 있습니다.</p>'}
+  </div>`;
+}
+
 function render() {
   const focusedMobileLayout = isMobileLayout();
   const mobilePanelAttributes = (panel) => {
@@ -2579,6 +3168,7 @@ function render() {
     <aside class="panel left-panel" aria-label="공간과 가구 패널">
       <section class="space-section" id="mobile-panel-spaces" ${mobilePanelAttributes('spaces')}>
         <div class="section-title"><span>01</span><h2>집 구성</h2><button class="add-mini" id="add-zone" type="button">＋ 공간</button></div>
+        ${renderBlueprintControls()}
         <div class="preset-row"><button data-layout="apartment" type="button">기본 아파트</button><button data-layout="lshape" type="button">ㄱ자 주택</button></div>
         <p class="section-help">하나의 공간에 여러 조각을 붙여 거실·복도 같은 직교형 공간을 만드세요.</p>
         <div class="zone-list">${spaces.map((parts) => {
@@ -2608,13 +3198,13 @@ function render() {
 
     <section class="canvas-column" id="mobile-panel-canvas" ${mobilePanelAttributes('canvas')}>
       <div class="canvas-toolbar"><div><span class="eyebrow">HOME COMPOSER</span><h1>나의 집 도면</h1></div>
-        <div class="view-tabs"><button class="active" type="button">2D 편집</button><button id="open-walkthrough" type="button">3D 1인칭</button></div>
+        <div class="view-tabs"><button class="active" type="button">2D 편집</button><button id="open-walkthrough" type="button">3D 미리보기</button></div>
       </div>
       <div class="canvas-actions">
-        <span>본체를 끌어 이동 · 점으로 크기 조절 · 상단 손잡이로 가구 회전 · Shift 클릭으로 다중 선택</span>
-        <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="clear-furniture" type="button">가구 비우기</button></div>
+        <span>방향키 1cm · Shift+방향키 40cm · ⌘/Ctrl+C·V · Shift 클릭 다중 선택</span>
+        <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="add-dimension" class="${precisionTool?.type === 'dimension' ? 'is-active' : ''}" type="button">↔ 거리 측정</button><button id="duplicate-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>⧉ 복제</button><button id="copy-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>복사</button><button id="paste-selection" type="button" ${internalClipboard ? '' : 'disabled'}>붙여넣기</button><button id="clear-furniture" type="button">가구 비우기</button></div>
       </div>
-      <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderTransformHud()}</div>
+      <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderTransformHud()}${editorNotice || precisionTool ? `<div class="editor-notice ${precisionTool ? 'is-tool-active' : ''}" role="status"><span>${escapeHtml(editorNotice)}</span>${precisionTool ? '<button id="cancel-precision-tool" type="button">취소</button>' : ''}</div>` : ''}</div>
       <div class="stats-bar"><div><span>집 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span>바닥 점유</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 검사</span><strong>${warningCount ? `${warningCount}개 확인` : '정상'}</strong></div></div>
       <div class="legend"><span><i class="collision-dot"></i>가구 3D 충돌</span><span><i class="height-dot"></i>공간 높이 초과</span><span><i class="outside-dot"></i>집 밖 배치</span><span><i class="zone-dot"></i>공간 중복</span></div>
     </section>
@@ -2747,12 +3337,65 @@ function bindEvents() {
     render();
   });
   document.querySelector('[data-cloud-copy]')?.addEventListener('click', createCloudCopy);
+  document.querySelector('#background-file')?.addEventListener('change', async (event) => {
+    const [file] = event.target.files;
+    if (!file) return;
+    event.target.disabled = true;
+    editorNotice = '배경 도면을 최적화하는 중…';
+    render();
+    try {
+      await importBackgroundPlan(file);
+    } catch (error) {
+      editorNotice = error.message || '배경 도면을 가져오지 못했습니다.';
+      render();
+    }
+  });
+  document.querySelector('#background-opacity')?.addEventListener('change', (event) => {
+    updateBackgroundPlan({ opacity: Number(event.target.value) / 100 });
+  });
+  document.querySelector('#background-x')?.addEventListener('change', (event) => {
+    updateBackgroundPlan({ x: Number(event.target.value) });
+  });
+  document.querySelector('#background-y')?.addEventListener('change', (event) => {
+    updateBackgroundPlan({ y: Number(event.target.value) });
+  });
+  document.querySelector('#calibration-distance')?.addEventListener('input', (event) => {
+    calibrationDistanceCm = numberValue(event.target.value, calibrationDistanceCm, 1, 10000);
+  });
+  document.querySelector('#calibrate-background')?.addEventListener('click', () => {
+    calibrationDistanceCm = numberValue(
+      document.querySelector('#calibration-distance')?.value,
+      calibrationDistanceCm,
+      1,
+      10000,
+    );
+    startPrecisionTool('background');
+  });
+  document.querySelector('#toggle-background-lock')?.addEventListener('click', () => {
+    updateBackgroundPlan({ locked: !state.backgroundPlan.locked });
+  });
+  document.querySelector('#remove-background')?.addEventListener('click', () => {
+    precisionTool = null;
+    editorNotice = '배경 도면을 제거했습니다.';
+    updateState({ backgroundPlan: null });
+  });
   document.querySelector('#add-zone').addEventListener('click', addZone);
   document.querySelector('#undo-action').addEventListener('click', undo);
   document.querySelector('#redo-action').addEventListener('click', redo);
   document.querySelector('#zoom-out').addEventListener('click', () => setCanvasZoom(canvasZoom - 0.25));
   document.querySelector('#zoom-in').addEventListener('click', () => setCanvasZoom(canvasZoom + 0.25));
   document.querySelector('#zoom-fit').addEventListener('click', resetCanvasZoom);
+  document.querySelector('#add-dimension').addEventListener('click', () => startPrecisionTool('dimension'));
+  document.querySelector('#cancel-precision-tool')?.addEventListener('click', () => {
+    precisionTool = null;
+    editorNotice = '정밀 도구를 취소했습니다.';
+    render();
+  });
+  document.querySelector('#duplicate-selection').addEventListener('click', duplicateSelection);
+  document.querySelector('#copy-selection').addEventListener('click', copySelection);
+  document.querySelector('#paste-selection').addEventListener('click', pasteSelection);
+  document.querySelectorAll('[data-duplicate-selection]').forEach((button) => button.addEventListener('click', duplicateSelection));
+  document.querySelectorAll('[data-toggle-selection-lock]').forEach((button) => button.addEventListener('click', toggleSelectionLocked));
   document.querySelector('#multi-select-action').addEventListener('click', () => {
     mobileMultiSelect = !mobileMultiSelect;
     mobileContextMenu = null;
@@ -2769,6 +3412,14 @@ function bindEvents() {
   document.querySelector('[data-context-action="rotate"]')?.addEventListener('click', () => {
     pendingFocus = { kind: 'canvas' };
     rotateSelection();
+  });
+  document.querySelector('[data-context-action="duplicate"]')?.addEventListener('click', () => {
+    mobileContextMenu = null;
+    duplicateSelection();
+  });
+  document.querySelector('[data-context-action="lock"]')?.addEventListener('click', () => {
+    mobileContextMenu = null;
+    toggleSelectionLocked();
   });
   document.querySelectorAll('[data-context-door-opening]').forEach((button) => button.addEventListener('click', () => {
     const target = selectedEntries().find((entry) => entry.kind === 'structure' && entry.entity.type !== 'wall');
@@ -2806,6 +3457,8 @@ function bindEvents() {
     pendingFocus = { kind: 'group-rotate' };
     rotateSelection();
   });
+  document.querySelector('[data-group-action="duplicate"]')?.addEventListener('click', duplicateSelection);
+  document.querySelector('[data-group-action="lock"]')?.addEventListener('click', toggleSelectionLocked);
   document.querySelector('[data-group-action="merge-spaces"]')?.addEventListener('click', mergeSelectedSpaces);
   document.querySelector('[data-group-action="delete"]')?.addEventListener('click', () => {
     pendingFocus = { kind: 'canvas' };
@@ -2832,7 +3485,7 @@ function bindEvents() {
     else if (button.dataset.addStructure === 'window') addWindow();
     else addDoor(button.dataset.addStructure);
   }));
-  document.querySelector('#clear-furniture').addEventListener('click', () => updateState({ items: [], selection: state.selection?.kind === 'item' ? null : state.selection }));
+  document.querySelector('#clear-furniture').addEventListener('click', clearUnlockedFurniture);
   document.querySelectorAll('[data-layout]').forEach((button) => button.addEventListener('click', () => {
     const previous = layoutSnapshot();
     const zones = button.dataset.layout === 'lshape' ? lShapeZones() : apartmentZones();
@@ -2876,6 +3529,8 @@ function bindEvents() {
         items: state.items,
         structures: state.structures,
         wallHeight: state.wallHeight,
+        focus: state.selection ? { ...state.selection } : null,
+        initialMode: 'dollhouse',
         onStructureChange: (id, updates) => updateStructure(id, updates),
       });
     } finally {
@@ -2887,7 +3542,20 @@ function bindEvents() {
   document.querySelectorAll('[data-zone-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'zone', node.dataset.zoneId)));
   document.querySelectorAll('[data-item-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'item', node.dataset.itemId)));
   document.querySelectorAll('[data-structure-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'structure', node.dataset.structureId)));
+  document.querySelectorAll('[data-dimension-id]').forEach((node) => node.addEventListener('pointerdown', (event) => {
+    if (precisionTool) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectEntity('dimension', node.dataset.dimensionId, usesAdditiveSelection(event));
+    if (isMobileLayout() && !mobileMultiSelect) {
+      mobileContextMenu = { kind: 'dimension', id: node.dataset.dimensionId };
+      pendingFocus = { kind: 'context-menu' };
+    }
+    render();
+  }));
+  document.querySelector('[data-background-plan]')?.addEventListener('pointerdown', startBackgroundDrag);
   document.querySelector('.grid-background').addEventListener('pointerdown', startMarquee);
+  document.querySelector('#plan-canvas').addEventListener('pointerdown', handlePrecisionPoint, true);
   document.querySelector('#plan-canvas').addEventListener('wheel', zoomCanvasWithWheel, { passive: false });
   document.querySelector('#plan-canvas').addEventListener('contextmenu', (event) => {
     if (isMobileLayout()) event.preventDefault();
@@ -2989,6 +3657,14 @@ function bindEvents() {
     }
     input.addEventListener('change', () => updateStructure(entityId, { [field]: input.value }));
   });
+  document.querySelectorAll('[data-dimension-field]').forEach((input) => {
+    const field = input.dataset.dimensionField;
+    const entityId = state.selection.id;
+    const historySnapshot = layoutSnapshot();
+    input.addEventListener('blur', () => updateDimension(entityId, {
+      [field]: input.type === 'number' ? Number(input.value) : input.value,
+    }, { historySnapshot }));
+  });
   document.querySelectorAll('[data-door-opening]').forEach((button) => button.addEventListener('click', () => {
     setDoorOpening(state.selection.id, Number(button.dataset.doorOpening));
   }));
@@ -3022,6 +3698,13 @@ document.addEventListener('keydown', (event) => {
     closeMobileContextMenu();
     return;
   }
+  if (precisionTool && event.key === 'Escape') {
+    event.preventDefault();
+    precisionTool = null;
+    editorNotice = '정밀 도구를 취소했습니다.';
+    render();
+    return;
+  }
   const target = event.target instanceof Element ? event.target : null;
   const editingField = target?.closest('input, select, textarea, [contenteditable]:not([contenteditable="false"])') ?? null;
   const interactiveControl = target?.closest('button, a, input, select, textarea, [contenteditable]:not([contenteditable="false"])') ?? null;
@@ -3037,23 +3720,44 @@ document.addEventListener('keydown', (event) => {
     redo();
     return;
   }
+  if (!editingField && commandKey && event.key.toLowerCase() === 'c' && selectionKeys.size) {
+    event.preventDefault();
+    copySelection();
+    return;
+  }
+  if (!editingField && commandKey && event.key.toLowerCase() === 'v' && internalClipboard) {
+    event.preventDefault();
+    pasteSelection();
+    return;
+  }
+  if (!editingField && commandKey && event.key.toLowerCase() === 'd' && selectionKeys.size) {
+    event.preventDefault();
+    duplicateSelection();
+    return;
+  }
   if (interactiveControl || !selectionKeys.size) return;
   const movement = {
-    ArrowLeft: { x: -GRID_CM, y: 0 }, ArrowRight: { x: GRID_CM, y: 0 },
-    ArrowUp: { x: 0, y: -GRID_CM }, ArrowDown: { x: 0, y: GRID_CM },
+    ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
+    ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 },
   }[event.key];
   if (movement) {
     event.preventDefault();
     const previous = layoutSnapshot();
-    const entries = selectedEntries();
+    const entries = selectedEntries().filter(({ entity }) => !entity.locked);
+    if (!entries.length) {
+      editorNotice = '잠긴 대상은 이동할 수 없습니다.';
+      render();
+      return;
+    }
     const zoneIds = new Set(entries.filter((entry) => entry.kind === 'zone').map((entry) => entry.id));
     const itemIds = new Set(entries.filter((entry) => entry.kind === 'item').map((entry) => entry.id));
     const structureIds = new Set(entries.filter((entry) => entry.kind === 'structure').map((entry) => entry.id));
+    const dimensionIds = new Set(entries.filter((entry) => entry.kind === 'dimension').map((entry) => entry.id));
     state.structures.filter((structure) => structureIds.has(structure.wallId)).forEach((door) => structureIds.add(door.id));
     state.zones.filter((zone) => zoneIds.has(zone.id)).forEach((zone) => {
-      state.items.filter((item) => pointInZone({ x: item.x, y: item.y }, zone)).forEach((item) => itemIds.add(item.id));
+      state.items.filter((item) => !item.locked && pointInZone({ x: item.x, y: item.y }, zone)).forEach((item) => itemIds.add(item.id));
     });
-    const movementScale = event.shiftKey ? 4 : 1;
+    const movementScale = event.shiftKey ? 40 : 1;
     const keyboardMovement = { x: movement.x * movementScale, y: movement.y * movementScale };
     state.zones = state.zones.map((zone) => zoneIds.has(zone.id) ? { ...zone, x: zone.x + keyboardMovement.x, y: zone.y + keyboardMovement.y } : zone);
     state.items = state.items.map((item) => itemIds.has(item.id) ? { ...item, x: item.x + keyboardMovement.x, y: item.y + keyboardMovement.y } : item);
@@ -3061,6 +3765,13 @@ document.addEventListener('keydown', (event) => {
       ? { ...structure, x: structure.x + keyboardMovement.x, y: structure.y + keyboardMovement.y }
       : structure);
     state.structures = settleMovedStructures(movedStructures, structureIds);
+    state.dimensions = state.dimensions.map((dimension) => dimensionIds.has(dimension.id) ? {
+      ...dimension,
+      x1: dimension.x1 + keyboardMovement.x,
+      y1: dimension.y1 + keyboardMovement.y,
+      x2: dimension.x2 + keyboardMovement.x,
+      y2: dimension.y2 + keyboardMovement.y,
+    } : dimension);
     commitHistory(previous);
     saveState();
     render();
@@ -3102,7 +3813,8 @@ document.addEventListener('pointermove', (event) => {
     movePinch();
   } else if (gestureMode === 'pan') {
     movePan(event);
-  } else if (rotateGesture) moveItemRotation(event);
+  } else if (backgroundDrag) moveBackgroundDrag(event);
+  else if (rotateGesture) moveItemRotation(event);
   else if (resize) moveResize(event);
   else if (drag) moveDrag(event);
   else if (marquee) moveMarquee(event);
@@ -3115,7 +3827,8 @@ document.addEventListener('pointerup', (event) => {
     return;
   }
   if (handledContact) return;
-  if (rotateGesture) finishItemRotation();
+  if (backgroundDrag) finishBackgroundDrag();
+  else if (rotateGesture) finishItemRotation();
   else if (resize) finishResize();
   else if (drag) finishDrag();
   else if (marquee) finishMarquee();
@@ -3123,18 +3836,18 @@ document.addEventListener('pointerup', (event) => {
 document.addEventListener('pointercancel', (event) => {
   cancelEntityPress();
   activePointers.delete(event.pointerId);
-  if (drag || resize || rotateGesture || marquee || pan || pinch) cancelTemporaryGesture();
+  if (drag || resize || rotateGesture || marquee || backgroundDrag || pan || pinch) cancelTemporaryGesture();
   else if (!activePointers.size) gestureMode = 'idle';
 });
 document.addEventListener('lostpointercapture', (event) => {
   cancelEntityPress();
   activePointers.delete(event.pointerId);
-  if (drag || resize || rotateGesture || marquee || pan || pinch) cancelTemporaryGesture();
+  if (drag || resize || rotateGesture || marquee || backgroundDrag || pan || pinch) cancelTemporaryGesture();
   else if (!activePointers.size) gestureMode = 'idle';
 });
 
 mobileLayoutQuery.addEventListener('change', () => {
-  if (drag || resize || rotateGesture || marquee || pan || pinch || entityPress) {
+  if (drag || resize || rotateGesture || marquee || backgroundDrag || pan || pinch || entityPress) {
     activePointers.clear();
     cancelTemporaryGesture();
     return;

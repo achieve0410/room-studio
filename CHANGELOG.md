@@ -8,10 +8,14 @@ All notable user-facing changes are documented in this file. Room Studio follows
 
 - PPT-style 2D selection frames, 44px resize and continuous rotation handles, exact angle input, and live position/size/angle feedback.
 - A shared selection boundary that makes mobile and desktop group movement easier to understand.
+- PNG/JPG floor-plan backgrounds with bounded image optimization, two-point scale calibration, opacity, movement locking, and backward-compatible local or cloud persistence.
+- Persistent two-point dimension lines, exact wall-length labels, 1 cm keyboard nudging, target locking, and duplicate/copy/paste commands.
+- Dollhouse and top-down 3D cameras, ceiling visibility controls, selected-object focus, and PNG scene snapshots.
 
 ### Changed
 
 - 3D navigation prompts now match touch or keyboard/mouse input, respect device safe areas, and fade nearby custom-furniture labels when they would obscure an opening interaction.
+- Browser coverage now includes 113 mobile and desktop assertions, including the Precision & Preview workflow.
 
 ## [1.0.0] - 2026-07-27
 

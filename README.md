@@ -18,7 +18,7 @@
 </p>
 <p align="center"><sub>The public demo stores drawings only in this browser and does not enable login.</sub></p>
 
-Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines orthogonal room shapes, furniture, walls, swing or sliding doors, sash-style sliding windows, height validation, and a first-person WebGL walkthrough without requiring a desktop CAD application.
+Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines calibrated floor-plan tracing, orthogonal room shapes, furniture, walls, openings, exact dimensions, height validation, and first-person or overhead WebGL previews without requiring a desktop CAD application.
 
 > Room Studio is a planning and visualization aid, not a substitute for architectural, structural, accessibility, or permit drawings.
 
@@ -52,10 +52,13 @@ Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). 
 ## Highlights
 
 - Compose L-shaped and other orthogonal spaces from multiple rectangular parts.
+- Import a PNG or JPG floor plan, calibrate it from two known points, and control its opacity or movement lock.
+- Add persistent distance dimensions and enter exact wall lengths in centimeters.
 - Move, resize, continuously rotate, group, align, and multi-select with on-canvas handles and live transform feedback.
+- Duplicate, copy, paste, lock, and nudge selected objects in 1 cm keyboard increments.
 - Edit room ceiling height and furniture elevation to validate vertical fit.
 - Use swing doors, two-panel bypass sliding doors, and sash-style sliding windows in both 2D and 3D.
-- Explore the result through a collision-aware first-person 3D walkthrough.
+- Switch between collision-aware first-person, dollhouse, and top-down 3D views; hide ceilings, focus the current selection, or save the current scene as PNG.
 - Work with mouse and keyboard or mobile touch, pinch zoom, resize handles, and a virtual joystick.
 - Keep drawings in local browser storage, or optionally sync user-owned projects through Supabase Auth and Postgres RLS.
 

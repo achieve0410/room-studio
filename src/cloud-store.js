@@ -17,6 +17,8 @@ export function prepareLayoutSnapshot(layout) {
     zones: layout.zones,
     items: layout.items,
     structures: layout.structures,
+    dimensions: Array.isArray(layout.dimensions) ? layout.dimensions : [],
+    backgroundPlan: layout.backgroundPlan ?? null,
     wallHeight: Number(layout.wallHeight) || 240,
   }));
 }
@@ -86,7 +88,7 @@ export function createCloudStore({ client } = {}) {
         p_project_id: id,
         p_name: normalizeProjectName(name),
         p_layout_json: snapshot,
-        p_schema_version: 1,
+        p_schema_version: 2,
         p_expected_revision: expectedRevision,
         p_create_version: createVersion,
       }));
