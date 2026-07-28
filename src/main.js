@@ -23,10 +23,12 @@ import {
   getZoomViewBox,
   itemBounds,
   meters,
+  normalizeAngle,
   pointInZone,
   resizeItemFromHandle,
   resizeStructureFromEndpoint,
   resizeZoneFromHandle,
+  rotationFromPointer,
   snap,
   spaceIdOf,
   splitWallSegment,
@@ -291,6 +293,7 @@ function loadState() {
 let state = loadState();
 let drag = null;
 let resize = null;
+let rotateGesture = null;
 let marquee = null;
 let alignmentGuides = [];
 let selectionKeys = new Set(state.selection ? [`${state.selection.kind}:${state.selection.id}`] : []);
@@ -433,6 +436,13 @@ function rotateSelection() {
   commitHistory(previous);
   saveState();
   render();
+}
+
+function rotateItemBy(id, degrees) {
+  const item = state.items.find((entry) => entry.id === id);
+  if (!item) return;
+  pendingFocus = { kind: 'item-rotate', id };
+  updateItem(id, { rotation: normalizeAngle(item.rotation + degrees) });
 }
 
 function selectedEntity() {
@@ -752,6 +762,7 @@ function updateItem(id, updates, options = {}) {
     next.depth = numberValue(next.depth, item.depth, 20, 600);
     next.height = numberValue(next.height, item.height, 1, 400);
     next.elevation = numberValue(next.elevation, item.elevation ?? 0, 0, 400);
+    next.rotation = normalizeAngle(Number.isFinite(Number(next.rotation)) ? Number(next.rotation) : item.rotation);
     if (next.shape === 'circle') {
       if (updates.width !== undefined) next.depth = next.width;
       if (updates.depth !== undefined) next.width = next.depth;
@@ -1174,7 +1185,7 @@ function applyCanvasViewBox(viewBox) {
 }
 
 function setCanvasZoom(nextZoom, anchorEvent = null) {
-  if (drag || resize || marquee || gestureMode === 'pinch') return;
+  if (drag || resize || rotateGesture || marquee || gestureMode === 'pinch') return;
   const current = currentCanvasViewBox();
   const anchor = anchorEvent
     ? svgPoint(anchorEvent)
@@ -1280,6 +1291,67 @@ function syncAlignmentGuides() {
   });
 }
 
+function transformHudContent(mode = 'selected') {
+  const modeLabels = {
+    selected: '선택됨',
+    move: '이동 중',
+    resize: '크기 조절 중',
+    rotate: '회전 중',
+  };
+  if (!selectionKeys.size) return null;
+  if (selectionKeys.size > 1) {
+    return {
+      label: modeLabels[mode] ?? modeLabels.selected,
+      primary: `${selectionKeys.size}개 함께 선택`,
+      secondary: mode === 'move' && drag
+        ? `ΔX ${Math.round(drag.currentDelta.x)} · ΔY ${Math.round(drag.currentDelta.y)}cm`
+        : '본체를 끌어 함께 이동',
+    };
+  }
+  const entity = selectedEntity();
+  if (!entity || !state.selection) return null;
+  if (state.selection.kind === 'zone') {
+    return {
+      label: modeLabels[mode] ?? modeLabels.selected,
+      primary: `${Math.round(entity.width)} × ${Math.round(entity.depth)}cm`,
+      secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · H ${Math.round(entity.height ?? 240)}cm`,
+    };
+  }
+  if (state.selection.kind === 'structure') {
+    const size = entity.type === 'wall' ? entity.length : entity.width;
+    return {
+      label: modeLabels[mode] ?? modeLabels.selected,
+      primary: `${STRUCTURE_LABELS[entity.type]} ${Math.round(size)}cm`,
+      secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · ${ORIENTATIONS[entity.orientation]}`,
+    };
+  }
+  return {
+    label: modeLabels[mode] ?? modeLabels.selected,
+    primary: `${Math.round(entity.width)} × ${Math.round(entity.depth)}cm`,
+    secondary: `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)} · ${Math.round(entity.rotation)}°`,
+  };
+}
+
+function renderTransformHud() {
+  const content = transformHudContent();
+  if (!content) return '';
+  return `<div class="transform-hud" data-transform-hud data-mode="selected" aria-hidden="true">
+    <span data-transform-label>${content.label}</span>
+    <strong data-transform-primary>${content.primary}</strong>
+    <small data-transform-secondary>${content.secondary}</small>
+  </div>`;
+}
+
+function syncTransformHud(mode) {
+  const hud = document.querySelector('[data-transform-hud]');
+  const content = transformHudContent(mode);
+  if (!hud || !content) return;
+  hud.dataset.mode = mode;
+  hud.querySelector('[data-transform-label]').textContent = content.label;
+  hud.querySelector('[data-transform-primary]').textContent = content.primary;
+  hud.querySelector('[data-transform-secondary]').textContent = content.secondary;
+}
+
 function syncMarqueePreview() {
   const svg = document.querySelector('#plan-canvas');
   if (!svg) return;
@@ -1297,6 +1369,7 @@ function syncMarqueePreview() {
 function syncCanvasPreviewFromState() {
   document.querySelectorAll('[data-zone-id]').forEach((node) => node.removeAttribute('transform'));
   document.querySelectorAll('.space-outline').forEach((node) => node.removeAttribute('visibility'));
+  document.querySelector('.group-selection-bounds')?.removeAttribute('transform');
   state.items.forEach((item) => {
     document.querySelector(`[data-item-id="${item.id}"]`)
       ?.setAttribute('transform', `translate(${item.x} ${item.y}) rotate(${item.rotation})`);
@@ -1323,6 +1396,8 @@ function syncCanvasPreviewFromState() {
 
 function syncDragPreview() {
   if (!drag) return;
+  document.querySelector('.group-selection-bounds')
+    ?.setAttribute('transform', `translate(${drag.currentDelta.x} ${drag.currentDelta.y})`);
   if (drag.zoneOrigins.size) {
     document.querySelectorAll('.space-outline').forEach((node) => node.setAttribute('visibility', 'hidden'));
   }
@@ -1343,6 +1418,7 @@ function syncDragPreview() {
       ?.setAttribute('transform', `translate(${structure.x} ${structure.y}) rotate(${structure.orientation === 'vertical' ? 90 : 0})`);
   });
   syncAlignmentGuides();
+  syncTransformHud('move');
   syncValidationClasses();
 }
 
@@ -1362,6 +1438,7 @@ function syncResizePreview() {
     const transform = `translate(${entity.x} ${entity.y}) rotate(${entity.orientation === 'vertical' ? 90 : 0}) scale(${currentSize / originSize} 1)`;
     node.setAttribute('transform', transform);
     overlay?.setAttribute('transform', transform);
+    syncTransformHud('resize');
     return;
   }
   const scaleX = entity.width / resize.origin.width;
@@ -1377,6 +1454,22 @@ function syncResizePreview() {
     node.setAttribute('transform', transform);
     overlay?.setAttribute('transform', transform);
   }
+  syncTransformHud('resize');
+  syncValidationClasses();
+}
+
+function syncRotatePreview() {
+  if (!rotateGesture) return;
+  const item = state.items.find((entry) => entry.id === rotateGesture.id);
+  if (!item) return;
+  document.querySelector(`[data-item-id="${item.id}"]`)
+    ?.setAttribute('transform', `translate(${item.x} ${item.y}) rotate(${item.rotation})`);
+  document.querySelector('.resize-overlay')
+    ?.setAttribute('transform', `translate(${item.x} ${item.y}) rotate(${item.rotation})`);
+  const control = document.querySelector(`[data-item-rotate="${item.id}"]`);
+  control?.setAttribute('aria-valuenow', String(Math.round(item.rotation)));
+  control?.setAttribute('aria-valuetext', `${Math.round(item.rotation)}도`);
+  syncTransformHud('rotate');
   syncValidationClasses();
 }
 
@@ -1384,6 +1477,7 @@ function resetTemporaryGestureState() {
   cancelEntityPress();
   drag = null;
   resize = null;
+  rotateGesture = null;
   marquee = null;
   pan = null;
   pinch = null;
@@ -1398,6 +1492,8 @@ function restoreGestureSnapshot() {
     mobileMoveArmed = drag.moveArmedSnapshot;
   } else if (resize?.historySnapshot) {
     state = { ...state, ...resize.historySnapshot };
+  } else if (rotateGesture?.historySnapshot) {
+    state = { ...state, ...rotateGesture.historySnapshot };
   } else if (marquee) {
     selectionKeys = getRolledBackSelection(marquee.baseSelection);
     const primary = selectedEntries().at(-1);
@@ -1529,7 +1625,7 @@ function finishPointerContact(event) {
     if (wasTap) clearSelection();
     return true;
   }
-  if (!activePointers.size && !drag && !resize && !marquee) gestureMode = 'idle';
+  if (!activePointers.size && !drag && !resize && !rotateGesture && !marquee) gestureMode = 'idle';
   return false;
 }
 
@@ -1695,6 +1791,58 @@ function finishEntityPress(event) {
     pendingFocus = { kind: 'context-menu' };
   }
   return true;
+}
+
+function startItemRotation(event, id) {
+  if (event.button !== undefined && event.button !== 0) return;
+  if (!beginPointerContact(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const item = state.items.find((entry) => entry.id === id);
+  if (!item) return;
+  rotateGesture = {
+    id,
+    origin: { ...item },
+    startPointer: svgPoint(event),
+    hasMoved: false,
+    historySnapshot: layoutSnapshot(),
+  };
+  gestureMode = 'rotate';
+  dismissMobileContextMenuForGesture();
+  captureActivePointers(event);
+}
+
+function moveItemRotation(event) {
+  if (!rotateGesture) return;
+  const point = svgPoint(event);
+  const nextRotation = rotationFromPointer(
+    { x: rotateGesture.origin.x, y: rotateGesture.origin.y },
+    rotateGesture.origin.rotation,
+    rotateGesture.startPointer,
+    point,
+    event.shiftKey ? 15 : 1,
+  );
+  rotateGesture.hasMoved ||= nextRotation !== rotateGesture.origin.rotation;
+  state = {
+    ...state,
+    items: state.items.map((item) => item.id === rotateGesture.id
+      ? { ...item, rotation: nextRotation }
+      : item),
+  };
+  syncRotatePreview();
+}
+
+function finishItemRotation() {
+  if (!rotateGesture) return;
+  const previous = rotateGesture.historySnapshot;
+  const changed = rotateGesture.hasMoved;
+  rotateGesture = null;
+  gestureMode = activePointers.size ? 'idle-await-release' : 'idle';
+  if (changed) {
+    commitHistory(previous);
+    saveState();
+  }
+  render();
 }
 
 function startResize(event, kind, id, handle) {
@@ -1935,6 +2083,7 @@ function resizeHandlesMarkup(entity, kind) {
   const halfDepth = kind === 'item' ? entity.depth / 2 : entity.depth;
   const originX = kind === 'item' ? 0 : entity.x;
   const originY = kind === 'item' ? 0 : entity.y;
+  const radius = isMobileLayout() ? 13 : 8;
   const positions = kind === 'item'
     ? {
         nw: [-halfWidth, -halfDepth], n: [0, -halfDepth], ne: [halfWidth, -halfDepth],
@@ -1947,15 +2096,29 @@ function resizeHandlesMarkup(entity, kind) {
         s: [originX + halfWidth / 2, originY + halfDepth], sw: [originX, originY + halfDepth],
         w: [originX, originY + halfDepth / 2],
       };
-  return Object.keys(RESIZE_DIRECTIONS).map((handle) => {
+  const frame = kind === 'item'
+    ? `<rect class="transform-bounds" x="${-halfWidth}" y="${-halfDepth}" width="${entity.width}" height="${entity.depth}" />`
+    : `<rect class="transform-bounds" x="${entity.x}" y="${entity.y}" width="${entity.width}" height="${entity.depth}" />`;
+  const handles = Object.keys(RESIZE_DIRECTIONS).map((handle) => {
     const [x, y] = positions[handle];
-    return `<circle class="resize-hit-target handle-${handle}" cx="${x}" cy="${y}" r="${isMobileLayout() ? 13 : 8}"
+    return `<circle class="resize-hit-target handle-${handle}" cx="${x}" cy="${y}" r="${radius}"
       fill="none" stroke="transparent" stroke-width="44" vector-effect="non-scaling-stroke" pointer-events="stroke"
       data-resize-kind="${kind}" data-resize-id="${entity.id}" data-resize-handle="${handle}"></circle>
-    <circle class="resize-handle handle-${handle}" cx="${x}" cy="${y}" r="${isMobileLayout() ? 13 : 8}"
+    <circle class="resize-handle handle-${handle}" cx="${x}" cy="${y}" r="${radius}"
       data-resize-kind="${kind}" data-resize-id="${entity.id}" data-resize-handle="${handle}">
       <title>${handle} 방향 크기 조절</title></circle>`;
   }).join('');
+  if (kind !== 'item') return `${frame}${handles}`;
+  const rotateY = -halfDepth - (isMobileLayout() ? 54 : 42);
+  return `${frame}${handles}
+    <line class="item-rotate-stem" x1="0" y1="${-halfDepth}" x2="0" y2="${rotateY}" />
+    <g class="item-rotate-control" data-item-rotate="${entity.id}" transform="translate(0 ${rotateY})"
+      role="slider" tabindex="0" aria-label="${escapeHtml(entity.name)} 회전 각도" aria-valuemin="0" aria-valuemax="359"
+      aria-valuenow="${Math.round(entity.rotation)}" aria-valuetext="${Math.round(entity.rotation)}도">
+      <circle class="item-rotate-hit" r="${radius}"></circle>
+      <circle class="item-rotate-handle" r="${radius}"></circle>
+      <text y="4">↻</text><title>드래그하여 회전 · Shift를 누르면 15도 단위</title>
+    </g>`;
 }
 
 function structureHandlesMarkup(entity) {
@@ -1967,7 +2130,8 @@ function structureHandlesMarkup(entity) {
     <circle class="resize-handle structure-endpoint" cx="${x}" cy="0" r="${radius}"
       data-resize-kind="structure" data-resize-id="${entity.id}" data-resize-handle="${handle}">
       <title>${handle === 'start' ? '시작점' : '끝점'}을 움직여 ${entity.type === 'wall' ? '벽 길이' : `${STRUCTURE_LABELS[entity.type]} 너비`} 조절</title></circle>`;
-  return `${endpoint('start', -half)}${endpoint('end', half)}
+  return `<line class="structure-transform-bounds" x1="${-half}" y1="0" x2="${half}" y2="0" />
+    ${endpoint('start', -half)}${endpoint('end', half)}
     <g class="structure-rotate-control" data-structure-rotate="${entity.id}" transform="translate(0 -42)"
       role="button" tabindex="0" aria-label="${STRUCTURE_LABELS[entity.type]} 90도 회전">
       <circle class="structure-rotate-hit" r="${radius}"></circle>
@@ -2141,6 +2305,14 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
       </g>
     </g>`;
   }).join('');
+  const groupBoundsMarkup = selectionKeys.size > 1 ? (() => {
+    const selectedBounds = selectedEntries().map(({ kind, entity }) => (
+      kind === 'zone' ? zoneBounds(entity) : kind === 'item' ? itemBounds(entity) : structureBounds(entity)
+    ));
+    const selectedBoundsUnion = unionBounds(selectedBounds);
+    return `<rect class="group-selection-bounds" x="${selectedBoundsUnion.left}" y="${selectedBoundsUnion.top}"
+      width="${selectedBoundsUnion.right - selectedBoundsUnion.left}" height="${selectedBoundsUnion.bottom - selectedBoundsUnion.top}" rx="6" />`;
+  })() : '';
   const resizeOverlay = selectedZone
     ? `<g class="resize-overlay">${resizeHandlesMarkup(selectedZone, 'zone')}</g>`
     : selectedItem
@@ -2159,7 +2331,7 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
   return `<svg id="plan-canvas" class="plan-svg" viewBox="${viewBox}" tabindex="0" aria-label="다중 공간 가구 배치도">
     <defs><pattern id="grid" width="${GRID_CM}" height="${GRID_CM}" patternUnits="userSpaceOnUse"><path d="M ${GRID_CM} 0 L 0 0 0 ${GRID_CM}" fill="none" stroke="#d7d3c9" stroke-width="0.7" /></pattern></defs>
     <rect class="grid-background" x="${canvasViewBox.left}" y="${canvasViewBox.top}" width="${canvasViewBox.width}" height="${canvasViewBox.height}" fill="url(#grid)" />
-    ${zones}<g class="structural-walls">${automaticWalls}</g>${spaceOutlines}${items}${structures}${guideMarkup}${resizeOverlay}${marqueeMarkup}
+    ${zones}<g class="structural-walls">${automaticWalls}</g>${spaceOutlines}${items}${structures}${groupBoundsMarkup}${guideMarkup}${resizeOverlay}${marqueeMarkup}
   </svg>`;
 }
 
@@ -2252,7 +2424,10 @@ function renderInspector(entity) {
       <label>Y 위치 <span>cm</span><input type="number" step="10" data-item-field="y" value="${Math.round(entity.y)}" /></label>
     </div>
     <label class="color-field">가구 색상<input type="color" data-item-field="color" value="${entity.color}" /></label>
-    <div class="rotation-row"><span>방향</span><strong>${entity.rotation}°</strong><button id="rotate-item" type="button">↻ 90° 회전</button></div>
+    <div class="rotation-row">
+      <label>회전 각도 <span>°</span><input type="number" min="0" max="359" step="1" data-item-field="rotation" value="${Math.round(entity.rotation)}" /></label>
+      <button id="rotate-item" type="button">↻ 90° 회전</button>
+    </div>
     <button class="danger-button" data-delete-selection type="button">이 가구 삭제</button>`;
 }
 
@@ -2436,10 +2611,10 @@ function render() {
         <div class="view-tabs"><button class="active" type="button">2D 편집</button><button id="open-walkthrough" type="button">3D 1인칭</button></div>
       </div>
       <div class="canvas-actions">
-        <span>마우스 휠로 확대 · Shift 클릭이나 영역 드래그로 다중 선택 · 가까운 경계선에 맞춰 이동</span>
+        <span>본체를 끌어 이동 · 점으로 크기 조절 · 상단 손잡이로 가구 회전 · Shift 클릭으로 다중 선택</span>
         <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="clear-furniture" type="button">가구 비우기</button></div>
       </div>
-      <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}</div>
+      <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderTransformHud()}</div>
       <div class="stats-bar"><div><span>집 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span>바닥 점유</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 검사</span><strong>${warningCount ? `${warningCount}개 확인` : '정상'}</strong></div></div>
       <div class="legend"><span><i class="collision-dot"></i>가구 3D 충돌</span><span><i class="height-dot"></i>공간 높이 초과</span><span><i class="outside-dot"></i>집 밖 배치</span><span><i class="zone-dot"></i>공간 중복</span></div>
     </section>
@@ -2472,6 +2647,10 @@ function focusPendingTarget() {
   if (!pendingFocus) return;
   const focusRequest = pendingFocus;
   pendingFocus = null;
+  if (focusRequest.kind === 'item-rotate') {
+    document.querySelector(`[data-item-rotate="${focusRequest.id}"]`)?.focus();
+    return;
+  }
   const selector = {
     'panel-heading': '#inspector-heading',
     'context-menu': '[data-context-action="move"]',
@@ -2716,6 +2895,27 @@ function bindEvents() {
   document.querySelectorAll('[data-resize-handle]').forEach((node) => node.addEventListener('pointerdown', (event) => {
     startResize(event, node.dataset.resizeKind, node.dataset.resizeId, node.dataset.resizeHandle);
   }));
+  document.querySelectorAll('[data-item-rotate]').forEach((node) => node.addEventListener('pointerdown', (event) => {
+    startItemRotation(event, node.dataset.itemRotate);
+  }));
+  document.querySelectorAll('[data-item-rotate]').forEach((node) => node.addEventListener('keydown', (event) => {
+    const degrees = {
+      ArrowLeft: -15,
+      ArrowDown: -15,
+      ArrowRight: 15,
+      ArrowUp: 15,
+      Enter: 15,
+      ' ': 15,
+    }[event.key];
+    if (degrees === undefined && !['Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const item = state.items.find((entry) => entry.id === node.dataset.itemRotate);
+    if (!item) return;
+    if (event.key === 'Home') rotateItemBy(item.id, -item.rotation);
+    else if (event.key === 'End') rotateItemBy(item.id, 359 - item.rotation);
+    else rotateItemBy(item.id, degrees);
+  }));
   document.querySelectorAll('[data-structure-rotate]').forEach((node) => node.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -2902,7 +3102,8 @@ document.addEventListener('pointermove', (event) => {
     movePinch();
   } else if (gestureMode === 'pan') {
     movePan(event);
-  } else if (resize) moveResize(event);
+  } else if (rotateGesture) moveItemRotation(event);
+  else if (resize) moveResize(event);
   else if (drag) moveDrag(event);
   else if (marquee) moveMarquee(event);
 });
@@ -2914,25 +3115,26 @@ document.addEventListener('pointerup', (event) => {
     return;
   }
   if (handledContact) return;
-  if (resize) finishResize();
+  if (rotateGesture) finishItemRotation();
+  else if (resize) finishResize();
   else if (drag) finishDrag();
   else if (marquee) finishMarquee();
 });
 document.addEventListener('pointercancel', (event) => {
   cancelEntityPress();
   activePointers.delete(event.pointerId);
-  if (drag || resize || marquee || pan || pinch) cancelTemporaryGesture();
+  if (drag || resize || rotateGesture || marquee || pan || pinch) cancelTemporaryGesture();
   else if (!activePointers.size) gestureMode = 'idle';
 });
 document.addEventListener('lostpointercapture', (event) => {
   cancelEntityPress();
   activePointers.delete(event.pointerId);
-  if (drag || resize || marquee || pan || pinch) cancelTemporaryGesture();
+  if (drag || resize || rotateGesture || marquee || pan || pinch) cancelTemporaryGesture();
   else if (!activePointers.size) gestureMode = 'idle';
 });
 
 mobileLayoutQuery.addEventListener('change', () => {
-  if (drag || resize || marquee || pan || pinch || entityPress) {
+  if (drag || resize || rotateGesture || marquee || pan || pinch || entityPress) {
     activePointers.clear();
     cancelTemporaryGesture();
     return;

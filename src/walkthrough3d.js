@@ -299,8 +299,8 @@ function createFurnitureNameTag(item, height) {
     transparent: true,
     depthWrite: false,
   }));
-  sprite.position.set(0, height + 0.16, 0);
-  sprite.scale.set(Math.min(1.4, Math.max(0.75, label.length * 0.1)), 0.21, 1);
+  sprite.position.set(0, height + 0.13, 0);
+  sprite.scale.set(Math.min(1.05, Math.max(0.58, label.length * 0.075)), 0.16, 1);
   sprite.userData = { type: 'furniture-label', id: item.id, name: item.name };
   sprite.renderOrder = 2;
   return sprite;
@@ -770,6 +770,8 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   activeCleanup?.();
 
   const layout = getLayoutBounds(zones);
+  const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+  const openingPromptCopy = coarsePointer ? '탭하여' : '클릭 또는 E로';
   const overlay = document.createElement('section');
   overlay.className = 'walkthrough-overlay';
   overlay.dataset.walkthrough = 'true';
@@ -787,6 +789,8 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
         <em></em>
         <span><b class="mouse-icon"></b><small>드래그 시야 · 문/창 클릭</small></span>
         <em></em>
+        <span><kbd>E</kbd><small>문·창 열기</small></span>
+        <em></em>
         <span><kbd>ESC</kbd><small>일시 정지</small></span>
       </div>
       <div class="walkthrough-touch-controls" aria-label="모바일 3D 컨트롤">
@@ -796,7 +800,8 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
         </button>
         <div class="walkthrough-look-guide" data-look-zone aria-hidden="true"><i></i><span>오른쪽 드래그<br><b>시야 이동</b></span></div>
       </div>
-      <div class="walkthrough-door-prompt" aria-hidden="true"><span data-opening-prompt>문이나 창을 탭하여</span><b>열기 · 닫기</b></div>
+      <div class="walkthrough-door-prompt" aria-hidden="true"><span data-opening-prompt>문이나 창을 ${openingPromptCopy}</span><b>열기 · 닫기</b></div>
+      <div class="sr-only" data-opening-status role="status" aria-live="polite"></div>
     </div>
     <div class="walkthrough-crosshair" aria-hidden="true"><i></i></div>
     <div class="walkthrough-room-toast" data-room-toast><span>NOW ENTERING</span><strong></strong></div>
@@ -827,6 +832,7 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   const stage = overlay.querySelector('[data-walkthrough-stage]');
   const menu = overlay.querySelector('[data-walkthrough-menu]');
   const status = overlay.querySelector('[data-walkthrough-status]');
+  const openingStatus = overlay.querySelector('[data-opening-status]');
   const currentRoom = overlay.querySelector('[data-current-room]');
   const mapPlayer = overlay.querySelector('[data-map-player]');
   const roomToast = overlay.querySelector('[data-room-toast]');
@@ -867,6 +873,11 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   ];
   let doorLeafSegments = getDoorLeafSegments(doors);
   const openingControllers = buildScene(scene, zones, items, sceneStructures, wallHeight, center);
+  const furnitureLabels = [];
+  scene.traverse((object) => {
+    if (object.userData.type === 'furniture-label') furnitureLabels.push(object);
+  });
+  const labelWorldPosition = new THREE.Vector3();
   const raycaster = new THREE.Raycaster();
   const rayPointer = new THREE.Vector2();
   scene.add(new THREE.HemisphereLight(0xe7f0f4, 0x5f574c, 1.2));
@@ -911,6 +922,7 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
   let pointerStart = null;
   let stepPhase = 0;
   let currentRoomId = null;
+  let announcedOpeningId = null;
   let toastTimer = 0;
   let bumpTimer = 0;
 
@@ -1169,7 +1181,13 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
     const centeredOpening = openingAt(canvasRect.left + canvasRect.width / 2, canvasRect.top + canvasRect.height / 2);
     overlay.classList.toggle('can-use-door', Boolean(centeredOpening));
     if (centeredOpening) {
-      openingPrompt.textContent = `${centeredOpening.kind === 'window' ? '창을' : '문을'} 탭하여`;
+      const targetLabel = centeredOpening.kind === 'window' ? '창' : '문';
+      const openingId = `${centeredOpening.kind}:${centeredOpening.structure.id}`;
+      openingPrompt.textContent = `${targetLabel}을 ${openingPromptCopy}`;
+      if (announcedOpeningId !== openingId) {
+        announcedOpeningId = openingId;
+        openingStatus.textContent = `${targetLabel}을 열거나 닫을 수 있습니다. ${coarsePointer ? '화면 중앙을 탭하세요.' : '클릭하거나 E 키를 누르세요.'}`;
+      }
       if (centeredOpening.kind === 'window') {
         overlay.dataset.targetWindowId = centeredOpening.structure.id;
         delete overlay.dataset.targetDoorId;
@@ -1178,10 +1196,20 @@ export function openWalkthrough({ zones, items, structures = [], wallHeight = 24
         delete overlay.dataset.targetWindowId;
       }
     } else {
-      openingPrompt.textContent = '문이나 창을 탭하여';
+      openingPrompt.textContent = `문이나 창을 ${openingPromptCopy}`;
+      if (announcedOpeningId !== null) {
+        announcedOpeningId = null;
+        openingStatus.textContent = '';
+      }
       delete overlay.dataset.targetDoorId;
       delete overlay.dataset.targetWindowId;
     }
+    furnitureLabels.forEach((label) => {
+      const distance = camera.position.distanceTo(label.getWorldPosition(labelWorldPosition));
+      const distanceOpacity = Math.max(0, Math.min(1, (distance - 0.7) / 0.9));
+      label.material.opacity = centeredOpening ? Math.min(distanceOpacity, 0.2) : distanceOpacity;
+      label.visible = label.material.opacity > 0.04;
+    });
     renderer.render(scene, camera);
   };
 

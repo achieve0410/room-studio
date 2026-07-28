@@ -26,7 +26,7 @@ Mobile editing:
 ## Highlights
 
 - Compose L-shaped and other orthogonal spaces from multiple rectangular parts.
-- Move, resize, rotate, group, align, and multi-select rooms, furniture, walls, doors, and windows.
+- Move, resize, continuously rotate, group, align, and multi-select with on-canvas handles and live transform feedback.
 - Edit room ceiling height and furniture elevation to validate vertical fit.
 - Use swing doors, two-panel bypass sliding doors, and sash-style sliding windows in both 2D and 3D.
 - Explore the result through a collision-aware first-person 3D walkthrough.
