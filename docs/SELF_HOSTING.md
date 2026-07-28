@@ -15,6 +15,8 @@ Serve the contents of `dist/` from any static HTTPS host. Configure SPA fallback
 The CSP meta tag in `index.html` is a portable baseline. The production host should also send `Content-Security-Policy` with `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy`, and HSTS. Header-based CSP is authoritative and can enforce directives, such as `frame-ancestors`, that browsers ignore in a meta tag.
 GitHub.com Pages does not provide per-site custom response headers. Use a header-capable host or a trusted edge proxy in front of Pages before treating that deployment as production-ready.
 
+The official `https://achieve0410.github.io/room-studio/` demo is intentionally limited to local browser storage. It does not enable Supabase authentication or cloud persistence and should not be used for private or security-sensitive floor plans.
+
 ## Optional Supabase deployment
 
 1. Create a separate Supabase project for the deployment.
