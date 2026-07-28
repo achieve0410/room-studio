@@ -29,6 +29,7 @@ import {
   resizeItemFromHandle,
   resizeStructureFromEndpoint,
   resizeZoneFromHandle,
+  rotationFromPointer,
   rotatedSize,
   snap,
   splitWallSegment,
@@ -58,6 +59,17 @@ test('snap rounds coordinates to the nearest grid unit', () => {
 test('rotatedSize swaps footprint dimensions at quarter turns', () => {
   assert.deepEqual(rotatedSize(item), { width: 120, depth: 60 });
   assert.deepEqual(rotatedSize({ ...item, rotation: 90 }), { width: 60, depth: 120 });
+  const diagonal = rotatedSize({ ...item, rotation: 45 });
+  assertClose(diagonal.width, 127.2792206136);
+  assertClose(diagonal.depth, 127.2792206136);
+});
+
+test('rotationFromPointer tracks continuous turns, snapping, and wraparound', () => {
+  const center = { x: 100, y: 100 };
+  const start = { x: 100, y: 40 };
+  assert.equal(rotationFromPointer(center, 0, start, { x: 160, y: 100 }), 90);
+  assert.equal(rotationFromPointer(center, 350, start, { x: 109, y: 40 }), 359);
+  assert.equal(rotationFromPointer(center, 0, start, { x: 149, y: 51 }, 15), 45);
 });
 
 test('resizeZoneFromHandle keeps the opposite edges fixed', () => {

@@ -2,6 +2,17 @@
 
 All notable user-facing changes are documented in this file. Room Studio follows [Semantic Versioning](https://semver.org/) for tagged releases.
 
+## [Unreleased]
+
+### Added
+
+- PPT-style 2D selection frames, 44px resize and continuous rotation handles, exact angle input, and live position/size/angle feedback.
+- A shared selection boundary that makes mobile and desktop group movement easier to understand.
+
+### Changed
+
+- 3D navigation prompts now match touch or keyboard/mouse input, respect device safe areas, and fade nearby custom-furniture labels when they would obscure an opening interaction.
+
 ## [1.0.0] - 2026-07-27
 
 ### Added

@@ -14,11 +14,27 @@ export function snap(value, grid = GRID_CM) {
   return Math.round(value / grid) * grid;
 }
 
+export function normalizeAngle(value) {
+  const normalized = Number(value) % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+}
+
+export function rotationFromPointer(center, originRotation, startPointer, currentPointer, snapDegrees = 1) {
+  const angle = (point) => Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI;
+  const delta = ((angle(currentPointer) - angle(startPointer) + 540) % 360) - 180;
+  const rotation = normalizeAngle(originRotation + delta);
+  return normalizeAngle(Math.round(rotation / snapDegrees) * snapDegrees);
+}
+
 export function rotatedSize(item) {
-  const quarterTurn = Math.abs((item.rotation ?? 0) % 180) === 90;
-  return quarterTurn
-    ? { width: item.depth, depth: item.width }
-    : { width: item.width, depth: item.depth };
+  const radians = normalizeAngle(item.rotation ?? 0) * Math.PI / 180;
+  const cosine = Math.abs(Math.cos(radians));
+  const sine = Math.abs(Math.sin(radians));
+  const clean = (value) => Number(value.toFixed(10));
+  return {
+    width: clean(item.width * cosine + item.depth * sine),
+    depth: clean(item.width * sine + item.depth * cosine),
+  };
 }
 
 export function itemBounds(item) {

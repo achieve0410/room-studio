@@ -883,6 +883,37 @@ try {
     'undo restores original dimensions; second touch preserves storage/history and selected item',
   ));
 
+  const mobileRotationBefore = await evaluate(`(() => {
+    const item = document.querySelector('.plan-item.is-selected');
+    const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.find(({ id }) => id === item.dataset.itemId);
+    return { id: saved.id, rotation: saved.rotation };
+  })()`);
+  const mobileRotationCenter = await centerOf('.plan-item.is-selected');
+  const mobileRotationHandle = await centerOf('[data-item-rotate]');
+  const mobileRotationEnd = { x: mobileRotationCenter.x + 62, y: mobileRotationCenter.y };
+  await dispatchTouch('touchStart', [touchPoint(66, mobileRotationHandle)]);
+  await dispatchTouch('touchMove', [touchPoint(66, mobileRotationEnd)]);
+  const mobileRotationHud = await evaluate(`(() => {
+    const hud = document.querySelector('[data-transform-hud]');
+    return { mode: hud?.dataset.mode, label: hud?.querySelector('[data-transform-label]')?.textContent, detail: hud?.querySelector('[data-transform-secondary]')?.textContent };
+  })()`);
+  await dispatchTouch('touchEnd', []);
+  await doubleRaf();
+  const mobileRotationAfter = await evaluate(`(() => {
+    const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.find(({ id }) => id === ${JSON.stringify(mobileRotationBefore.id)});
+    return { rotation: saved.rotation, undoEnabled: !document.querySelector('#undo-action').disabled };
+  })()`);
+  report.interactionAssertions.push(assertion(
+    'B real CDP touch rotation handle updates the live HUD and saves a continuous angle',
+    mobileRotationAfter.rotation !== mobileRotationBefore.rotation
+      && mobileRotationAfter.rotation > 45 && mobileRotationAfter.rotation < 135
+      && mobileRotationAfter.undoEnabled
+      && mobileRotationHud.mode === 'rotate' && mobileRotationHud.label === '회전 중'
+      && mobileRotationHud.detail?.includes('°'),
+    { transport: 'Input.dispatchTouchEvent', before: mobileRotationBefore, hud: mobileRotationHud, after: mobileRotationAfter },
+    'dragging the selected item rotation handle shows rotation feedback, saves roughly a quarter turn, and enables undo',
+  ));
+
   await reloadViewport(pageUrl, 390, 844, true);
   await mouseClick(await centerOf('#multi-select-action'));
   const mobileGroupDrag = await evaluate(`(async () => {
@@ -1075,6 +1106,8 @@ try {
       const itemVisual = document.querySelector('.item-shape > *');
       const resizeHit = document.querySelector('.resize-hit-target');
       const resizeVisual = resizeHit?.nextElementSibling;
+      const rotateHit = document.querySelector('.item-rotate-hit');
+      const rotateVisual = document.querySelector('.item-rotate-handle');
       const read = (hit, visual) => {
         const style = hit ? getComputedStyle(hit) : null;
         return {
@@ -1085,7 +1118,7 @@ try {
           vectorEffect: style?.vectorEffect ?? null,
         };
       };
-      return { label, zone: read(zoneHit, zoneVisual), item: read(itemHit, itemVisual), resize: read(resizeHit, resizeVisual) };
+      return { label, zone: read(zoneHit, zoneVisual), item: read(itemHit, itemVisual), resize: read(resizeHit, resizeVisual), rotate: read(rotateHit, rotateVisual) };
     };
     const results = [inspect(document.querySelector('#zoom-level').textContent)];
     document.querySelector('#zoom-out').click();
@@ -1097,14 +1130,14 @@ try {
   })()`);
   const validHitTarget = ({ exists, separateVisibleNode, strokeWidthValue, vectorEffect }) => exists && separateVisibleNode && strokeWidthValue === 44 && vectorEffect === 'non-scaling-stroke';
   report.interactionAssertions.push(assertion(
-    'B SVG zone item and resize hit targets stay separate 44px non-scaling strokes at 100 50 and 600 percent zoom',
+    'B SVG zone item resize and rotation hit targets stay separate 44px non-scaling strokes at 100 50 and 600 percent zoom',
     hitTargetEvidence.zooms.map(({ label }) => label).join(',') === '100%,50%,600%'
-      && hitTargetEvidence.zooms.every(({ zone, item, resize }) => [zone, item, resize].every(validHitTarget))
+      && hitTargetEvidence.zooms.every(({ zone, item, resize, rotate }) => [zone, item, resize, rotate].every(validHitTarget))
       && [hitTargetEvidence.halo.normal, hitTargetEvidence.halo.selected].every((probe) => probe?.outsideVisibleFill && probe.resolvesZoneHitTarget)
       && hitTargetEvidence.halo.normal.zoneId === hitTargetEvidence.halo.selected.zoneId
       && !hitTargetEvidence.halo.normal.selected && hitTargetEvidence.halo.selected.selected,
     hitTargetEvidence,
-    '100%, 50%, and 600% each use separate visible zone/item/resize nodes with computed stroke-width 44 and non-scaling-stroke; normal and selected 10px halo probes resolve the same zone hit target',
+    '100%, 50%, and 600% each use separate visible zone/item/resize/rotation nodes with computed stroke-width 44 and non-scaling-stroke; normal and selected 10px halo probes resolve the same zone hit target',
   ));
 
   await reloadViewport(pageUrl, 768, 1024, true);
@@ -1199,6 +1232,8 @@ try {
         lookGuideVisible: visible(document.querySelector('[data-look-zone]')),
         directionConeVisible: visible(document.querySelector('.walkthrough-view-cone')),
         keyboardHudVisible: visible(document.querySelector('[data-walkthrough-controls]')),
+        keyboardHudText: document.querySelector('[data-walkthrough-controls]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null,
+        openingPromptText: document.querySelector('[data-opening-prompt]')?.textContent ?? null,
         canvasLabel: document.querySelector('[data-walkthrough-canvas]')?.getAttribute('aria-label') ?? null,
         canvasFocused: document.activeElement === document.querySelector('[data-walkthrough-canvas]'),
         menuInert: document.querySelector('[data-walkthrough-menu]')?.inert ?? false,
@@ -1210,7 +1245,7 @@ try {
   }
 
   // C: coarse-pointer 3D portrait and landscape gates.
-  for (const [width, height] of [[600, 800], [844, 390]]) {
+  for (const [width, height] of [[390, 844], [844, 390]]) {
     await reloadViewport(pageUrl, width, height, true);
     const errorStart = browserErrors.length;
     await openWalkthrough();
@@ -1220,6 +1255,7 @@ try {
       initial.joystick?.visible && initial.joystick.width >= 44 && initial.joystick.height >= 44
         && initial.exit?.width >= 44 && initial.exit.height >= 44
         && initial.lookGuideVisible && initial.directionConeVisible && !initial.keyboardHudVisible
+        && initial.openingPromptText?.includes('탭하여')
         && initial.canvasFocused && initial.menuInert && initial.menuAriaHidden === 'true',
       initial,
       'joystick/right-look/direction cone visible, keyboard HUD hidden, and focus moved to canvas while menu is inert',
@@ -1352,6 +1388,27 @@ try {
     'viewBox and zoom label both change',
   ));
 
+  await mouseClick(await centerOf('.plan-item', 0));
+  const desktopSingleDragBefore = await evaluate(`(() => {
+    const item = document.querySelector('.plan-item.is-selected');
+    const match = item.getAttribute('transform').match(/translate\\(([-\\d.]+)[ ,]+([-\\d.]+)\\).*rotate\\(([-\\d.]+)/);
+    return { id: item.dataset.itemId, x: Number(match[1]), y: Number(match[2]), rotation: Number(match[3]) };
+  })()`);
+  const desktopSingleDragStart = await centerOf('.plan-item.is-selected');
+  await mouseDrag(desktopSingleDragStart, { x: desktopSingleDragStart.x + 58, y: desktopSingleDragStart.y + 36 });
+  const desktopSingleDragAfter = await evaluate(`(() => {
+    const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.find(({ id }) => id === ${JSON.stringify(desktopSingleDragBefore.id)});
+    return { x: saved.x, y: saved.y, rotation: saved.rotation, undoEnabled: !document.querySelector('#undo-action').disabled };
+  })()`);
+  report.interactionAssertions.push(assertion(
+    'D desktop single item drag updates saved coordinates without changing rotation',
+    (desktopSingleDragAfter.x !== desktopSingleDragBefore.x || desktopSingleDragAfter.y !== desktopSingleDragBefore.y)
+      && desktopSingleDragAfter.rotation === desktopSingleDragBefore.rotation
+      && desktopSingleDragAfter.undoEnabled,
+    { transport: 'Input.dispatchMouseEvent drag', before: desktopSingleDragBefore, after: desktopSingleDragAfter },
+    'saved x/y change, rotation stays fixed, and undo is enabled',
+  ));
+
   await mouseClick(await centerOf('.plan-item:not(.is-selected)', 0), 8);
   await mouseClick(await centerOf('.plan-item:not(.is-selected)', 0), 8);
   const groupBefore = await evaluate(`Object.fromEntries([...document.querySelectorAll('.plan-item.is-selected')].map((node) => [node.dataset.itemId, node.getAttribute('transform')]))`);
@@ -1460,6 +1517,40 @@ try {
       && afterRedo.width === resizeAfter.width && afterRedo.depth === resizeAfter.depth,
     { resizeBefore, resizeAfter, afterUndo, afterRedo },
     'undo equals before dimensions; redo equals resized dimensions',
+  ));
+
+  await mouseClick(await centerOf(`[data-item-id="${resizeBefore.id}"]`));
+  const exactRotation = await evaluate(`(() => {
+    const input = document.querySelector('[data-item-field="rotation"]');
+    input.value = '37';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('blur', { bubbles: true }));
+    const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.find(({ id }) => id === ${JSON.stringify(resizeBefore.id)});
+    return {
+      saved: saved.rotation,
+      transform: document.querySelector('[data-item-id="' + CSS.escape(saved.id) + '"]').getAttribute('transform'),
+      hud: document.querySelector('[data-transform-secondary]')?.textContent ?? null,
+    };
+  })()`);
+  report.interactionAssertions.push(assertion(
+    'D desktop exact rotation input updates saved geometry and canvas feedback',
+    exactRotation.saved === 37 && exactRotation.transform.includes('rotate(37)') && exactRotation.hud?.includes('37°'),
+    exactRotation,
+    { saved: 37, transform: 'rotate(37)', hud: '37°' },
+  ));
+  const rotationSliderEnd = await evaluate(`(() => {
+    const control = document.querySelector('[data-item-rotate]');
+    control.focus();
+    control.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.find(({ id }) => id === ${JSON.stringify(resizeBefore.id)});
+    const nextControl = document.querySelector('[data-item-rotate]');
+    return { saved: saved.rotation, ariaValueNow: nextControl?.getAttribute('aria-valuenow'), focused: document.activeElement === nextControl };
+  })()`);
+  report.interactionAssertions.push(assertion(
+    'D item rotation slider End key reaches and announces its maximum',
+    rotationSliderEnd.saved === 359 && rotationSliderEnd.ariaValueNow === '359' && rotationSliderEnd.focused,
+    rotationSliderEnd,
+    { saved: 359, ariaValueNow: '359', focused: true },
   ));
 
   const automaticDoorCount = await evaluate(`document.querySelectorAll('.plan-door').length`);
@@ -1701,6 +1792,7 @@ try {
     'D desktop 3D hides mobile controls and shows keyboard HUD',
     !desktop3dUi.joystick?.visible && !desktop3dUi.lookGuideVisible && desktop3dUi.keyboardHudVisible
       && desktop3dUi.directionConeVisible && desktop3dUi.canvasLabel?.includes('문이나 창을 클릭')
+      && desktop3dUi.keyboardHudText?.includes('E') && desktop3dUi.openingPromptText?.includes('클릭 또는 E로')
       && desktop3dUi.canvasFocused && desktop3dUi.menuInert && desktop3dUi.menuAriaHidden === 'true',
     desktop3dUi,
     { joystickVisible: false, keyboardHudVisible: true, directionConeVisible: true, canvasFocused: true, menuInert: true, menuAriaHidden: 'true' },
