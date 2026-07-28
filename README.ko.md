@@ -1,25 +1,51 @@
-# Room Studio
+<h1 align="center">Room Studio</h1>
 
-[English](README.md)
-[![CI](https://github.com/achieve0410/room-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/achieve0410/room-studio/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![공개 데모](https://img.shields.io/badge/demo-open-DA7956.svg)](https://achieve0410.github.io/room-studio/)
+<p align="center">
+  <a href="https://github.com/achieve0410/room-studio/actions/workflows/ci.yml"><img src="https://github.com/achieve0410/room-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0 라이선스"></a>
+  <a href="https://achieve0410.github.io/room-studio/"><img src="https://img.shields.io/badge/demo-open-DA7956.svg" alt="공개 데모 열기"></a>
+</p>
+
+<p align="center">
+  <strong>2D로 그리고, 실제 크기와 높이를 검증하고, 그대로 3D에서 걸어보세요.</strong>
+</p>
+<p align="center">
+  <a href="https://achieve0410.github.io/room-studio/"><strong>공개 데모 바로 열기 →</strong></a>
+  ·
+  <a href="#실행">로컬에서 실행</a>
+  ·
+  <a href="README.md">English</a>
+</p>
+<p align="center"><sub>공개 데모는 로그인 없이 현재 브라우저에만 도면을 저장합니다.</sub></p>
 
 여러 직사각형 조각을 하나의 공간으로 합쳐 직교 다각형 평면을 만들고, 공간과 가구의 높이를 함께 확인하는 2D/3D 배치 시뮬레이터입니다.
+
+## 실제 화면으로 살펴보기
+
+아래 이미지는 디자인 목업이 아니라 실제 실행 중인 애플리케이션에서 캡처했습니다. 이미지를 선택하면 원본 크기로 자세히 볼 수 있습니다.
+
+### 1. 도면 위에서 바로 크기 조절·회전
+
+[![크기 조절점과 회전 핸들이 표시된 Room Studio 데스크톱 2D 편집기](docs/images/room-studio-2d.png)](docs/images/room-studio-2d.png)
+
+8방향 크기 조절점, 연속 회전, 실시간 치수, 정렬 가이드, 다중 선택과 정확한 속성 입력을 도면 가까이에서 확인하며 편집합니다.
+
+### 2. 같은 배치를 3D에서 직접 확인
+
+[![미닫이창 조작, 커스텀 가구 이름표와 미니맵이 표시된 Room Studio 1인칭 3D 워크스루](docs/images/room-studio-3d.png)](docs/images/room-studio-3d.png)
+
+도면에 놓은 문과 샷시형 미닫이창을 열고 닫을 수 있으며, 가구 형태·이름표·충돌 범위·공간 전환과 실시간 미니맵을 함께 확인합니다.
+
+### 3. 모바일에서도 편집부터 3D 이동까지
+
+| 터치로 직접 편집 | 여러 대상 함께 선택 | 조이스틱 3D 워크스루 |
+| --- | --- | --- |
+| <a href="docs/images/room-studio-mobile-edit.png"><img src="docs/images/room-studio-mobile-edit.png" alt="크기 조절점과 작업 메뉴가 표시된 Room Studio 모바일 편집 화면" width="260"></a> | <a href="docs/images/room-studio-mobile.png"><img src="docs/images/room-studio-mobile.png" alt="다중 선택 경계와 그룹 작업이 표시된 Room Studio 모바일 편집 화면" width="260"></a> | <a href="docs/images/room-studio-mobile-3d.png"><img src="docs/images/room-studio-mobile-3d.png" alt="조이스틱과 미니맵이 표시된 Room Studio 모바일 3D 화면" width="260"></a> |
+| 선택한 대상을 탭해 이동·회전·그룹·삭제 작업을 바로 엽니다. | 여러 공간과 사물을 선택하고 한 그룹처럼 함께 이동합니다. | 왼쪽 조이스틱으로 이동하고 오른쪽 드래그로 시야를 조절합니다. |
 
 ## 공개 데모
 
 [Room Studio 공개 데모](https://achieve0410.github.io/room-studio/)를 바로 사용할 수 있습니다. 공개 데모에는 Supabase 설정과 로그인 기능이 없으며, 도면은 해당 브라우저의 `localStorage`에만 남습니다. 사이트 데이터를 삭제하면 도면도 삭제되므로 실제 주소나 보안상 민감한 도면은 입력하지 마세요.
-
-## 화면
-
-| 2D 편집기 | 1인칭 3D 워크스루 |
-| --- | --- |
-| ![Room Studio 데스크톱 2D 편집기](docs/images/room-studio-2d.png) | ![Room Studio 1인칭 3D 워크스루](docs/images/room-studio-3d.png) |
-
-모바일 편집 화면:
-
-<img src="docs/images/room-studio-mobile.png" alt="다중 선택 조작이 표시된 Room Studio 모바일 편집기" width="320">
 
 ## 주요 기능
 
