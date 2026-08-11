@@ -8,6 +8,7 @@ import {
   pasteLayoutClipboard,
 } from './layout-tools.js';
 import { parseProjectFile, projectFileName, serializeProjectFile } from './project-file.js';
+import { createDecisionReport, decisionReportFileName } from './project-report.js';
 import {
   alignDoorToWall,
   GRID_CM,
@@ -464,6 +465,41 @@ function exportPortableProject() {
     document.querySelector('[data-project-open]')?.focus();
   } catch (error) {
     setProjectFileFeedback(error.message || '도면 파일을 만들지 못했습니다.', 'error');
+  }
+}
+
+function exportDecisionReport() {
+  try {
+    const collisions = findCollisions(state.items);
+    const outOfBounds = findOutOfBounds(state.items, state.zones);
+    const heightViolations = findHeightViolations(state.items, state.zones, state.wallHeight);
+    const zoneOverlaps = findZoneOverlaps(state.zones);
+    const report = createDecisionReport({
+      projectName: activeProjectName,
+      layout: layoutSnapshot(),
+      metrics: {
+        areaSquareMeters: calculateUnionArea(state.zones) / 10000,
+        coveragePercent: calculateCoverage(state.items, state.zones),
+        warningCounts: {
+          collisions: collisions.size,
+          outOfBounds: outOfBounds.size,
+          height: heightViolations.size,
+          zoneOverlaps: zoneOverlaps.size,
+        },
+      },
+    });
+    const url = URL.createObjectURL(new Blob([report], { type: 'text/html;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = decisionReportFileName(activeProjectName);
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    projectDialogOpen = false;
+    editorNotice = '배치 의사결정 리포트를 내보냈습니다.';
+    render();
+    document.querySelector('[data-project-open]')?.focus();
+  } catch (error) {
+    setProjectFileFeedback(error.message || '의사결정 리포트를 만들지 못했습니다.', 'error');
   }
 }
 
@@ -3193,8 +3229,9 @@ function renderProjectDialog() {
       <button class="cloud-dialog-close" data-project-close type="button" aria-label="프로젝트 파일 창 닫기">×</button>
       <span class="eyebrow">PORTABLE PROJECT</span>
       <h2 id="project-dialog-title">도면 파일</h2>
-      <p>현재 도면을 계정 정보 없이 보관하거나 다른 브라우저로 옮길 수 있습니다. 배경 이미지는 파일 안에 포함됩니다.</p>
+      <p>현재 배치를 사람용 리포트로 공유하거나, 계정 정보 없는 도면 파일로 보관·이동할 수 있습니다.</p>
       <div class="project-file-actions">
+        <button class="project-report-action" data-project-report type="button">의사결정 리포트 받기</button>
         <button data-project-export type="button">현재 도면 내보내기</button>
         <label class="project-file-import" data-project-import-trigger role="button" tabindex="0">도면 파일 가져오기
           <input data-project-import type="file" accept=".json,.roomstudio.json,application/json" />
@@ -3457,6 +3494,7 @@ function bindEvents() {
     render();
     document.querySelector('[data-project-open]')?.focus();
   });
+  document.querySelector('[data-project-report]')?.addEventListener('click', exportDecisionReport);
   document.querySelector('[data-project-export]')?.addEventListener('click', exportPortableProject);
   document.querySelector('[data-project-import]')?.addEventListener('change', async (event) => {
     const [file] = event.target.files;
