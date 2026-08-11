@@ -1,0 +1,28 @@
+Room Studio cycle-0 Git delivery evidence
+Captured: 2026-08-11
+
+RED before delivery
+branch: main
+local: 8da82f9b1c657bde52cee4d262b9fcbae8096504
+origin/main: 381b21997bef57cbe2e3cfe257eeb06b64ac8148
+ahead: 3
+behind: 0
+worktree: clean after terminal research artifacts were removed
+
+Direct push result
+command: git push origin main
+result: REJECTED by protected branch
+required check: CI/Validate application
+
+Protected-branch delivery
+branch: feat/lifecycle-safety-hardening
+pull request: https://github.com/achieve0410/room-studio/pull/19
+required check: CI/Validate application PASS in 7m46s
+merge method: rebase (merge commits are disallowed by repository policy)
+
+GREEN after delivery
+local main: 4fa24ce0d37c2bf16826ff0aa5eb704cd7d2ae85
+origin/main: 4fa24ce0d37c2bf16826ff0aa5eb704cd7d2ae85
+GitHub main: 4fa24ce0d37c2bf16826ff0aa5eb704cd7d2ae85
+pull request state: MERGED
+worktree: clean

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "capturedAt": "2026-08-11",
+  "stage": "baseline",
+  "state": "RED",
+  "threshold": {
+    "total": 80,
+    "dimensionRatio": 0.6,
+    "criticalBlockers": 0
+  },
+  "score": 65,
+  "maximum": 100,
+  "passes": false,
+  "dimensions": [
+    {
+      "id": "core-job",
+      "label": "Core planning job",
+      "score": 22,
+      "maximum": 25,
+      "minimum": 15,
+      "passes": true,
+      "evidence": [
+        "Precise 2D room, furniture, wall, opening, dimension, and background-plan editing",
+        "Collision, bounds, height, overlap, coverage, and walkthrough geometry tests",
+        "First-person, dollhouse, and overhead 3D views"
+      ],
+      "gap": "No decision-ready artifact connects the completed plan to a purchase or consultation decision."
+    },
+    {
+      "id": "activation",
+      "label": "First-session activation",
+      "score": 6,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": false,
+      "evidence": [
+        "Room and furniture presets exist inside the editor",
+        "Portable project import is available from the project dialog"
+      ],
+      "gap": "A new user is not guided to blank, sample, or import paths and must discover the editor unaided."
+    },
+    {
+      "id": "trust-data",
+      "label": "Trust and data lifecycle",
+      "score": 13,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": true,
+      "evidence": [
+        "Local-first persistence and versioned portable files",
+        "Owner-checked cloud RPC and stale-session save guard",
+        "Explicit project and account deletion boundaries",
+        "Persistent professional-review disclaimer"
+      ],
+      "gap": "Cloud conflict recovery and full account export remain roadmap items."
+    },
+    {
+      "id": "decision-output",
+      "label": "Decision output and shareability",
+      "score": 5,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": false,
+      "evidence": [
+        "Portable machine-readable project JSON",
+        "3D PNG snapshot"
+      ],
+      "gap": "There is no self-contained human-readable report with the plan, metrics, warnings, and furniture list."
+    },
+    {
+      "id": "mobile-accessibility",
+      "label": "Mobile usability and accessibility",
+      "score": 8,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "evidence": [
+        "114-assertion mobile browser audit",
+        "Modal focus trap, inert background, Escape restoration, and 44px controls",
+        "Portrait and compact-landscape layouts"
+      ],
+      "gap": "Direct canvas entity operation is not yet screen-reader complete."
+    },
+    {
+      "id": "differentiation",
+      "label": "Differentiation",
+      "score": 7,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "evidence": [
+        "No-login local-first planning",
+        "Privacy-preserving portable data",
+        "Fast centimeter-precise 2D to 3D workflow",
+        "Open-source Apache-2.0 distribution"
+      ],
+      "gap": "The privacy-first advantage is not yet expressed through a distinctive decision deliverable or activation flow."
+    },
+    {
+      "id": "monetization-distribution",
+      "label": "Monetization and distribution readiness",
+      "score": 4,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": false,
+      "evidence": [
+        "Public GitHub Pages demo",
+        "Open-source repository and bilingual documentation"
+      ],
+      "gap": "There is no packaged premium-value outcome, conversion path, or validated pricing surface."
+    }
+  ],
+  "criticalBlockers": [
+    {
+      "id": "missing-decision-artifact",
+      "criterion": "A user cannot export one human-readable artifact that supports a purchase or consultation decision."
+    },
+    {
+      "id": "weak-first-session-activation",
+      "criterion": "A first-time user has no explicit blank, sample, or import choice."
+    }
+  ],
+  "nextIncrement": "Cycle 1: self-contained decision report"
+}

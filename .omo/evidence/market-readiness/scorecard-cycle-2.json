@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "capturedAt": "2026-08-12",
+  "stage": "cycle-2-starter",
+  "state": "GREEN",
+  "threshold": {
+    "total": 80,
+    "dimensionRatio": 0.6,
+    "criticalBlockers": 0
+  },
+  "score": 83,
+  "maximum": 100,
+  "passes": true,
+  "dimensions": [
+    {
+      "id": "core-job",
+      "score": 23,
+      "maximum": 25,
+      "minimum": 15,
+      "passes": true,
+      "deltaFromBaseline": 1
+    },
+    {
+      "id": "activation",
+      "score": 12,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": true,
+      "deltaFromBaseline": 6,
+      "evidence": "Clean profiles receive focused sample, blank, and import paths; existing layouts are not prompted or overwritten."
+    },
+    {
+      "id": "trust-data",
+      "score": 13,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": true,
+      "deltaFromBaseline": 0
+    },
+    {
+      "id": "decision-output",
+      "score": 12,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": true,
+      "deltaFromBaseline": 7
+    },
+    {
+      "id": "mobile-accessibility",
+      "score": 9,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "deltaFromBaseline": 1,
+      "evidence": "Starter reuses the modal focus trap, inert background, Escape behavior, and responsive one-column option layout."
+    },
+    {
+      "id": "differentiation",
+      "score": 8,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "deltaFromBaseline": 1
+    },
+    {
+      "id": "monetization-distribution",
+      "score": 6,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "deltaFromBaseline": 2
+    }
+  ],
+  "criticalBlockers": [],
+  "evidence": {
+    "report": ".omo/evidence/market-readiness/report-results.json: 5/5 PASS",
+    "starter": ".omo/evidence/market-readiness/starter-results.json: 4/4 PASS",
+    "starterScreenshot": ".omo/evidence/market-readiness/starter.png",
+    "existingDataScreenshot": ".omo/evidence/market-readiness/starter-existing.png"
+  },
+  "remainingRisks": [
+    "Product-market fit still requires real activation, report-export, retention, and willingness-to-pay data.",
+    "Cloud conflict recovery and full account export remain trust improvements, not current critical blockers.",
+    "Permissioned collaboration should wait for observed consultant demand."
+  ],
+  "nextDecision": "Ship to a measured pilot; do not add another product cycle before user-behavior evidence."
+}

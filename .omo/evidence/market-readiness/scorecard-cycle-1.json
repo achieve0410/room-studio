@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "capturedAt": "2026-08-11",
+  "stage": "cycle-1-report",
+  "state": "RED",
+  "threshold": {
+    "total": 80,
+    "dimensionRatio": 0.6,
+    "criticalBlockers": 0
+  },
+  "score": 76,
+  "maximum": 100,
+  "passes": false,
+  "dimensions": [
+    {
+      "id": "core-job",
+      "score": 23,
+      "maximum": 25,
+      "minimum": 15,
+      "passes": true,
+      "delta": 1,
+      "evidence": "A completed layout now produces one decision-ready artifact."
+    },
+    {
+      "id": "activation",
+      "score": 6,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": false,
+      "delta": 0,
+      "evidence": "No explicit first-session blank, sample, or import choice yet."
+    },
+    {
+      "id": "trust-data",
+      "score": 13,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": true,
+      "delta": 0,
+      "evidence": "The report is generated locally with no external resource or executable markup."
+    },
+    {
+      "id": "decision-output",
+      "score": 12,
+      "maximum": 15,
+      "minimum": 9,
+      "passes": true,
+      "delta": 7,
+      "evidence": "Self-contained HTML includes SVG plan, metrics, warning categories, furniture, and safety scope."
+    },
+    {
+      "id": "mobile-accessibility",
+      "score": 8,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "delta": 0,
+      "evidence": "Project dialog action preserves focus semantics and report CSS has a mobile breakpoint."
+    },
+    {
+      "id": "differentiation",
+      "score": 8,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "delta": 1,
+      "evidence": "The privacy-first workflow now ends in a shareable human-readable outcome."
+    },
+    {
+      "id": "monetization-distribution",
+      "score": 6,
+      "maximum": 10,
+      "minimum": 6,
+      "passes": true,
+      "delta": 2,
+      "evidence": "A report is a concrete free-to-pro packaging and consultant branding seam."
+    }
+  ],
+  "criticalBlockers": [
+    {
+      "id": "weak-first-session-activation",
+      "criterion": "A first-time user still has no explicit blank, sample, or import choice."
+    }
+  ],
+  "evidence": {
+    "unit": "node --test tests/project-report.test.js: 3/3 PASS",
+    "browser": ".omo/evidence/market-readiness/report-results.json: 5/5 PASS",
+    "download": ".omo/evidence/market-readiness/decision-report.html",
+    "screenshots": [
+      ".omo/evidence/market-readiness/report.png",
+      ".omo/evidence/market-readiness/report-surface.png"
+    ]
+  },
+  "nextIncrement": "Cycle 2: non-destructive first-session starter"
+}
