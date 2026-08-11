@@ -7,6 +7,8 @@ This repository is software, not a hosted service. Each person or organization t
 With no Supabase configuration, the editor stores the current drawing in that browser's `localStorage`. Clearing site data removes that local copy. The project database does not receive the drawing.
 `localStorage` is isolated by origin, not by URL path. A deployment that shares an origin with unrelated applications allows those applications to read or modify the drawing and any origin-scoped authentication state. Use a dedicated HTTPS origin for Room Studio.
 
+The **도면 파일** dialog can export the current drawing as a portable `.roomstudio.json` file or replace it with a blank local draft. A portable drawing includes its zones, furniture, structures, dimensions, wall height, and an embedded background image when present. It does not include a Supabase user ID, project UUID, revision, or account metadata. The exported file is controlled by the person who downloads it.
+
 ## Official public demo
 
 The project demo at `https://achieve0410.github.io/room-studio/` is built without Supabase configuration. It has no Room Studio account system, project database, advertising, or application analytics. Drawings remain in browser `localStorage`.
@@ -24,8 +26,15 @@ When an operator enables Supabase, the deployment may store:
 
 The repository does not add advertising or payment tracking. Supabase and an enabled OAuth provider process data under the operator's configuration and their respective terms.
 
+The application provides two explicit deletion paths when the latest migration and Edge Function are deployed:
+
+- **Current project deletion** calls the owner-checked `delete_project` database function and cascades to that project's saved versions.
+- **Account deletion** calls the authenticated `delete-account` Edge Function, which uses the server-only service role to delete the current Supabase Auth user. Profile, project, and version rows then cascade from that user.
+
+Account deletion clears Room Studio's local project keys and signs the browser out. Provider logs, database backups, OAuth-provider records, and other operator systems are governed by the operator's published retention and deletion policy; this repository cannot erase those systems by itself.
+
 ## Before a public deployment
 
-The operator should publish a notice that identifies the operator, purposes, data categories, subprocessors, retention, contact route, and methods for exporting or deleting account data. The operator should also implement and test an account and drawing deletion procedure before accepting real users.
+The operator should publish a notice that identifies the operator, purposes, data categories, subprocessors, retention, contact route, and methods for exporting or deleting account data. The operator should deploy and test both deletion paths against a disposable account before accepting real users. The portable drawing export is not a complete account export: operators that promise account-level export must separately include every project, requested version history, and relevant profile metadata.
 
 Do not use real user data in bug reports, screenshots, fixtures, or public demonstrations.
