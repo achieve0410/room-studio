@@ -1,0 +1,31 @@
+Room Studio market-readiness QA cleanup receipt
+Captured: 2026-08-12
+
+Report RED
+- Vite session bash_165 stopped.
+- TCP 4173 listener absent.
+- room-studio-browser-qa-* profiles absent.
+
+Report GREEN
+- Vite session bash_177 stopped.
+- Timed-out profile room-studio-browser-qa-GPMdXk removed after event-race diagnosis.
+- TCP 4173 listener absent.
+- room-studio-browser-qa-* profiles absent.
+
+Starter RED
+- Vite session bash_197 stopped.
+- TCP 4173 listener absent.
+- room-studio-browser-qa-* profiles absent.
+
+Starter GREEN
+- Vite session bash_204 stopped.
+- TCP 4173 listener absent.
+- room-studio-browser-qa-* profiles absent.
+
+Final replay
+- Vite session bash_217 stopped.
+- TCP 4173 listener absent.
+- room-studio-browser-qa-* and room-studio-mobile-* profiles absent.
+
+Final verification command returned:
+cleanup PASS: final preview stopped; no QA Chrome profiles or bound port

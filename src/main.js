@@ -351,6 +351,7 @@ function loadState() {
   return defaultState();
 }
 
+const startsWithoutStoredLayout = localStorage.getItem(STORAGE_KEY) === null;
 let state = loadState();
 let drag = null;
 let resize = null;
@@ -373,7 +374,7 @@ let canvasZoom = 1;
 let canvasCenter = null;
 let mobilePanel = 'canvas';
 let mobileMultiSelect = false;
-let pendingFocus = null;
+let pendingFocus = startsWithoutStoredLayout ? { kind: 'starter-sample' } : null;
 const activePointers = new Map();
 let gestureMode = 'idle';
 let pan = null;
@@ -406,6 +407,7 @@ let layoutChangeVersion = 0;
 let cloudGeneration = 0;
 let cloudFeedback = cloudConfigured ? '로그인 기능을 준비하는 중…' : '클라우드 연결 설정이 필요합니다.';
 let cloudFeedbackTone = '';
+let starterDialogOpen = startsWithoutStoredLayout;
 let projectDialogOpen = false;
 let projectFileFeedback = '';
 let projectFileFeedbackTone = '';
@@ -512,6 +514,7 @@ async function importPortableProject(file) {
   activeProjectRevision = null;
   activeProjectName = parsed.projectName;
   cloudDirty = false;
+  starterDialogOpen = false;
   projectDialogOpen = false;
   editorNotice = cloudSession
     ? `${parsed.projectName}을 새 로컬 초안으로 가져왔습니다. 클라우드에 저장하려면 계정 메뉴에서 지금 저장을 선택하세요.`
@@ -3247,6 +3250,34 @@ function renderProjectDialog() {
   </div>`;
 }
 
+function renderStarterDialog() {
+  if (!starterDialogOpen) return '';
+  return `<div class="cloud-dialog-backdrop" data-start-backdrop>
+    <section class="cloud-dialog starter-dialog" role="dialog" aria-modal="true" aria-labelledby="starter-dialog-title">
+      <button class="cloud-dialog-close" data-start-close type="button" aria-label="시작 화면 닫기">×</button>
+      <span class="eyebrow">START WITH CONFIDENCE</span>
+      <h2 id="starter-dialog-title">어떻게 시작할까요?</h2>
+      <p>샘플로 배치 감각을 익히거나, 빈 도면과 기존 파일에서 바로 시작할 수 있습니다.</p>
+      <div class="starter-options">
+        <button class="starter-option is-primary" data-start-sample type="button">
+          <b>가구가 있는 샘플</b>
+          <span>거실과 가구가 배치된 예제로 주요 기능을 바로 확인합니다.</span>
+        </button>
+        <button class="starter-option" data-start-blank type="button">
+          <b>빈 도면</b>
+          <span>실측 치수에 맞춰 공간을 처음부터 만듭니다.</span>
+        </button>
+        <label class="starter-option starter-import" data-start-import role="button" tabindex="0">
+          <b>도면 파일 가져오기</b>
+          <span>기존 .roomstudio.json 작업을 이어서 편집합니다.</span>
+          <input data-start-file type="file" accept=".json,.roomstudio.json,application/json">
+        </label>
+      </div>
+      <p class="starter-note">기존 브라우저 도면이 있으면 이 화면은 자동으로 열리지 않으며, 상단의 ‘시작’ 버튼으로 언제든 다시 볼 수 있습니다.</p>
+    </section>
+  </div>`;
+}
+
 function renderCloudDialog() {
   if (!cloudDialogOpen) return '';
   const closeButton = '<button class="cloud-dialog-close" data-cloud-close type="button" aria-label="클라우드 창 닫기">×</button>';
@@ -3362,13 +3393,14 @@ function render() {
   const maxHeight = state.items.length ? Math.max(...state.items.map((item) => item.height + (item.elevation ?? 0))) : 0;
   const warningCount = new Set([...collisions, ...outOfBounds, ...heightViolations]).size + zoneOverlaps.size;
   const mobileStatus = `${mobileMultiSelect ? '그룹 선택 켜짐' : '그룹 선택 꺼짐'} · 선택 ${selectionKeys.size}개${mobileMoveArmed ? ' · 이동 준비됨' : ''}`;
-  const cloudBackgroundAttributes = cloudDialogOpen || projectDialogOpen || mobileContextMenu ? 'inert aria-hidden="true"' : '';
+  const cloudBackgroundAttributes = cloudDialogOpen || projectDialogOpen || starterDialogOpen || mobileContextMenu ? 'inert aria-hidden="true"' : '';
   const cloudState = cloudFeedbackTone === 'error' ? 'error' : !cloudConfigured ? 'setup' : cloudSession ? 'synced' : 'idle';
 
   const accountName = cloudSession?.user?.user_metadata?.full_name || cloudSession?.user?.email?.split('@')[0];
   app.innerHTML = `<header class="topbar" ${cloudBackgroundAttributes}>
     <a class="brand" href="#"><span class="brand-mark"><i></i><i></i><i></i></span><span><strong>ROOM</strong> STUDIO</span></a>
     <div class="topbar-cloud">
+      <button class="project-account-button" data-start-open type="button" aria-haspopup="dialog"><b aria-hidden="true">✦</b><span>시작</span></button>
       <button class="project-account-button" data-project-open type="button" aria-haspopup="dialog"><b aria-hidden="true">↥</b><span>도면 파일</span></button>
       <div class="save-state" data-state="${cloudState}"><span></span><span data-cloud-status>${escapeHtml(cloudFeedback)}</span></div>
       <button class="cloud-account-button" data-cloud-open type="button" aria-haspopup="dialog"><b aria-hidden="true">${cloudSession ? '●' : '○'}</b><span>${escapeHtml(accountName || (cloudConfigured ? '로그인' : '클라우드 설정'))}</span></button>
@@ -3425,6 +3457,7 @@ function render() {
   </main>
   ${renderMobileSelectionBar()}
   ${renderMobileContextMenu()}
+  ${renderStarterDialog()}
   ${renderProjectDialog()}
   ${renderCloudDialog()}
   <div id="mobile-status" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;">${mobileStatus}</div>
@@ -3456,6 +3489,7 @@ function focusPendingTarget() {
     'panel-heading': '#inspector-heading',
     'context-menu': '[data-context-action="move"]',
     canvas: '#plan-canvas',
+    'starter-sample': '[data-start-sample]',
     'group-move': '[data-group-action="move"]',
     'group-rotate': '[data-group-action="rotate"]',
   }[focusRequest.kind] ?? `#mobile-tab-${focusRequest.panel}`;
@@ -3476,6 +3510,54 @@ function moveMobileTabFocus(event, currentPanel) {
 }
 
 function bindEvents() {
+  document.querySelector('[data-start-open]')?.addEventListener('click', () => {
+    starterDialogOpen = true;
+    pendingFocus = { kind: 'starter-sample' };
+    render();
+  });
+  document.querySelector('[data-start-close]')?.addEventListener('click', () => {
+    starterDialogOpen = false;
+    render();
+    document.querySelector('[data-start-open]')?.focus();
+  });
+  document.querySelector('[data-start-backdrop]')?.addEventListener('click', (event) => {
+    if (event.target !== event.currentTarget) return;
+    starterDialogOpen = false;
+    render();
+    document.querySelector('[data-start-open]')?.focus();
+  });
+  document.querySelector('[data-start-sample]')?.addEventListener('click', () => {
+    replaceLocalLayout(JSON.stringify(defaultState()));
+    activeProjectId = null;
+    activeProjectRevision = null;
+    activeProjectName = '가구 배치 샘플';
+    cloudDirty = false;
+    starterDialogOpen = false;
+    editorNotice = '가구가 있는 샘플을 열었습니다. 자유롭게 수정해 보세요.';
+    pendingFocus = { kind: 'canvas' };
+    render();
+  });
+  document.querySelector('[data-start-blank]')?.addEventListener('click', () => {
+    replaceWithBlankDraft();
+    starterDialogOpen = false;
+    editorNotice = '빈 도면을 열었습니다. 공간 추가부터 시작하세요.';
+    pendingFocus = { kind: 'canvas' };
+    render();
+  });
+  document.querySelector('[data-start-file]')?.addEventListener('change', async (event) => {
+    const [file] = event.target.files;
+    if (!file) return;
+    try {
+      await importPortableProject(file);
+    } catch (error) {
+      setProjectFileFeedback(error.message || '도면 파일을 가져오지 못했습니다.', 'error');
+    }
+  });
+  document.querySelector('[data-start-import]')?.addEventListener('keydown', (event) => {
+    if (!['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    document.querySelector('[data-start-file]')?.click();
+  });
   document.querySelector('[data-project-open]')?.addEventListener('click', () => {
     projectDialogOpen = true;
     projectFileFeedback = '';
@@ -3936,6 +4018,13 @@ document.addEventListener('keydown', (event) => {
       : (currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
     event.preventDefault();
     focusable[nextIndex].focus();
+    return;
+  }
+  if (starterDialogOpen && event.key === 'Escape') {
+    event.preventDefault();
+    starterDialogOpen = false;
+    render();
+    document.querySelector('[data-start-open]')?.focus();
     return;
   }
   if (projectDialogOpen && event.key === 'Escape') {

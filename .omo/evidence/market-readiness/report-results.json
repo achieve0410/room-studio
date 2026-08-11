@@ -1,0 +1,48 @@
+{
+  "scenario": "report",
+  "targetUrl": "http://127.0.0.1:4173",
+  "passed": true,
+  "assertions": [
+    {
+      "name": "project dialog opens",
+      "pass": true
+    },
+    {
+      "name": "decision report action exists",
+      "pass": true
+    },
+    {
+      "name": "decision report downloads as HTML",
+      "pass": true
+    },
+    {
+      "name": "decision report contains plan and decision context",
+      "pass": true
+    },
+    {
+      "name": "decision report blocks executable hostile markup",
+      "pass": true
+    }
+  ],
+  "actionState": {
+    "dialogOpen": true,
+    "actionExists": true,
+    "actionLabel": "의사결정 리포트 받기"
+  },
+  "download": {
+    "filename": "room-studio-내-집-도면-decision-report.html",
+    "bytes": 3461
+  },
+  "documentState": {
+    "title": "내 집 도면",
+    "hasSvg": true,
+    "hasMetrics": true,
+    "hasWarnings": true,
+    "hasFurniture": true,
+    "hasSafetyBoundary": true,
+    "hasExecutableMarkup": false,
+    "hasExternalResource": false
+  },
+  "screenshot": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/market-readiness/report.png",
+  "reportScreenshot": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/market-readiness/report-surface.png"
+}
