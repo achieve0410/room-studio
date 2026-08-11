@@ -27,6 +27,7 @@ let chromeProcess;
 let chromeProfile;
 let cdp;
 let cleanupPromise;
+let browserErrors = [];
 
 function stopProcessSync(child) {
   if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
@@ -226,10 +227,34 @@ async function loadViewport(url, width, height, touch = width <= 900) {
   );
 }
 
+async function completeStarterIfPresent() {
+  const result = await evaluate(`new Promise((resolve) => {
+    const starter = document.querySelector('[data-start-backdrop]');
+    if (!starter) {
+      resolve({ present: false });
+      return;
+    }
+    document.querySelector('[data-start-sample]')?.click();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const saved = JSON.parse(localStorage.getItem('${STORAGE_KEY}') ?? '{}');
+      resolve({
+        present: true,
+        closed: !document.querySelector('[data-start-backdrop]'),
+        zones: saved.zones?.length ?? 0,
+        items: saved.items?.length ?? 0,
+      });
+    }));
+  })`);
+  if (result.present && (!result.closed || result.zones === 0 || result.items === 0)) {
+    throw new Error(`Starter setup did not complete: ${JSON.stringify(result)}`);
+  }
+}
+
 async function reloadViewport(url, width, height, touch = width <= 900) {
   await loadViewport(url, width, height, touch);
   await evaluate('localStorage.clear()');
   await loadViewport(url, width, height, touch);
+  await completeStarterIfPresent();
 }
 
 async function screenshot(name) {
@@ -388,7 +413,7 @@ try {
   cdp = new CdpClient(page.webSocketDebuggerUrl);
   await cdp.connect();
   await Promise.all([cdp.send('Page.enable'), cdp.send('Runtime.enable'), cdp.send('Log.enable')]);
-  const browserErrors = [];
+  browserErrors = [];
   cdp.on('Runtime.exceptionThrown', ({ exceptionDetails }) => {
     browserErrors.push({ source: 'exception', text: exceptionDetails.exception?.description ?? exceptionDetails.text });
   });
@@ -2329,6 +2354,8 @@ try {
   exitCode = report.assertionCounts.failed === 0 ? 0 : 1;
 } catch (error) {
   report.error = { name: error.name, message: error.message, stack: error.stack };
+  report.consoleErrors = browserErrors;
+  exitCode = 1;
 } finally {
   report.finishedAt = new Date().toISOString();
   try {

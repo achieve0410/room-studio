@@ -1,0 +1,50 @@
+{
+  "scenario": "starter",
+  "targetUrl": "http://127.0.0.1:4173",
+  "passed": true,
+  "assertions": [
+    {
+      "name": "persistent starter action exists",
+      "pass": true
+    },
+    {
+      "name": "clean profile opens an accessible starter surface",
+      "pass": true
+    },
+    {
+      "name": "sample creates a complete layout and restores canvas focus",
+      "pass": true
+    },
+    {
+      "name": "existing local data is neither prompted nor overwritten",
+      "pass": true
+    }
+  ],
+  "cleanState": {
+    "openerExists": true,
+    "surfaceOpen": true,
+    "focusInside": true,
+    "blankExists": true,
+    "sampleExists": true,
+    "importExists": true
+  },
+  "sampleState": {
+    "surfaceClosed": true,
+    "zoneCount": 6,
+    "itemCount": 3,
+    "sampleZone": "거실",
+    "sampleItem": "침대",
+    "canvasFocused": true
+  },
+  "existingState": {
+    "surfaceOpen": false,
+    "zoneCount": 1,
+    "itemCount": 1,
+    "zoneName": "기존 방",
+    "itemName": "기존 침대"
+  },
+  "screenshots": {
+    "clean": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/market-readiness/starter.png",
+    "existing": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/market-readiness/starter-existing.png"
+  }
+}

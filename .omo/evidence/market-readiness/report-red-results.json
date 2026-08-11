@@ -1,0 +1,35 @@
+{
+  "scenario": "report",
+  "targetUrl": "http://127.0.0.1:4173",
+  "passed": false,
+  "assertions": [
+    {
+      "name": "project dialog opens",
+      "pass": true
+    },
+    {
+      "name": "decision report action exists",
+      "pass": false
+    },
+    {
+      "name": "decision report downloads as HTML",
+      "pass": false
+    },
+    {
+      "name": "decision report contains plan and decision context",
+      "pass": false
+    },
+    {
+      "name": "decision report blocks executable hostile markup",
+      "pass": false
+    }
+  ],
+  "actionState": {
+    "dialogOpen": true,
+    "actionExists": false,
+    "actionLabel": null
+  },
+  "download": null,
+  "documentState": null,
+  "screenshot": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/market-readiness/report-red.png"
+}
