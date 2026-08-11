@@ -1,0 +1,19 @@
+{
+  "targetUrl": "http://127.0.0.1:4173",
+  "assertions": [
+    {
+      "name": "project data control exists",
+      "pass": false
+    },
+    {
+      "name": "planning scope notice is persistent",
+      "pass": false
+    },
+    {
+      "name": "mobile action sheet is modal",
+      "pass": false
+    }
+  ],
+  "passed": false,
+  "screenshotPath": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/room-studio-improvements/red-desktop.png"
+}
