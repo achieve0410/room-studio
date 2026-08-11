@@ -640,6 +640,8 @@ footer { height: 36px; display: grid; place-items: center; border-top: 1px solid
   font-weight: 700;
   cursor: pointer;
 }
+.project-file-actions .project-report-action { grid-column: 1 / -1; border-color: var(--ink); background: var(--ink); color: #fff; }
+.project-file-actions .project-report-action:hover { border-color: var(--accent); background: var(--accent); }
 .project-file-import { position: relative; border-color: var(--line); background: #fff; color: var(--ink); }
 .project-file-import input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .project-file-import:focus, .project-file-import:focus-within { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; }
