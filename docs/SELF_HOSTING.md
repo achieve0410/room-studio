@@ -21,9 +21,17 @@ The official `https://achieve0410.github.io/room-studio/` demo is intentionally 
 
 1. Create a separate Supabase project for the deployment.
 2. Apply every migration in `supabase/migrations/` in filename order.
-3. Enable only the required authentication providers. Before allowing public signup, configure Supabase rate limits and CAPTCHA or restrict account creation to an allowlist.
-4. Add each exact deployment callback URL, including any base path, and the local development callback to the Auth redirect allowlist.
-5. Set the two public build variables before `npm run build`:
+3. Deploy the account-deletion function:
+
+```bash
+supabase functions deploy delete-account
+```
+
+Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into the function runtime. Never copy the service-role value into Vite variables or browser code.
+
+4. Enable only the required authentication providers. Before allowing public signup, configure Supabase rate limits and CAPTCHA or restrict account creation to an allowlist.
+5. Add each exact deployment callback URL, including any base path, and the local development callback to the Auth redirect allowlist.
+6. Set the two public build variables before `npm run build`:
 
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
@@ -34,6 +42,8 @@ Vite embeds these values into the public browser bundle. A publishable key is de
 The client uses PKCE for magic-link and OAuth redirects. The callback returns to Vite's configured base path, so the deployed base path and Supabase redirect allowlist must agree.
 
 Database migrations reject malformed, unsupported, or larger-than-1 MiB layout snapshots, limit each account to 100 projects, and retain the latest 100 manual versions per project. These are defense-in-depth abuse limits, not a substitute for monitoring, authentication controls, or provider billing limits.
+
+Before public signup, use a disposable account to verify that current-project deletion removes its version rows, account deletion invalidates the session and cascades profile/projects/versions, and the browser returns to a blank local draft. Also verify the operator's backup and log-retention behavior; database row deletion does not rewrite existing provider backups immediately.
 
 ## Operator responsibilities
 

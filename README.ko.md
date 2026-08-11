@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>2D로 그리고, 실제 크기와 높이를 검증하고, 그대로 3D에서 걸어보세요.</strong>
+  <strong>2D로 그리고, 실제 크기와 높이를 확인하고, 그대로 3D에서 걸어보세요.</strong>
 </p>
 <p align="center">
   <a href="https://achieve0410.github.io/room-studio/"><strong>공개 데모 바로 열기 →</strong></a>
@@ -19,6 +19,8 @@
 <p align="center"><sub>공개 데모는 로그인 없이 현재 브라우저에만 도면을 저장합니다.</sub></p>
 
 실제 도면을 축척에 맞춰 옮겨 그리고, 여러 직사각형 조각을 하나의 공간으로 합치며, 공간과 가구의 높이를 2D/3D에서 함께 확인하는 배치 시뮬레이터입니다.
+
+> Room Studio는 기획과 배치 확인을 돕는 시각화 도구이며 건축 허가·구조·접근성·설비·시공 도면을 대체하지 않습니다. 실제 시공·인허가·안전 판단에는 건축사, 구조·설비 기술자, 접근성 전문가 등 관련 전문가의 검토가 필요합니다.
 
 ## 실제 화면으로 살펴보기
 
@@ -94,12 +96,13 @@ Node.js 22.12 이상 25 미만을 지원합니다.
 
 Room Studio는 Supabase 설정이 없으면 기존처럼 브라우저 로컬 저장만 사용합니다. 로그인과 여러 기기 동기화를 활성화하려면 다음 순서로 설정합니다.
 
-1. Supabase 프로젝트를 만들고 `supabase/migrations/20260721000000_auth_projects.sql`을 적용합니다.
-2. Supabase Auth에서 이메일 로그인과 Google 공급자를 활성화합니다.
-3. Auth URL 설정에 개발 URL과 공개 URL을 등록합니다.
+1. Supabase 프로젝트를 만들고 `supabase/migrations/`의 모든 파일을 파일명 순서대로 적용합니다.
+2. 명시적인 계정 데이터 삭제를 활성화하려면 `supabase/functions/delete-account`를 배포합니다.
+3. Supabase Auth에서 이메일 로그인과 Google 공급자를 활성화합니다.
+4. Auth URL 설정에 개발 URL과 공개 URL을 등록합니다.
    - 로컬: `http://localhost:5173`
    - Tailscale: 실제 배포에 사용할 `https://<MagicDNS-host>:<port>`
-4. `.env.example`을 `.env`로 복사하고 프로젝트 값을 입력합니다.
+5. `.env.example`을 `.env`로 복사하고 프로젝트 값을 입력합니다.
 
 ```bash
 cp .env.example .env

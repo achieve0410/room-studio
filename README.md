@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Plan in 2D. Validate fit. Walk it in 3D — from desktop or mobile.</strong>
+  <strong>Plan in 2D. Check the layout. Walk it in 3D — from desktop or mobile.</strong>
 </p>
 <p align="center">
   <a href="https://achieve0410.github.io/room-studio/"><strong>Open the live demo →</strong></a>
@@ -18,9 +18,9 @@
 </p>
 <p align="center"><sub>The public demo stores drawings only in this browser and does not enable login.</sub></p>
 
-Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines calibrated floor-plan tracing, orthogonal room shapes, furniture, walls, openings, exact dimensions, height validation, and first-person or overhead WebGL previews without requiring a desktop CAD application.
+Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines calibrated floor-plan tracing, orthogonal room shapes, furniture, walls, openings, exact dimensions, height checks, and first-person or overhead WebGL previews without requiring a desktop CAD application.
 
-> Room Studio is a planning and visualization aid, not a substitute for architectural, structural, accessibility, or permit drawings.
+> Room Studio is a planning and visualization aid, not a substitute for permit, architectural, structural, accessibility, building-services, or construction drawings. Real construction, permitting, and safety decisions require review by qualified architects, engineers, accessibility specialists, and other relevant professionals.
 
 ## See Room Studio in action
 
@@ -89,10 +89,11 @@ npm run test:browser:mobile
 ## Optional Supabase sync
 
 1. Create a Supabase project.
-2. Apply `supabase/migrations/20260721000000_auth_projects.sql`.
-3. Enable email sign-in and, if desired, Google OAuth.
-4. Register every development or deployment origin in Supabase Auth redirect URLs.
-5. Copy `.env.example` to `.env` and enter the public project values.
+2. Apply every file in `supabase/migrations/` in filename order.
+3. Deploy `supabase/functions/delete-account` to enable explicit account-data deletion.
+4. Enable email sign-in and, if desired, Google OAuth.
+5. Register every development or deployment origin in Supabase Auth redirect URLs.
+6. Copy `.env.example` to `.env` and enter the public project values.
 
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co

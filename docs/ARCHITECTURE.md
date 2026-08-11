@@ -7,8 +7,10 @@ Room Studio is a single-page Vite application built with vanilla JavaScript and 
 - `src/main.js`: 2D editor state, floor-plan backgrounds, dimensions, rendering, selection, gestures, history, and account UI.
 - `src/geometry.js`: pure geometry, snapping, room union, openings, collision, and resize helpers.
 - `src/layout-tools.js`: pure calibration, measurement formatting, and clipboard duplication helpers.
+- `src/project-file.js`: bounded, versioned portable drawing serialization and parsing without cloud ownership metadata.
 - `src/walkthrough3d.js`: lazily loaded Three.js first-person, dollhouse, and overhead renderer with scene snapshot controls.
 - `src/cloud-store.js`: lazily loaded Supabase adapter.
+- `supabase/functions/delete-account/`: authenticated server-side account deletion; the service-role key never enters the browser.
 - `supabase/migrations/`: optional database schema, RLS, and transactional project persistence.
 
 ## Persistence boundaries
@@ -16,6 +18,10 @@ Room Studio is a single-page Vite application built with vanilla JavaScript and 
 Local-only mode persists the drawing in browser `localStorage`. It remains the default and must work without network access or cloud configuration. Schema version 2 adds optional `backgroundPlan`, `dimensions`, and per-entity `locked` values while the loader continues to accept version 1 snapshots.
 
 Cloud mode authenticates through Supabase using PKCE. Each project has an owner and revision. The client saves through `save_project`, which performs owner verification, optimistic revision checking, a 1 MiB layout limit, per-account limits, and bounded version retention in one transaction. Imported images are converted to bounded JPEG data URLs before they enter the persisted layout. RLS restricts reads, while authenticated browser roles have no direct project-table write grants.
+
+Project deletion follows the same RPC-only write boundary through `delete_project`; it checks `auth.uid()` and ownership before the project/version cascade. Account deletion is intentionally not a browser database operation: the authenticated Edge Function verifies the current user and invokes the Supabase Admin delete-user operation with a server-only credential.
+
+Portable project files use a separate versioned envelope. Import normalizes through the existing local loader and becomes a new local draft, so it cannot silently overwrite the active cloud project.
 
 ## Rendering and data safety
 
