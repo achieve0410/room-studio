@@ -7,6 +7,7 @@ import {
   measurementLength,
   pasteLayoutClipboard,
 } from './layout-tools.js';
+import { parseProjectFile, projectFileName, serializeProjectFile } from './project-file.js';
 import {
   alignDoorToWall,
   GRID_CM,
@@ -404,6 +405,9 @@ let layoutChangeVersion = 0;
 let cloudGeneration = 0;
 let cloudFeedback = cloudConfigured ? '로그인 기능을 준비하는 중…' : '클라우드 연결 설정이 필요합니다.';
 let cloudFeedbackTone = '';
+let projectDialogOpen = false;
+let projectFileFeedback = '';
+let projectFileFeedbackTone = '';
 
 const selectionKey = (kind, id) => `${kind}:${id}`;
 const isMobileLayout = () => mobileLayoutQuery.matches;
@@ -423,6 +427,136 @@ const layoutSnapshot = () => ({
   wallHeight: state.wallHeight,
 });
 const snapshotsMatch = (first, second) => JSON.stringify(first) === JSON.stringify(second);
+const blankLayout = () => ({
+  zones: [],
+  items: [],
+  structures: [],
+  dimensions: [],
+  backgroundPlan: null,
+  wallHeight: 240,
+});
+
+function setProjectFileFeedback(message, tone = '') {
+  projectFileFeedback = message;
+  projectFileFeedbackTone = tone;
+  const status = document.querySelector('[data-project-feedback]');
+  if (status) {
+    status.textContent = message;
+    status.dataset.tone = tone;
+  }
+}
+
+function exportPortableProject() {
+  try {
+    const serialized = serializeProjectFile({
+      projectName: activeProjectName,
+      layout: layoutSnapshot(),
+    });
+    const url = URL.createObjectURL(new Blob([serialized], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = projectFileName(activeProjectName);
+    anchor.click();
+    URL.revokeObjectURL(url);
+    projectDialogOpen = false;
+    editorNotice = '휴대용 도면 파일을 내보냈습니다.';
+    render();
+    document.querySelector('[data-project-open]')?.focus();
+  } catch (error) {
+    setProjectFileFeedback(error.message || '도면 파일을 만들지 못했습니다.', 'error');
+  }
+}
+
+async function importPortableProject(file) {
+  const parsed = parseProjectFile(await file.text());
+  replaceLocalLayout(JSON.stringify(parsed.layout));
+  const userId = currentCloudUserId();
+  if (userId) localStorage.removeItem(activeProjectStorageKey(userId));
+  activeProjectId = null;
+  activeProjectRevision = null;
+  activeProjectName = parsed.projectName;
+  cloudDirty = false;
+  projectDialogOpen = false;
+  editorNotice = cloudSession
+    ? `${parsed.projectName}을 새 로컬 초안으로 가져왔습니다. 클라우드에 저장하려면 계정 메뉴에서 지금 저장을 선택하세요.`
+    : `${parsed.projectName}을 가져왔습니다.`;
+  render();
+  document.querySelector('#plan-canvas')?.focus();
+}
+
+function replaceWithBlankDraft() {
+  replaceLocalLayout(JSON.stringify(blankLayout()));
+  activeProjectId = null;
+  activeProjectRevision = null;
+  activeProjectName = '새 도면';
+  cloudDirty = false;
+}
+
+async function deleteCurrentProject() {
+  const cloudProjectId = cloudSession ? activeProjectId : null;
+  const projectLabel = cloudProjectId ? '현재 클라우드 도면' : '현재 브라우저 도면';
+  if (!window.confirm(`${projectLabel}을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+
+  const userId = currentCloudUserId();
+  clearTimeout(cloudSaveTimer);
+  cloudPendingSave = null;
+  if (cloudSaveLoop) await cloudSaveLoop;
+
+  try {
+    if (cloudProjectId) {
+      await cloudStore.deleteProject(cloudProjectId, { expectedUserId: userId });
+      await refreshCloudProjects(cloudGeneration, userId);
+      localStorage.removeItem(activeProjectStorageKey(userId));
+    } else {
+      localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
+      localStorage.removeItem(ANONYMOUS_OWNER_KEY);
+    }
+    replaceWithBlankDraft();
+    projectDialogOpen = false;
+    editorNotice = `${projectLabel}을 삭제하고 빈 초안을 열었습니다.`;
+    render();
+    document.querySelector('#plan-canvas')?.focus();
+  } catch (error) {
+    setProjectFileFeedback(error.message || '도면을 삭제하지 못했습니다.', 'error');
+  }
+}
+
+async function deleteCurrentAccount() {
+  if (!cloudStore || !cloudSession) return;
+  const confirmation = window.prompt('계정과 모든 클라우드 도면을 영구 삭제하려면 “계정 삭제”를 입력하세요.');
+  if (confirmation !== '계정 삭제') {
+    setCloudFeedback('계정 삭제를 취소했습니다.');
+    return;
+  }
+
+  const userId = currentCloudUserId();
+  clearTimeout(cloudSaveTimer);
+  cloudPendingSave = null;
+  if (cloudSaveLoop) await cloudSaveLoop;
+  setCloudFeedback('계정과 모든 클라우드 도면을 삭제하는 중…');
+
+  try {
+    await cloudStore.deleteAccount({ expectedUserId: userId, confirmation });
+    let signOutWarning = '';
+    try {
+      await cloudStore.signOut({ scope: 'local' });
+    } catch (error) {
+      signOutWarning = error.message || '로컬 로그인 정보를 정리하지 못했습니다.';
+    }
+    localStorage.removeItem(activeProjectStorageKey(userId));
+    localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
+    localStorage.removeItem(ANONYMOUS_OWNER_KEY);
+    await handleCloudSession(null);
+    cloudDialogOpen = false;
+    editorNotice = signOutWarning
+      ? `계정은 삭제됐지만 ${signOutWarning} 브라우저 사이트 데이터를 지워주세요.`
+      : '계정과 모든 클라우드 도면을 삭제했습니다.';
+    render();
+    document.querySelector('#plan-canvas')?.focus();
+  } catch (error) {
+    setCloudFeedback(error.message || '계정을 삭제하지 못했습니다.', 'error');
+  }
+}
 
 function commitHistory(previous) {
   const current = layoutSnapshot();
@@ -612,6 +746,7 @@ async function performCloudSave(createVersion) {
       layout: snapshot,
       expectedRevision,
       createVersion,
+      expectedUserId: userId,
     });
     if (!cloudOperationIsCurrent(generation, userId)) return null;
     if (targetProjectId !== activeProjectId) return null;
@@ -730,6 +865,8 @@ async function handleCloudSession(session) {
   const generation = cloudGeneration;
   clearTimeout(cloudSaveTimer);
   cloudPendingSave = null;
+  const staleSaveLoop = cloudSaveLoop;
+  if (staleSaveLoop) await staleSaveLoop;
   cloudSaveLoop = null;
   cloudLoadBusy = false;
   cloudSession = session;
@@ -737,13 +874,18 @@ async function handleCloudSession(session) {
     cloudProjects = [];
     activeProjectId = null;
     activeProjectRevision = null;
-    if (previousUserId) replaceLocalLayout(localStorage.getItem(ANONYMOUS_LAYOUT_KEY));
+    if (previousUserId) {
+      localStorage.removeItem(activeProjectStorageKey(previousUserId));
+      localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
+      localStorage.removeItem(ANONYMOUS_OWNER_KEY);
+      replaceWithBlankDraft();
+    }
     setCloudFeedback(cloudStore ? '로그인하면 여러 기기에서 동기화됩니다.' : '클라우드 연결 설정이 필요합니다.');
     render();
     if (cloudDialogOpen) document.querySelector('.cloud-dialog button, .cloud-dialog input')?.focus();
     return;
   }
-  if (previousUserId && previousUserId !== nextUserId) replaceLocalLayout(localStorage.getItem(ANONYMOUS_LAYOUT_KEY));
+  if (previousUserId && previousUserId !== nextUserId) replaceWithBlankDraft();
   activeProjectId = localStorage.getItem(activeProjectStorageKey(nextUserId));
   activeProjectRevision = null;
   const anonymousOwner = localStorage.getItem(ANONYMOUS_OWNER_KEY);
@@ -768,7 +910,8 @@ async function handleCloudSession(session) {
       activeProjectName = cloudProjects.length ? '가져온 로컬 도면' : '내 집 도면';
       const imported = await saveCloudProject(true);
       if (!imported) return;
-      localStorage.setItem(ANONYMOUS_OWNER_KEY, nextUserId);
+      localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
+      localStorage.removeItem(ANONYMOUS_OWNER_KEY);
     } else if (cloudProjects[0]) {
       await openCloudProject(cloudProjects[0].id, { skipFlush: true });
       return;
@@ -3009,7 +3152,7 @@ function renderMobileContextMenu() {
           ? '선택한 치수'
           : target.entity.type === 'wall' ? '선택한 벽' : target.entity.type === 'window' ? '선택한 미닫이창' : `선택한 ${DOOR_TYPES[target.entity.doorType]}`;
   const openingTarget = !groupContext && target.kind === 'structure' && target.entity.type !== 'wall' ? target.entity : null;
-  return `<section class="mobile-context-menu" role="dialog" aria-labelledby="mobile-context-title">
+  return `<section class="mobile-context-menu" role="dialog" aria-modal="true" aria-labelledby="mobile-context-title">
     <div class="mobile-context-heading"><div><span>${typeLabel}</span><strong id="mobile-context-title">${escapeHtml(title)}</strong></div><button data-context-close type="button" aria-label="작업 메뉴 닫기">×</button></div>
     <div class="mobile-context-actions">
       <button data-context-action="move" type="button"><b aria-hidden="true">✥</b><span>이동</span></button>
@@ -3031,7 +3174,7 @@ function renderMobileSelectionBar() {
   const selectedSpaceCount = new Set(selectedEntries().filter((entry) => entry.kind === 'zone').map((entry) => spaceIdOf(entry.entity))).size;
   const canMergeSpaces = selectedSpaceCount > 1 && selectedSpacesCanMerge();
   const disabled = selectionKeys.size ? '' : 'disabled';
-  return `<section class="mobile-selection-bar ${mobileMoveArmed ? 'is-move-armed' : ''}" aria-label="그룹 편집">
+  return `<section class="mobile-selection-bar ${mobileMoveArmed ? 'is-move-armed' : ''}" aria-label="그룹 편집" ${mobileContextMenu ? 'inert aria-hidden="true"' : ''}>
     <div><strong>${mobileMoveArmed ? '대상을 끌어 이동' : '그룹 선택'}</strong><span data-selection-count>${selectionKeys.size}개 선택</span></div>
     <button data-group-action="move" type="button" ${disabled}>이동</button>
     <button data-group-action="rotate" type="button" aria-label="선택한 가구 90도 회전" ${itemCount ? '' : 'disabled'}>회전</button>
@@ -3041,6 +3184,30 @@ function renderMobileSelectionBar() {
     <button class="is-danger" data-group-action="delete" type="button" ${disabled}>삭제</button>
     <button data-group-action="done" type="button">해제</button>
   </section>`;
+}
+
+function renderProjectDialog() {
+  if (!projectDialogOpen) return '';
+  return `<div class="cloud-dialog-backdrop" data-project-backdrop>
+    <section class="cloud-dialog project-dialog" role="dialog" aria-modal="true" aria-labelledby="project-dialog-title">
+      <button class="cloud-dialog-close" data-project-close type="button" aria-label="프로젝트 파일 창 닫기">×</button>
+      <span class="eyebrow">PORTABLE PROJECT</span>
+      <h2 id="project-dialog-title">도면 파일</h2>
+      <p>현재 도면을 계정 정보 없이 보관하거나 다른 브라우저로 옮길 수 있습니다. 배경 이미지는 파일 안에 포함됩니다.</p>
+      <div class="project-file-actions">
+        <button data-project-export type="button">현재 도면 내보내기</button>
+        <label class="project-file-import" data-project-import-trigger role="button" tabindex="0">도면 파일 가져오기
+          <input data-project-import type="file" accept=".json,.roomstudio.json,application/json" />
+        </label>
+      </div>
+      <div class="project-danger-zone">
+        <strong>${cloudSession && activeProjectId ? '클라우드 도면 관리' : '브라우저 도면 관리'}</strong>
+        <p>${cloudSession && activeProjectId ? '현재 클라우드 도면과 저장된 버전을 삭제합니다.' : '현재 브라우저 도면을 삭제하고 빈 초안을 엽니다.'}</p>
+        <button class="danger-button" data-project-delete type="button">현재 도면 삭제</button>
+      </div>
+      <p class="cloud-feedback" data-project-feedback data-tone="${projectFileFeedbackTone}" role="status">${escapeHtml(projectFileFeedback)}</p>
+    </section>
+  </div>`;
 }
 
 function renderCloudDialog() {
@@ -3106,6 +3273,11 @@ function renderCloudDialog() {
       </div>
       <p class="cloud-feedback" data-cloud-feedback data-tone="${cloudFeedbackTone}" role="status">${escapeHtml(cloudFeedback)}</p>
       <button class="cloud-signout" data-cloud-signout type="button">로그아웃</button>
+      <div class="cloud-danger-zone">
+        <strong>계정 데이터 삭제</strong>
+        <p>프로필, 모든 클라우드 도면과 저장 버전을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.</p>
+        <button class="danger-button" data-cloud-delete-account type="button" ${dialogBusy ? 'disabled' : ''}>계정과 모든 도면 삭제</button>
+      </div>
     </section>
   </div>`;
 }
@@ -3153,13 +3325,14 @@ function render() {
   const maxHeight = state.items.length ? Math.max(...state.items.map((item) => item.height + (item.elevation ?? 0))) : 0;
   const warningCount = new Set([...collisions, ...outOfBounds, ...heightViolations]).size + zoneOverlaps.size;
   const mobileStatus = `${mobileMultiSelect ? '그룹 선택 켜짐' : '그룹 선택 꺼짐'} · 선택 ${selectionKeys.size}개${mobileMoveArmed ? ' · 이동 준비됨' : ''}`;
-  const cloudBackgroundAttributes = cloudDialogOpen ? 'inert aria-hidden="true"' : '';
+  const cloudBackgroundAttributes = cloudDialogOpen || projectDialogOpen || mobileContextMenu ? 'inert aria-hidden="true"' : '';
   const cloudState = cloudFeedbackTone === 'error' ? 'error' : !cloudConfigured ? 'setup' : cloudSession ? 'synced' : 'idle';
 
   const accountName = cloudSession?.user?.user_metadata?.full_name || cloudSession?.user?.email?.split('@')[0];
   app.innerHTML = `<header class="topbar" ${cloudBackgroundAttributes}>
     <a class="brand" href="#"><span class="brand-mark"><i></i><i></i><i></i></span><span><strong>ROOM</strong> STUDIO</span></a>
     <div class="topbar-cloud">
+      <button class="project-account-button" data-project-open type="button" aria-haspopup="dialog"><b aria-hidden="true">↥</b><span>도면 파일</span></button>
       <div class="save-state" data-state="${cloudState}"><span></span><span data-cloud-status>${escapeHtml(cloudFeedback)}</span></div>
       <button class="cloud-account-button" data-cloud-open type="button" aria-haspopup="dialog"><b aria-hidden="true">${cloudSession ? '●' : '○'}</b><span>${escapeHtml(accountName || (cloudConfigured ? '로그인' : '클라우드 설정'))}</span></button>
     </div>
@@ -3197,15 +3370,15 @@ function render() {
     </aside>
 
     <section class="canvas-column" id="mobile-panel-canvas" ${mobilePanelAttributes('canvas')}>
-      <div class="canvas-toolbar"><div><span class="eyebrow">HOME COMPOSER</span><h1>나의 집 도면</h1></div>
+      <div class="canvas-toolbar"><div><span class="eyebrow">HOME COMPOSER</span><h1>나의 집 도면</h1><p class="planning-scope" data-planning-scope><strong>기획·배치 확인용</strong><span>건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다.</span></p></div>
         <div class="view-tabs"><button class="active" type="button">2D 편집</button><button id="open-walkthrough" type="button">3D 미리보기</button></div>
       </div>
       <div class="canvas-actions">
         <span>방향키 1cm · Shift+방향키 40cm · ⌘/Ctrl+C·V · Shift 클릭 다중 선택</span>
-        <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="add-dimension" class="${precisionTool?.type === 'dimension' ? 'is-active' : ''}" type="button">↔ 거리 측정</button><button id="duplicate-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>⧉ 복제</button><button id="copy-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>복사</button><button id="paste-selection" type="button" ${internalClipboard ? '' : 'disabled'}>붙여넣기</button><button id="clear-furniture" type="button">가구 비우기</button></div>
+        <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="add-dimension" class="${precisionTool?.type === 'dimension' ? 'is-active' : ''}" type="button">↔ 거리 측정</button><details class="canvas-more-actions" ${isMobileLayout() ? '' : 'open'}><summary>더보기</summary><div role="group" aria-label="추가 도면 도구"><button id="duplicate-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>⧉ 복제</button><button id="copy-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>복사</button><button id="paste-selection" type="button" ${internalClipboard ? '' : 'disabled'}>붙여넣기</button><button id="clear-furniture" type="button">가구 비우기</button></div></details></div>
       </div>
       <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderTransformHud()}${editorNotice || precisionTool ? `<div class="editor-notice ${precisionTool ? 'is-tool-active' : ''}" role="status"><span>${escapeHtml(editorNotice)}</span>${precisionTool ? '<button id="cancel-precision-tool" type="button">취소</button>' : ''}</div>` : ''}</div>
-      <div class="stats-bar"><div><span>집 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span>바닥 점유</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 검사</span><strong>${warningCount ? `${warningCount}개 확인` : '정상'}</strong></div></div>
+      <div class="stats-bar"><div><span>집 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span>바닥 점유</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 확인</span><strong>${warningCount ? `${warningCount}개 확인` : '문제 없음'}</strong></div></div>
       <div class="legend"><span><i class="collision-dot"></i>가구 3D 충돌</span><span><i class="height-dot"></i>공간 높이 초과</span><span><i class="outside-dot"></i>집 밖 배치</span><span><i class="zone-dot"></i>공간 중복</span></div>
     </section>
 
@@ -3215,6 +3388,7 @@ function render() {
   </main>
   ${renderMobileSelectionBar()}
   ${renderMobileContextMenu()}
+  ${renderProjectDialog()}
   ${renderCloudDialog()}
   <div id="mobile-status" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;">${mobileStatus}</div>
   <nav class="mobile-nav" role="tablist" aria-label="모바일 편집 메뉴" aria-describedby="mobile-status" ${cloudBackgroundAttributes}>
@@ -3223,7 +3397,7 @@ function render() {
       return `<button id="mobile-tab-${panel}" class="${active ? 'is-active' : ''}" data-mobile-panel="${panel}" type="button" role="tab" aria-controls="mobile-panel-${panel}" aria-selected="${active}" tabindex="${active ? '0' : '-1'}"><b aria-hidden="true">${icon}</b><span>${label}</span></button>`;
     }).join('')}
   </nav>
-  <footer ${cloudBackgroundAttributes}>사각 공간을 조합하고, 가구의 폭·깊이·높이를 함께 확인하세요. <strong>Room Studio</strong></footer>`;
+  <footer ${cloudBackgroundAttributes}>기획·배치 확인을 돕는 시각화 도구입니다. 실제 인허가·구조·접근성·시공은 전문가와 확인하세요. <strong>Room Studio</strong></footer>`;
   bindEvents();
 }
 
@@ -3265,6 +3439,43 @@ function moveMobileTabFocus(event, currentPanel) {
 }
 
 function bindEvents() {
+  document.querySelector('[data-project-open]')?.addEventListener('click', () => {
+    projectDialogOpen = true;
+    projectFileFeedback = '';
+    projectFileFeedbackTone = '';
+    render();
+    document.querySelector('.project-dialog button, .project-dialog input')?.focus();
+  });
+  document.querySelector('[data-project-close]')?.addEventListener('click', () => {
+    projectDialogOpen = false;
+    render();
+    document.querySelector('[data-project-open]')?.focus();
+  });
+  document.querySelector('[data-project-backdrop]')?.addEventListener('click', (event) => {
+    if (event.target !== event.currentTarget) return;
+    projectDialogOpen = false;
+    render();
+    document.querySelector('[data-project-open]')?.focus();
+  });
+  document.querySelector('[data-project-export]')?.addEventListener('click', exportPortableProject);
+  document.querySelector('[data-project-import]')?.addEventListener('change', async (event) => {
+    const [file] = event.target.files;
+    if (!file) return;
+    event.target.disabled = true;
+    setProjectFileFeedback('도면 파일을 확인하는 중…');
+    try {
+      await importPortableProject(file);
+    } catch (error) {
+      event.target.disabled = false;
+      setProjectFileFeedback(error.message || '도면 파일을 가져오지 못했습니다.', 'error');
+    }
+  });
+  document.querySelector('[data-project-import-trigger]')?.addEventListener('keydown', (event) => {
+    if (!['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    document.querySelector('[data-project-import]')?.click();
+  });
+  document.querySelector('[data-project-delete]')?.addEventListener('click', deleteCurrentProject);
   document.querySelector('[data-cloud-open]')?.addEventListener('click', () => {
     cloudDialogOpen = true;
     render();
@@ -3323,6 +3534,7 @@ function bindEvents() {
       setCloudFeedback(error.message || '로그아웃하지 못했습니다.', 'error');
     }
   });
+  document.querySelector('[data-cloud-delete-account]')?.addEventListener('click', deleteCurrentAccount);
   document.querySelector('[data-cloud-project]')?.addEventListener('change', (event) => {
     if (event.target.value) openCloudProject(event.target.value);
   });
@@ -3675,8 +3887,10 @@ function bindEvents() {
 
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
-  if (cloudDialogOpen && event.key === 'Tab') {
-    const focusable = [...document.querySelectorAll('.cloud-dialog button:not(:disabled), .cloud-dialog input:not(:disabled), .cloud-dialog select:not(:disabled)')];
+  const activeModal = document.querySelector('[role="dialog"][aria-modal="true"]');
+  if (activeModal && event.key === 'Tab') {
+    const focusable = [...activeModal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, [href], [tabindex]:not([tabindex="-1"])')]
+      .filter((element) => element.getClientRects().length);
     if (!focusable.length) return;
     const currentIndex = focusable.indexOf(document.activeElement);
     const nextIndex = event.shiftKey
@@ -3684,6 +3898,13 @@ document.addEventListener('keydown', (event) => {
       : (currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
     event.preventDefault();
     focusable[nextIndex].focus();
+    return;
+  }
+  if (projectDialogOpen && event.key === 'Escape') {
+    event.preventDefault();
+    projectDialogOpen = false;
+    render();
+    document.querySelector('[data-project-open]')?.focus();
     return;
   }
   if (cloudDialogOpen && event.key === 'Escape') {

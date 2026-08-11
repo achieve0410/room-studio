@@ -838,6 +838,8 @@ try {
   await dispatchTouch('touchStart', [touchPoint(61, resizeItem)]);
   await dispatchTouch('touchEnd', []);
   await doubleRaf();
+  await keyStroke('Escape', 'Escape');
+  await doubleRaf();
   const mobileResizeBefore = await evaluate(`(() => {
     const item = document.querySelector('.plan-item.is-selected');
     const rect = item.querySelector('.item-shape rect');
@@ -849,14 +851,39 @@ try {
     };
   })()`);
   const mobileResizeHandle = await centerOf('.resize-handle.handle-se');
+  const mobileResizeTarget = await evaluate(`(() => {
+    const point = ${JSON.stringify(mobileResizeHandle)};
+    const hit = document.elementFromPoint(point.x, point.y);
+    return {
+      menuOpen: Boolean(document.querySelector('.mobile-context-menu')),
+      workspaceInert: document.querySelector('.workspace').inert,
+      hitHandle: Boolean(hit?.closest('[data-resize-kind="item"][data-resize-handle="se"]')),
+    };
+  })()`);
+  report.interactionAssertions.push(assertion(
+    'B mobile resize handle is hit-testable after closing the action modal',
+    !mobileResizeTarget.menuOpen && !mobileResizeTarget.workspaceInert && mobileResizeTarget.hitHandle,
+    mobileResizeTarget,
+    'menu closed, workspace interactive, and the topmost hit belongs to the southeast item handle',
+  ));
   await dispatchTouch('touchStart', [touchPoint(62, mobileResizeHandle)]);
   await dispatchTouch('touchMove', [touchPoint(62, { x: mobileResizeHandle.x + 48, y: mobileResizeHandle.y + 36 })]);
   await dispatchTouch('touchEnd', []);
   await doubleRaf();
   const mobileResizeAfter = await evaluate(`(() => {
     const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
-    const value = saved.items.find(({ id }) => id === ${JSON.stringify(mobileResizeBefore.id)});
-    return { width: value.width, depth: value.depth, undoEnabled: !document.querySelector('#undo-action').disabled };
+    const value = saved?.items?.find(({ id }) => id === ${JSON.stringify(mobileResizeBefore.id)});
+    const selected = document.querySelector('.plan-item.is-selected .item-shape');
+    const rect = selected?.querySelector('rect');
+    const ellipse = selected?.querySelector('ellipse');
+    return {
+      width: value?.width ?? null,
+      depth: value?.depth ?? null,
+      renderedWidth: rect ? Number(rect.getAttribute('width')) : Number(ellipse?.getAttribute('rx')) * 2,
+      renderedDepth: rect ? Number(rect.getAttribute('height')) : Number(ellipse?.getAttribute('ry')) * 2,
+      storagePresent: Boolean(saved),
+      undoEnabled: !document.querySelector('#undo-action').disabled,
+    };
   })()`);
   report.interactionAssertions.push(assertion(
     'B real CDP touch drag on a resize handle changes both saved item dimensions',
@@ -868,12 +895,14 @@ try {
   await doubleRaf();
   const mobileResizeUndo = await evaluate(`(() => {
     const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
-    const value = saved.items.find(({ id }) => id === ${JSON.stringify(mobileResizeBefore.id)});
-    return { width: value.width, depth: value.depth, undoDisabled: document.querySelector('#undo-action').disabled };
+    const value = saved?.items?.find(({ id }) => id === ${JSON.stringify(mobileResizeBefore.id)});
+    return { width: value?.width ?? null, depth: value?.depth ?? null, storagePresent: Boolean(saved), undoDisabled: document.querySelector('#undo-action').disabled };
   })()`);
   const resizeReselect = await centerOf(`[data-item-id="${mobileResizeBefore.id}"]`);
   await dispatchTouch('touchStart', [touchPoint(63, resizeReselect)]);
   await dispatchTouch('touchEnd', []);
+  await doubleRaf();
+  await keyStroke('Escape', 'Escape');
   await doubleRaf();
   const rollbackHandle = await centerOf('.resize-handle.handle-se');
   const rollbackStorage = await evaluate(`JSON.stringify(Object.fromEntries(Object.entries(localStorage)))`);
@@ -1104,11 +1133,15 @@ try {
     pointer(zone, 'pointerdown', zonePoint);
     pointer(document, 'pointerup', zonePoint);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const selectedHalo = probeZoneHalo(normalHalo?.zoneId ?? zone.dataset.zoneId);
     const item = document.querySelector('.plan-item');
     const point = center(item);
     pointer(item, 'pointerdown', point);
     pointer(document, 'pointerup', point);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const inspect = (label) => {
       const zoneHit = document.querySelector('.zone-hit-target');

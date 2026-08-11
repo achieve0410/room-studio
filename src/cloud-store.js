@@ -38,6 +38,16 @@ export function createCloudStore({ client } = {}) {
     return data.user;
   };
 
+  const requireExpectedUser = async (expectedUserId = null) => {
+    const user = await currentUser();
+    if (expectedUserId && user.id !== expectedUserId) {
+      const error = new Error('SESSION_CHANGED');
+      error.code = 'SESSION_CHANGED';
+      throw error;
+    }
+    return user;
+  };
+
   return {
     async getSession() {
       return throwIfError(await supabase.auth.getSession()).session;
@@ -61,8 +71,8 @@ export function createCloudStore({ client } = {}) {
       }));
     },
 
-    async signOut() {
-      throwIfError(await supabase.auth.signOut());
+    async signOut(options) {
+      throwIfError(await supabase.auth.signOut(options));
     },
 
     async listProjects() {
@@ -81,8 +91,15 @@ export function createCloudStore({ client } = {}) {
       return { ...project, layout_json: prepareLayoutSnapshot(project.layout_json) };
     },
 
-    async saveProject({ id = null, name, layout, expectedRevision = null, createVersion = false }) {
-      await currentUser();
+    async saveProject({
+      id = null,
+      name,
+      layout,
+      expectedRevision = null,
+      createVersion = false,
+      expectedUserId = null,
+    }) {
+      await requireExpectedUser(expectedUserId);
       const snapshot = prepareLayoutSnapshot(layout);
       const result = throwIfError(await supabase.rpc('save_project', {
         p_project_id: id,
@@ -93,6 +110,20 @@ export function createCloudStore({ client } = {}) {
         p_create_version: createVersion,
       }));
       return Array.isArray(result) ? result[0] : result;
+    },
+
+    async deleteProject(id, { expectedUserId = null } = {}) {
+      await requireExpectedUser(expectedUserId);
+      return throwIfError(await supabase.rpc('delete_project', {
+        p_project_id: id,
+      }));
+    },
+
+    async deleteAccount({ expectedUserId = null, confirmation }) {
+      await requireExpectedUser(expectedUserId);
+      return throwIfError(await supabase.functions.invoke('delete-account', {
+        body: { confirmation },
+      }));
     },
   };
 }
