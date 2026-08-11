@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "capturedAt": "2026-08-12",
+  "stage": "cycle-2-starter",
+  "state": "GREEN",
+  "threshold": {
+    "total": 80,
+    "dimensionRatio": 0.6,
+    "criticalBlockers": 0
+  },
+  "score": 83,
+  "maximum": 100,
+  "passes": true,
+  "source": "scorecard-cycle-2.json",
+  "failedDimensions": [],
+  "criticalBlockers": [],
+  "nextIncrement": null,
+  "nextDecision": "Ship to a measured pilot and collect activation, export, retention, and willingness-to-pay evidence."
+}
