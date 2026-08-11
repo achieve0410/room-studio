@@ -23,6 +23,14 @@ const WALL_THICKNESS_M = 0.06;
 const DOOR_HEIGHT_M = 2.05;
 let activeCleanup = null;
 
+export function setStatusMessage(status, message) {
+  const documentRef = status.ownerDocument;
+  status.replaceChildren(
+    documentRef.createElement('i'),
+    documentRef.createTextNode(` ${message}`),
+  );
+}
+
 const material = (color, roughness = 0.72, metalness = 0.02) => new THREE.MeshStandardMaterial({
   color, roughness, metalness,
 });
@@ -1145,7 +1153,7 @@ export function openWalkthrough({
     overlay.classList.remove('can-use-door');
     delete overlay.dataset.targetDoorId;
     delete overlay.dataset.targetWindowId;
-    status.innerHTML = `<i></i> ${target?.name ? `${target.name} 바로 보기` : mode === 'top' ? '상공 시점' : '돌하우스 시점'}`;
+    setStatusMessage(status, target?.name ? `${target.name} 바로 보기` : mode === 'top' ? '상공 시점' : '돌하우스 시점');
     previousFrameTime = performance.now();
     syncViewToolState();
   };
@@ -1172,7 +1180,7 @@ export function openWalkthrough({
       clearTimeout(bumpTimer);
       bumpTimer = window.setTimeout(() => {
         overlay.classList.remove('is-bumped');
-        if (navigationActive) status.innerHTML = '<i></i> 자유롭게 둘러보는 중';
+        if (navigationActive) setStatusMessage(status, '자유롭게 둘러보는 중');
       }, 650);
     }
     return moved;
@@ -1203,7 +1211,7 @@ export function openWalkthrough({
     onStructureChange?.(hit.structure.id, isSliding ? { openRatio: opening } : { openAngle: opening });
     const action = opening > 0 ? '열었습니다' : '닫았습니다';
     const label = isWindow ? '미닫이창을' : isSliding ? '미닫이문을' : '여닫이문을';
-    status.innerHTML = `<i></i> ${label} ${action}`;
+    setStatusMessage(status, `${label} ${action}`);
     if (isWindow) overlay.dataset.lastWindowAction = `${hit.structure.id}:${opening}`;
     else overlay.dataset.lastDoorAction = `${hit.structure.id}:${opening}`;
     return true;
@@ -1258,7 +1266,7 @@ export function openWalkthrough({
     hideMenu();
     overlay.classList.add('is-active');
     overlay.classList.remove('is-overview');
-    status.innerHTML = '<i></i> 자유롭게 둘러보는 중';
+    setStatusMessage(status, '자유롭게 둘러보는 중');
     previousFrameTime = performance.now();
     syncViewToolState();
     renderer.domElement.focus({ preventScroll: true });
@@ -1476,7 +1484,7 @@ export function openWalkthrough({
       anchor.click();
       URL.revokeObjectURL(url);
       overlay.dataset.lastSnapshot = 'png';
-      status.innerHTML = '<i></i> 현재 3D 화면을 PNG로 저장했습니다';
+      setStatusMessage(status, '현재 3D 화면을 PNG로 저장했습니다');
     }, 'image/png');
   };
 

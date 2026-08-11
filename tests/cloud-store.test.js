@@ -134,3 +134,79 @@ test('manual cloud saves persist an owned project and an immutable version snaps
     },
   });
 });
+
+test('delete project uses the owner-checked RPC boundary', async () => {
+  // Given an authenticated cloud adapter
+  const calls = [];
+  const store = createCloudStore({
+    client: {
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }),
+      },
+      async rpc(name, parameters) {
+        calls.push([name, parameters]);
+        return { data: null, error: null };
+      },
+    },
+  });
+
+  // When the user deletes one project
+  await store.deleteProject('project-1', { expectedUserId: 'user-1' });
+
+  // Then deletion crosses only the authenticated owner-checking function
+  assert.deepEqual(calls, [['delete_project', { p_project_id: 'project-1' }]]);
+});
+
+test('delete account invokes the authenticated server-side function', async () => {
+  // Given a cloud adapter whose Functions client records requests
+  const calls = [];
+  const store = createCloudStore({
+    client: {
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }),
+      },
+      functions: {
+        async invoke(name, options) {
+          calls.push([name, options]);
+          return { data: { deleted: true }, error: null };
+        },
+      },
+    },
+  });
+
+  // When deliberate account deletion is requested
+  await store.deleteAccount({ expectedUserId: 'user-1', confirmation: '계정 삭제' });
+
+  // Then the service-role operation remains behind the authenticated Edge Function
+  assert.deepEqual(calls, [[
+    'delete-account',
+    { body: { confirmation: '계정 삭제' } },
+  ]]);
+});
+
+test('stale expected user blocks a project save before RPC', async () => {
+  // Given an auth transition that replaced the user captured by the editor
+  let rpcCalls = 0;
+  const store = createCloudStore({
+    client: {
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'user-new' } }, error: null }),
+      },
+      async rpc() {
+        rpcCalls += 1;
+        return { data: null, error: null };
+      },
+    },
+  });
+
+  // When the stale editor attempts to save as the previous user
+  await assert.rejects(() => store.saveProject({
+    id: null,
+    name: '이전 사용자 도면',
+    layout: { zones: [], items: [], structures: [], dimensions: [], backgroundPlan: null, wallHeight: 240 },
+    expectedUserId: 'user-old',
+  }), /SESSION_CHANGED/);
+
+  // Then no project write reaches Supabase
+  assert.equal(rpcCalls, 0);
+});
