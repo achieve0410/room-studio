@@ -1,0 +1,43 @@
+{
+  "targetUrl": "http://127.0.0.1:4173",
+  "assertions": [
+    {
+      "name": "landscape canvas remains fully visible above navigation",
+      "pass": true
+    },
+    {
+      "name": "landscape primary controls remain above navigation",
+      "pass": true
+    },
+    {
+      "name": "landscape has no horizontal document overflow",
+      "pass": true
+    }
+  ],
+  "passed": true,
+  "landscapeResult": {
+    "canvasVisible": true,
+    "controlsVisible": true,
+    "noDocumentOverflow": true,
+    "geometry": {
+      "canvas": {
+        "top": 169,
+        "bottom": 319,
+        "height": 150
+      },
+      "navigation": {
+        "top": 326,
+        "bottom": 390,
+        "height": 64
+      },
+      "toolbar": {
+        "top": 106,
+        "bottom": 168,
+        "height": 62
+      }
+    }
+  },
+  "screenshots": {
+    "landscape": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/room-studio-improvements/green-landscape.png"
+  }
+}

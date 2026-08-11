@@ -1,0 +1,154 @@
+{
+  "targetUrl": "http://127.0.0.1:4173",
+  "assertions": [
+    {
+      "name": "desktop project data control exists",
+      "pass": true
+    },
+    {
+      "name": "desktop planning scope is visible",
+      "pass": true
+    },
+    {
+      "name": "desktop statistics remain visible",
+      "pass": true
+    },
+    {
+      "name": "desktop left panel scrolls independently",
+      "pass": true
+    },
+    {
+      "name": "desktop right panel scrolls independently",
+      "pass": true
+    },
+    {
+      "name": "project dialog receives initial focus",
+      "pass": true
+    },
+    {
+      "name": "project dialog traps Tab focus",
+      "pass": true
+    },
+    {
+      "name": "portable download format is versioned",
+      "pass": true
+    },
+    {
+      "name": "portable download excludes cloud metadata",
+      "pass": true
+    },
+    {
+      "name": "portable download uses the dedicated extension",
+      "pass": true
+    },
+    {
+      "name": "portable import updates project and layout",
+      "pass": true
+    },
+    {
+      "name": "portrait primary commands fit without horizontal scrolling",
+      "pass": true
+    },
+    {
+      "name": "portrait helper text is at least 10px",
+      "pass": true
+    },
+    {
+      "name": "mobile action sheet is modal",
+      "pass": true
+    },
+    {
+      "name": "mobile action sheet makes editor inert",
+      "pass": true
+    },
+    {
+      "name": "mobile action sheet traps Tab focus",
+      "pass": true
+    },
+    {
+      "name": "mobile action sheet closes with Escape",
+      "pass": true
+    },
+    {
+      "name": "mobile Escape restores canvas focus",
+      "pass": true
+    },
+    {
+      "name": "landscape canvas remains visible above navigation",
+      "pass": true
+    },
+    {
+      "name": "landscape primary controls remain above navigation",
+      "pass": true
+    },
+    {
+      "name": "landscape has no horizontal document overflow",
+      "pass": true
+    },
+    {
+      "name": "explicit local project deletion leaves a blank draft",
+      "pass": true
+    },
+    {
+      "name": "project deletion reports the resulting state",
+      "pass": true
+    }
+  ],
+  "passed": true,
+  "projectResult": {
+    "filename": "room-studio-내-집-도면.roomstudio.json",
+    "envelope": {
+      "format": "room-studio",
+      "formatVersion": 1,
+      "schemaVersion": 2,
+      "hasOwnerMetadata": false
+    },
+    "initialFocusInside": true,
+    "trappedFocus": true,
+    "importedName": true,
+    "importedZone": "QA 거실"
+  },
+  "portraitResult": {
+    "toolbarFits": true,
+    "helperTextAtLeastTen": true,
+    "modal": true,
+    "backgroundInert": true,
+    "focusTrapped": true
+  },
+  "escapeResult": {
+    "closed": true,
+    "focusRestored": true
+  },
+  "landscapeResult": {
+    "canvasVisible": true,
+    "controlsVisible": true,
+    "noDocumentOverflow": true,
+    "geometry": {
+      "canvas": {
+        "top": 169,
+        "bottom": 319,
+        "height": 150
+      },
+      "navigation": {
+        "top": 326,
+        "bottom": 390,
+        "height": 64
+      },
+      "toolbar": {
+        "top": 106,
+        "bottom": 168,
+        "height": 62
+      }
+    }
+  },
+  "deleteResult": {
+    "blank": true,
+    "notice": true
+  },
+  "screenshots": {
+    "desktop": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/room-studio-improvements/green-desktop.png",
+    "projectDialog": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/room-studio-improvements/green-project-dialog.png",
+    "portrait": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/room-studio-improvements/green-portrait.png",
+    "landscape": "/Users/wonhyo/Documents/workspace/room-architecture/.omo/evidence/room-studio-improvements/green-landscape.png"
+  }
+}
