@@ -6,16 +6,16 @@
   "assertions": [
     {
       "name": "touch library action arms placement immediately",
-      "pass": false,
+      "pass": true,
       "details": {
-        "armed": false
+        "armed": true
       }
     },
     {
       "name": "single direct touch commits at target",
-      "pass": false,
+      "pass": true,
       "details": {
-        "id": "item-1786503892969-3a2734c6b153c8",
+        "id": "item-1786503854142-5d284d8070627",
         "type": "sofa",
         "name": "소파",
         "shape": "roundRect",
@@ -23,8 +23,8 @@
         "depth": 90,
         "height": 85,
         "color": "#91a38f",
-        "x": 320,
-        "y": 210,
+        "x": 480,
+        "y": 280,
         "elevation": 0,
         "rotation": 0
       }
@@ -35,12 +35,12 @@
       "details": {
         "noOverflow": true,
         "contextMenuOpen": false,
-        "canvasFocused": false
+        "canvasFocused": true
       }
     },
     {
       "name": "mobile controls meet 44px target",
-      "pass": false,
+      "pass": true,
       "details": [
         {
           "selector": "[data-add-type=\"sofa\"]",
@@ -52,13 +52,19 @@
         },
         {
           "selector": "[data-placement-cancel]",
-          "width": 0,
-          "height": 0
+          "x": 317,
+          "y": 319,
+          "width": 76,
+          "height": 44,
+          "disabled": false
         },
         {
           "selector": "[data-demo-open]",
-          "width": 0,
-          "height": 0
+          "x": 244.375,
+          "y": 30.5,
+          "width": 44,
+          "height": 44,
+          "disabled": false
         }
       ]
     },
@@ -68,17 +74,17 @@
       "details": {
         "noOverflow": true,
         "contextMenuOpen": false,
-        "canvasFocused": false
+        "canvasFocused": true
       }
     },
     {
       "name": "mobile demo dialog traps focus and Escape restores opener",
-      "pass": false,
+      "pass": true,
       "details": {
-        "opened": false,
-        "focusableCount": 0,
-        "wrapped": false,
-        "restored": false
+        "opened": true,
+        "focusableCount": 5,
+        "wrapped": true,
+        "restored": true
       }
     },
     {
@@ -88,7 +94,7 @@
         "opened": false,
         "choiceCount": 0,
         "wrapped": false,
-        "restored": false
+        "restored": true
       }
     }
   ],
@@ -135,6 +141,19 @@
         "point": {
           "x": 269.2564102564103,
           "y": 519.4871794871794
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-open]",
+        "center": {
+          "x": 244.375,
+          "y": 30.5,
+          "width": 44,
+          "height": 44,
+          "disabled": false
         }
       }
     },

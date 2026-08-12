@@ -45,6 +45,19 @@
     }
   },
   {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-open]",
+      "center": {
+        "x": 244.375,
+        "y": 30.5,
+        "width": 44,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
     "name": "key",
     "details": {
       "key": "Tab",
