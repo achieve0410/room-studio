@@ -42,11 +42,21 @@ try {
   const address = previewServer.httpServer.address();
   if (!address || typeof address === 'string') throw new Error('Vite preview did not expose a TCP port');
   const previewUrl = `http://127.0.0.1:${address.port}/`;
-  await Promise.all([
-    run('.omo/evidence/real-plan-navigation/door-visibility-qa.mjs', previewUrl, join(outputRoot, 'visibility')),
-    run('.omo/evidence/real-plan-navigation/responsive-qa.mjs', previewUrl, join(outputRoot, 'responsive')),
-    run('.omo/evidence/real-plan-navigation/browser-qa.mjs', previewUrl, join(outputRoot, 'traversal')),
-  ]);
+  await run(
+    '.omo/evidence/real-plan-navigation/door-visibility-qa.mjs',
+    previewUrl,
+    join(outputRoot, 'visibility'),
+  );
+  await run(
+    '.omo/evidence/real-plan-navigation/responsive-qa.mjs',
+    previewUrl,
+    join(outputRoot, 'responsive'),
+  );
+  await run(
+    '.omo/evidence/real-plan-navigation/browser-qa.mjs',
+    previewUrl,
+    join(outputRoot, 'traversal'),
+  );
 } catch (error) {
   failure = error;
 } finally {
