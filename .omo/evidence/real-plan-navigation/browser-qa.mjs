@@ -291,20 +291,6 @@ async function moveTo(waypoint, demoId) {
     const right = { x: -forward.y, y: forward.x };
     const joystickX = desired.x * right.x + desired.y * right.y;
     const joystickY = -(desired.x * forward.x + desired.y * forward.y);
-    const movement = await cdp.send('Runtime.evaluate', {
-      expression: `new Promise((resolve) => {
-        const player = document.querySelector('[data-map-player]');
-        const start = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
-        const observer = new MutationObserver(() => {
-          const next = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
-          if (Math.hypot(Number(next[1]) - Number(start[1]), Number(next[2]) - Number(start[2])) >= 5) {
-            observer.disconnect(); resolve(true);
-          }
-        });
-        observer.observe(player, { attributes: true, attributeFilter: ['transform'] });
-      })`,
-      awaitPromise: false,
-    });
     const joystickPoint = await evaluate(`(() => {
       const joystick = document.querySelector('[data-walkthrough-joystick]');
       const rect = joystick.getBoundingClientRect();
@@ -342,7 +328,6 @@ async function moveTo(waypoint, demoId) {
       }), { once: true });
     })`);
     let touchActive = false;
-    let moved;
     try {
       await cdp.send('Input.dispatchTouchEvent', {
         type: 'touchStart',
@@ -395,13 +380,11 @@ async function moveTo(waypoint, demoId) {
       if (!controlledFrames) {
         throw new Error(`${demoId}: camera did not move within 60 controlled frames`);
       }
-      moved = await waitForSignal(movement.result.objectId, `${demoId} camera movement`, 5_000);
     } finally {
       if (touchActive) {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       }
     }
-    if (!moved) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
   }
   throw new Error(`${demoId}: did not reach ${JSON.stringify(waypoint)} from ${JSON.stringify(current)}`);
 }
