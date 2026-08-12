@@ -1,0 +1,89 @@
+{
+  "red": {
+    "command": "node --test tests/demo-layouts.test.js",
+    "result": "lh-compact-37: only 1/3 zones are reachable"
+  },
+  "source": {
+    "dataset": "https://www.data.go.kr/data/15037046/fileData.do",
+    "catalog": "https://www.data.go.kr/catalog/15037046/fileData.json",
+    "license": "이용허락범위 제한 없음",
+    "archiveSha256": "57809e0f961ab48611cf59882c52ea0867bd5208e96217cd4549b08d7ba7fdfc",
+    "receipts": ".omo/evidence/layout-speed/lh-source-records.json"
+  },
+  "green": {
+    "focusedTests": "6/6 passed; 21/21 interior door leaves clear furniture",
+    "fullCheck": "66/66 tests passed; Vite production build passed",
+    "mobileBrowserAudit": "114/114 assertions passed; 0 console errors",
+    "demoBrowserAudit": "5/5 assertions passed; 0 console errors",
+    "doorVisibilityAudit": {
+      "passed": true,
+      "galleryPreviewPerDemo": "8 total doors; 7 interior doors",
+      "loadedPlanPerDemo": "8 visible door groups with 3px leaf strokes",
+      "settled3dPerDemo": "curtain opacity 0; 8 door controllers; 8 visible leaves; at least 24 rendered frame parts"
+    },
+    "responsiveAudit": {
+      "passed": true,
+      "viewports": [
+        "390x844",
+        "844x390"
+      ],
+      "horizontalOverflow": 0,
+      "clippedText": 0,
+      "minimumControlSizePixels": 44
+    },
+    "visualReview": {
+      "designSystem": "PASS",
+      "koreanCjk": "PASS"
+    },
+    "implementationAudit": "PASS",
+    "walkthrough": [
+      {
+        "id": "lh-mandeok5-59a",
+        "visited": [
+          "현관·복도",
+          "주방·식당",
+          "거실",
+          "침실 2",
+          "침실 3",
+          "침실 1",
+          "욕실 1",
+          "욕실 2"
+        ]
+      },
+      {
+        "id": "lh-hoecheon-a18-74a",
+        "visited": [
+          "현관·복도",
+          "주방·식당",
+          "거실",
+          "침실 1",
+          "침실 2",
+          "침실 3",
+          "부부 욕실",
+          "공용 욕실"
+        ]
+      },
+      {
+        "id": "lh-hoecheon-a18-84a",
+        "visited": [
+          "현관·복도",
+          "주방·식당",
+          "거실",
+          "침실 1",
+          "침실 2",
+          "침실 3",
+          "공용 욕실",
+          "부부 욕실"
+        ]
+      }
+    ]
+  },
+  "commands": [
+    "npm run check",
+    "npm run test:browser:mobile",
+    "node .omo/evidence/layout-speed/browser-qa.mjs --url http://127.0.0.1:4173 --scenario demos --phase green --output-dir /tmp/room-studio-current-demos",
+    "node .omo/evidence/real-plan-navigation/responsive-qa.mjs http://127.0.0.1:4173/ /tmp/room-studio-real-plan-responsive",
+    "node .omo/evidence/real-plan-navigation/browser-qa.mjs http://127.0.0.1:4173/ /tmp/room-studio-real-plan-traversal",
+    "node .omo/evidence/real-plan-navigation/door-visibility-qa.mjs http://127.0.0.1:4173/ /tmp/room-studio-door-visibility"
+  ]
+}

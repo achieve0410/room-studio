@@ -2040,20 +2040,66 @@ try {
       { x: windowWalkthroughCanvas.x - 45, y: windowWalkthroughCanvas.y },
       { x: windowWalkthroughCanvas.x + 35, y: windowWalkthroughCanvas.y },
     );
-    await sleep(45);
-    targetedWindowId = await evaluate(`document.querySelector('[data-walkthrough]')?.dataset.targetWindowId ?? null`);
+    targetedWindowId = await evaluate(`new Promise((resolve) => {
+      let stableFrames = 0;
+      let elapsedFrames = 0;
+      const check = () => {
+        const target = document.querySelector('[data-walkthrough]')?.dataset.targetWindowId ?? null;
+        stableFrames = target === ${JSON.stringify(windowId)} ? stableFrames + 1 : 0;
+        elapsedFrames += 1;
+        if (stableFrames >= 3 || elapsedFrames >= 8) {
+          resolve(stableFrames >= 3 ? target : null);
+          return;
+        }
+        requestAnimationFrame(check);
+      };
+      requestAnimationFrame(check);
+    })`);
   }
   const windowBefore3dClick = targetedWindowId
     ? await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ id }) => id === ${JSON.stringify(windowId)})`)
     : null;
+  let actionPromise = null;
   if (targetedWindowId) {
+    actionPromise = await cdp.send('Runtime.evaluate', {
+      expression: `new Promise((resolve) => {
+        const overlay = document.querySelector('[data-walkthrough]');
+        const expectedPrefix = ${JSON.stringify(`${windowId}:`)};
+        const check = () => {
+          const action = overlay?.dataset.lastWindowAction ?? null;
+          if (!action?.startsWith(expectedPrefix)) return false;
+          observer.disconnect();
+          resolve(action);
+          return true;
+        };
+        const observer = new MutationObserver(check);
+        observer.observe(overlay, { attributes: true, attributeFilter: ['data-last-window-action'] });
+        let frames = 0;
+        const bound = () => {
+          if (check()) return;
+          frames += 1;
+          if (frames >= 120) {
+            observer.disconnect();
+            resolve(null);
+            return;
+          }
+          requestAnimationFrame(bound);
+        };
+        requestAnimationFrame(bound);
+      })`,
+      awaitPromise: false,
+    });
     await mouseClick(windowWalkthroughCanvas);
-    await sleep(160);
   }
+  const windowAction = actionPromise
+    ? (await cdp.send('Runtime.awaitPromise', {
+      promiseObjectId: actionPromise.result.objectId,
+      returnByValue: true,
+    })).result.value
+    : null;
   const windowAfter3dClick = targetedWindowId
     ? await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ id }) => id === ${JSON.stringify(windowId)})`)
     : null;
-  const windowAction = await evaluate(`document.querySelector('[data-walkthrough]')?.dataset.lastWindowAction ?? null`);
   report.interactionAssertions.push(assertion(
     'D 3D center crosshair finds a sash window and canvas click persists open or closed state',
     targetedWindowId === windowId && windowBefore3dClick?.openRatio !== windowAfter3dClick?.openRatio
@@ -2062,7 +2108,6 @@ try {
     'the visible window is targeted and direct canvas click toggles persisted openRatio',
   ));
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', repeat: true, bubbles: true }))`);
-  await sleep(80);
   const windowAfterRepeatedKey = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ id }) => id === ${JSON.stringify(windowId)})`);
   report.interactionAssertions.push(assertion(
     'D holding E does not repeatedly toggle the targeted window',
