@@ -136,7 +136,10 @@ export async function capture(cdp, path) {
 }
 
 export async function launchChrome(chromePath) {
-  const profileDir = await mkdtemp(join(tmpdir(), 'room-studio-browser-qa-'));
+  const profileDir = await mkdtemp(join(
+    process.env.REAL_PLAN_AUDIT_PROFILE_ROOT ?? tmpdir(),
+    'room-studio-browser-qa-',
+  ));
   const child = spawn(chromePath, [
     '--headless=new',
     '--disable-background-networking',
