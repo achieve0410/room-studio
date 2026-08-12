@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { preview } from 'vite';
@@ -17,22 +18,40 @@ if (!chrome) throw new Error('Chrome or Chromium is required');
 const root = resolve(import.meta.dirname, '..');
 const outputRoot = safeArtifactPath(process.argv[2], '.omx/artifacts/real-plan-navigation');
 const auditTimeoutMs = Number(process.env.REAL_PLAN_AUDIT_TIMEOUT_MS ?? 25 * 60 * 1000);
+const profileRoot = process.env.REAL_PLAN_AUDIT_PROFILE_ROOT
+  ?? await mkdtemp(join(tmpdir(), 'room-studio-real-plan-audit-'));
 let previewServer;
+
+function terminateProcessTree(child) {
+  if (process.platform !== 'win32') {
+    process.kill(-child.pid, 'SIGKILL');
+    return;
+  }
+  const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+    stdio: 'ignore',
+  });
+  killer.once('error', (error) => {
+    console.error(`Failed to terminate audit process tree ${child.pid}: ${error.message}`);
+  });
+}
 
 async function run(script, url, output) {
   await new Promise((resolveRun, reject) => {
     const child = spawn(process.execPath, [resolve(root, script), url, output], {
       cwd: root,
       detached: process.platform !== 'win32',
-      env: { ...process.env, CHROME_BIN: chrome },
+      env: {
+        ...process.env,
+        CHROME_BIN: chrome,
+        REAL_PLAN_AUDIT_PROFILE_ROOT: profileRoot,
+      },
       stdio: 'inherit',
     });
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       try {
-        if (process.platform === 'win32') child.kill('SIGKILL');
-        else process.kill(-child.pid, 'SIGKILL');
+        terminateProcessTree(child);
       } catch (error) {
         if (error.code !== 'ESRCH') reject(error);
       }
@@ -41,7 +60,7 @@ async function run(script, url, output) {
       clearTimeout(timer);
       reject(error);
     });
-    child.once('exit', (code) => {
+    child.once('close', (code) => {
       clearTimeout(timer);
       if (timedOut) reject(new Error(`${script} exceeded ${auditTimeoutMs} ms`));
       else if (code === 0) resolveRun();
@@ -74,5 +93,6 @@ try {
   failure = error;
 } finally {
   await previewServer?.close();
+  await rm(profileRoot, { recursive: true, force: true });
 }
 if (failure) throw failure;

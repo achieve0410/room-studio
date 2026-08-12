@@ -16,7 +16,10 @@ if (!chrome) throw new Error('Chrome or Chromium is required');
 
 const url = process.argv[2] ?? 'http://127.0.0.1:4173/';
 const outputDir = safeArtifactPath(process.argv[3], '.omx/artifacts/real-plan-navigation/responsive');
-const profile = await mkdtemp(join(tmpdir(), 'room-studio-real-plan-responsive-'));
+const profile = await mkdtemp(join(
+  process.env.REAL_PLAN_AUDIT_PROFILE_ROOT ?? tmpdir(),
+  'room-studio-real-plan-responsive-',
+));
 let browser;
 let socket;
 
