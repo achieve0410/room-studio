@@ -178,6 +178,40 @@ async function waitFor(expression, label, timeout = 20_000) {
   if (!result) throw new Error(`Timed out waiting for ${label}`);
 }
 
+async function armSignal(expression) {
+  const response = await cdp.send('Runtime.evaluate', {
+    expression,
+    awaitPromise: false,
+  });
+  if (response.exceptionDetails) {
+    throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text);
+  }
+  if (!response.result.objectId) throw new Error('Browser signal did not return a promise');
+  return response.result.objectId;
+}
+
+async function waitForSignal(promiseObjectId, label, timeout = 3_000) {
+  let timer;
+  try {
+    return await Promise.race([
+      cdp.send('Runtime.awaitPromise', {
+        promiseObjectId,
+        returnByValue: true,
+      }).then((response) => {
+        if (response.exceptionDetails) {
+          throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text);
+        }
+        return response.result.value;
+      }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), timeout);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function navigate(target) {
   const loaded = cdp.once('Page.loadEventFired');
   await cdp.send('Page.navigate', { url: target });
@@ -270,40 +304,82 @@ async function moveTo(waypoint, demoId) {
         window.__qaJoystickPointerObserver = true;
       }
       return {
+        coarse: matchMedia('(pointer: coarse)').matches,
+        display: getComputedStyle(joystick).display,
+        hit: document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        )?.closest('[data-walkthrough-joystick]') === joystick,
+        width: rect.width,
+        height: rect.height,
         centerX: rect.left + rect.width / 2,
         centerY: rect.top + rect.height / 2,
         x: rect.left + rect.width / 2 + radius * ${joystickX},
         y: rect.top + rect.height / 2 + radius * ${joystickY},
       };
     })()`);
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{
-        x: joystickPoint.centerX,
-        y: joystickPoint.centerY,
-        id: 41,
-        radiusX: 1,
-        radiusY: 1,
-      }],
-    });
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchMove',
-      touchPoints: [{
-        x: joystickPoint.x,
-        y: joystickPoint.y,
-        id: 41,
-        radiusX: 1,
-        radiusY: 1,
-      }],
-    });
+    if (!joystickPoint.coarse || joystickPoint.display === 'none'
+      || joystickPoint.width <= 0 || joystickPoint.height <= 0 || !joystickPoint.hit) {
+      throw new Error(`${demoId}: joystick is not touch-ready ${JSON.stringify(joystickPoint)}`);
+    }
+    const touchStartObserved = await armSignal(`new Promise((resolve) => {
+      const joystick = document.querySelector('[data-walkthrough-joystick]');
+      joystick.addEventListener('pointerdown', (event) => resolve({
+        active: joystick.classList.contains('is-active'),
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+      }), { once: true });
+    })`);
+    let touchActive = false;
     let moved;
     try {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{
+          x: joystickPoint.centerX,
+          y: joystickPoint.centerY,
+          id: 41,
+          radiusX: 1,
+          radiusY: 1,
+        }],
+      });
+      touchActive = true;
+      const touchStart = await waitForSignal(touchStartObserved, `${demoId} joystick pointerdown`);
+      if (!touchStart.active || touchStart.pointerType !== 'touch') {
+        throw new Error(`${demoId}: joystick rejected touch start ${JSON.stringify(touchStart)}`);
+      }
+      const touchMoveObserved = await armSignal(`new Promise((resolve) => {
+        const joystick = document.querySelector('[data-walkthrough-joystick]');
+        joystick.addEventListener('pointermove', (event) => resolve({
+          active: joystick.classList.contains('is-active'),
+          knob: document.querySelector('[data-joystick-knob]').style.transform,
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+        }), { once: true });
+      })`);
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{
+          x: joystickPoint.x,
+          y: joystickPoint.y,
+          id: 41,
+          radiusX: 1,
+          radiusY: 1,
+        }],
+      });
+      const touchMove = await waitForSignal(touchMoveObserved, `${demoId} joystick pointermove`);
+      if (!touchMove.active || touchMove.pointerType !== 'touch'
+        || touchMove.pointerId !== touchStart.pointerId || touchMove.knob === 'translate(0px, 0px)') {
+        throw new Error(`${demoId}: joystick rejected touch move ${JSON.stringify(touchMove)}`);
+      }
       moved = await cdp.send('Runtime.awaitPromise', {
         promiseObjectId: movement.result.objectId,
         returnByValue: true,
       });
     } finally {
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      if (touchActive) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      }
     }
     if (!moved.result.value) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
   }
@@ -350,7 +426,11 @@ try {
   await cdp.connect();
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
-  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await cdp.send('Emulation.setEmulatedMedia', { features: [
+    { name: 'prefers-reduced-motion', value: 'reduce' },
+    { name: 'pointer', value: 'coarse' },
+    { name: 'any-pointer', value: 'coarse' },
+  ] });
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 844, height: 844, deviceScaleFactor: 1, mobile: true });
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   const reports = [];
