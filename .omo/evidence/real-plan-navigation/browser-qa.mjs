@@ -218,6 +218,16 @@ async function navigate(target) {
   await loaded;
 }
 
+async function settleFrames() {
+  const frames = await armSignal(`new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  })`);
+  if (await evaluate(`window.__qaFrames?.isControlled() ?? false`)) {
+    await evaluate(`window.__qaFrames.step(2)`);
+  }
+  await waitForSignal(frames, 'browser settling frames');
+}
+
 async function telemetry() {
   return evaluate(`(() => {
     const match = document.querySelector('[data-map-player]').getAttribute('transform')
@@ -228,18 +238,20 @@ async function telemetry() {
 }
 
 async function clickSelector(selector) {
-  const point = await evaluate(`new Promise((resolve) => {
-    const element = document.querySelector(${JSON.stringify(selector)});
-    if (!element) { resolve(null); return; }
-    element.scrollIntoView({ block: 'center', inline: 'center' });
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const rect = element.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      const hit = document.elementFromPoint(x, y);
-      resolve({ x, y, hit: hit?.closest(${JSON.stringify(selector)}) === element });
-    }));
+  await evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({
+    block: 'center',
+    inline: 'center',
   })`);
+  await settleFrames();
+  const point = await evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return { x, y, hit: hit?.closest(${JSON.stringify(selector)}) === element };
+  })()`);
   if (!point) throw new Error(`Missing click target: ${selector}`);
   if (!point.hit) throw new Error(`Click target is covered or outside the viewport: ${selector}`);
   await cdp.send('Input.dispatchMouseEvent', {
@@ -248,7 +260,7 @@ async function clickSelector(selector) {
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 0, clickCount: 1,
   });
-  await evaluate(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+  await settleFrames();
 }
 
 async function mouseDrag(start, end) {
@@ -262,7 +274,7 @@ async function mouseDrag(start, end) {
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased', x: end.x, y: end.y, button: 'left', buttons: 0, clickCount: 1,
   });
-  await evaluate(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+  await settleFrames();
 }
 
 async function moveTo(waypoint, demoId) {
@@ -290,7 +302,6 @@ async function moveTo(waypoint, demoId) {
           }
         });
         observer.observe(player, { attributes: true, attributeFilter: ['transform'] });
-        setTimeout(() => { observer.disconnect(); resolve(false); }, 3000);
       })`,
       awaitPromise: false,
     });
@@ -372,16 +383,14 @@ async function moveTo(waypoint, demoId) {
         || touchMove.pointerId !== touchStart.pointerId || touchMove.knob === 'translate(0px, 0px)') {
         throw new Error(`${demoId}: joystick rejected touch move ${JSON.stringify(touchMove)}`);
       }
-      moved = await cdp.send('Runtime.awaitPromise', {
-        promiseObjectId: movement.result.objectId,
-        returnByValue: true,
-      });
+      await evaluate(`window.__qaFrames.step(12)`);
+      moved = await waitForSignal(movement.result.objectId, `${demoId} camera movement`, 5_000);
     } finally {
       if (touchActive) {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       }
     }
-    if (!moved.result.value) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
+    if (!moved) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
   }
   throw new Error(`${demoId}: did not reach ${JSON.stringify(waypoint)} from ${JSON.stringify(current)}`);
 }
@@ -427,6 +436,49 @@ try {
   await cdp.connect();
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `(() => {
+      const nativeRequest = window.requestAnimationFrame.bind(window);
+      const nativeCancel = window.cancelAnimationFrame.bind(window);
+      let controlled = false;
+      let clock = 0;
+      let nextId = -1;
+      let queue = new Map();
+      window.requestAnimationFrame = (callback) => {
+        if (!controlled) return nativeRequest(callback);
+        const id = nextId--;
+        queue.set(id, callback);
+        return id;
+      };
+      window.cancelAnimationFrame = (id) => {
+        if (id < 0) queue.delete(id);
+        else nativeCancel(id);
+      };
+      window.__qaFrames = {
+        isControlled() {
+          return controlled;
+        },
+        takeControl() {
+          controlled = true;
+          return new Promise((resolve) => {
+            nativeRequest((timestamp) => {
+              clock = timestamp;
+              resolve(queue.size);
+            });
+          });
+        },
+        step(count = 1, interval = 1000 / 60) {
+          for (let frame = 0; frame < count; frame += 1) {
+            clock += interval;
+            const callbacks = queue;
+            queue = new Map();
+            callbacks.forEach((callback) => callback(clock));
+          }
+          return { clock, pending: queue.size };
+        },
+      };
+    })();`,
+  });
   await cdp.send('Emulation.setEmulatedMedia', { features: [
     { name: 'prefers-reduced-motion', value: 'reduce' },
     { name: 'pointer', value: 'coarse' },
@@ -481,6 +533,9 @@ try {
     const blocked = collisionFor(demo);
     const targetedDoorIds = new Set();
     await scanVisibleDoors(targetedDoorIds);
+    const frameControl = await armSignal(`window.__qaFrames.takeControl()`);
+    const pendingFrames = await waitForSignal(frameControl, `${demo.id} frame control`);
+    if (pendingFrames < 1) throw new Error(`${demo.id}: walkthrough animation loop was not captured`);
     let current = await telemetry();
     for (const zone of demo.zones.filter(({ name }) => name !== current.room)) {
       const route = routeToZone(demo, current, zone, blocked);
