@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { safeArtifactPath } from '../.omo/evidence/real-plan-navigation/artifact-path.mjs';
 
 const chrome = [
   process.env.CHROME_BIN,
@@ -13,7 +14,7 @@ const chrome = [
 if (!chrome) throw new Error('Chrome or Chromium is required');
 
 const root = resolve(import.meta.dirname, '..');
-const outputRoot = resolve(process.argv[2] ?? '.omx/artifacts/real-plan-navigation');
+const outputRoot = safeArtifactPath(process.argv[2], '.omx/artifacts/real-plan-navigation');
 const preview = spawn(process.execPath, [
   resolve(root, 'node_modules/vite/bin/vite.js'),
   'preview', '--host', '127.0.0.1', '--port', '4173', '--strictPort',
@@ -32,6 +33,7 @@ async function run(script, output) {
   await new Promise((resolveRun, reject) => {
     const child = spawn(process.execPath, [resolve(root, script), 'http://127.0.0.1:4173/', output], {
       cwd: root,
+      env: { ...process.env, CHROME_BIN: chrome },
       stdio: 'inherit',
     });
     child.once('exit', (code) => code === 0 ? resolveRun() : reject(new Error(`${script} exited ${code}`)));

@@ -2044,7 +2044,10 @@ try {
       const overlay = document.querySelector('[data-walkthrough]');
       const expected = ${JSON.stringify(windowId)};
       let stableFrames = 0;
+      let finished = false;
       const finish = (value) => {
+        if (finished) return;
+        finished = true;
         observer.disconnect();
         clearTimeout(timeout);
         resolve(value);
@@ -2056,7 +2059,7 @@ try {
           finish(target);
           return;
         }
-        requestAnimationFrame(check);
+        if (!finished) requestAnimationFrame(check);
       };
       const observer = new MutationObserver(check);
       observer.observe(overlay, { attributes: true, attributeFilter: ['data-target-window-id'] });

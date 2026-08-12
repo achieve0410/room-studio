@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { safeArtifactPath } from './artifact-path.mjs';
 
 const chrome = [
   process.env.CHROME_BIN,
@@ -14,7 +15,7 @@ const chrome = [
 if (!chrome) throw new Error('Chrome or Chromium is required');
 
 const url = process.argv[2] ?? 'http://127.0.0.1:4173/';
-const outputDir = resolve(process.argv[3] ?? '/tmp/room-studio-real-plan-responsive');
+const outputDir = safeArtifactPath(process.argv[3], '.omx/artifacts/real-plan-navigation/responsive');
 const profile = await mkdtemp(join(tmpdir(), 'room-studio-real-plan-responsive-'));
 let browser;
 let socket;

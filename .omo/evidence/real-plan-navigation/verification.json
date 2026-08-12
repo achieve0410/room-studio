@@ -17,7 +17,7 @@
   },
   "green": {
     "focusedTests": "6/6 passed; 21/21 interior door leaves clear furniture using full leaf segments and rotation-aware item bounds",
-    "fullCheck": "66/66 tests passed; Vite production build passed after review fixes",
+    "fullCheck": "67/67 tests passed, including destructive artifact-path rejection; Vite production build passed after review fixes",
     "mobileBrowserAudit": "114/114 assertions passed after bounded event-wait fixes; 0 console errors",
     "demoBrowserAudit": "5/5 assertions passed; 0 console errors",
     "doorVisibilityAudit": {
