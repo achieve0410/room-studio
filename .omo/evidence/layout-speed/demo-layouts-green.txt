@@ -1,0 +1,29 @@
+✔ ships three immutable, distinct LH model-home adaptations (0.849084ms)
+✔ contains attributable unrestricted source metadata without sensitive or copied data (0.437875ms)
+✔ lookup returns a deep clone and cannot mutate canonical fixtures (0.549834ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 44.551167
+
+GREEN_EXIT_CODE=0
+
+=== ITEM TYPE CONTRACT GREEN ===
+✔ ships three immutable, distinct LH model-home adaptations (0.857583ms)
+✔ contains attributable unrestricted source metadata without sensitive or copied data (0.439416ms)
+✔ lookup returns a deep clone and cannot mutate canonical fixtures (0.586833ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47.495917
+ITEM_TYPE_GREEN_TEST_EXIT_CODE=0
+
+ITEM_TYPE_GREEN_SYNTAX_EXIT_CODE=0

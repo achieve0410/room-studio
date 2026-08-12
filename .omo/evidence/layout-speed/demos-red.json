@@ -1,0 +1,48 @@
+{
+  "scenario": "demos",
+  "phase": "red",
+  "url": "http://127.0.0.1:4173",
+  "passed": false,
+  "assertions": [
+    {
+      "name": "persistent demo entry opens gallery",
+      "pass": false,
+      "details": {
+        "open": false,
+        "cards": []
+      }
+    },
+    {
+      "name": "gallery exposes at least three attributed plans",
+      "pass": false,
+      "details": []
+    },
+    {
+      "name": "demo replacement protects existing local work",
+      "pass": false,
+      "details": null
+    },
+    {
+      "name": "every demo has furnished unique layout geometry",
+      "pass": false,
+      "details": []
+    },
+    {
+      "name": "every demo builds 3D and exports report",
+      "pass": false,
+      "details": []
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 1,
+        "structures": 0
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}

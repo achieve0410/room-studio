@@ -1,0 +1,120 @@
+{
+  "scenario": "numeric",
+  "phase": "red",
+  "url": "http://127.0.0.1:4173",
+  "passed": false,
+  "assertions": [
+    {
+      "name": "selected item exposes immediate quick fields",
+      "pass": false,
+      "details": {
+        "widthExists": false,
+        "rotationExists": false,
+        "widthValue": null,
+        "rotationValue": null
+      }
+    },
+    {
+      "name": "multiple inputs preview geometry live",
+      "pass": false,
+      "details": {
+        "liveWidth": 180
+      }
+    },
+    {
+      "name": "Enter commits final width and rotation",
+      "pass": false,
+      "details": {
+        "id": "numeric-item",
+        "name": "테스트 소파",
+        "type": "sofa",
+        "shape": "roundRect",
+        "x": 260,
+        "y": 190,
+        "width": 180,
+        "depth": 90,
+        "height": 80,
+        "elevation": 0,
+        "rotation": 0,
+        "color": "#c8a985"
+      }
+    },
+    {
+      "name": "one undo restores the complete pre-edit snapshot",
+      "pass": false,
+      "details": {
+        "restored": {
+          "id": "numeric-item",
+          "name": "테스트 소파",
+          "type": "sofa",
+          "shape": "roundRect",
+          "x": 260,
+          "y": 190,
+          "width": 180,
+          "depth": 90,
+          "height": 80,
+          "elevation": 0,
+          "rotation": 0,
+          "color": "#c8a985"
+        },
+        "undoAfter": {
+          "x": 933.1640625,
+          "y": 190.046875,
+          "width": 62.328125,
+          "height": 26,
+          "disabled": true
+        }
+      }
+    },
+    {
+      "name": "Escape cancels draft without adding history",
+      "pass": false,
+      "details": {
+        "cancelled": {
+          "id": "numeric-item",
+          "name": "테스트 소파",
+          "type": "sofa",
+          "shape": "roundRect",
+          "x": 260,
+          "y": 190,
+          "width": 180,
+          "depth": 90,
+          "height": 80,
+          "elevation": 0,
+          "rotation": 0,
+          "color": "#c8a985"
+        },
+        "undoAfterCancel": {
+          "x": 933.1640625,
+          "y": 190.046875,
+          "width": 62.328125,
+          "height": 26,
+          "disabled": true
+        }
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 1,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 260,
+        "worldY": 190,
+        "point": {
+          "x": 651.3076923076924,
+          "y": 544.1494391025641
+        }
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}
