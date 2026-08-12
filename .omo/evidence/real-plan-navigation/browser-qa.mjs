@@ -286,105 +286,113 @@ async function moveTo(waypoint, demoId) {
     const distance = Math.hypot(dx, dy);
     if (distance <= 20) return;
     const desired = { x: dx / distance, y: dy / distance };
-    const angle = current.angle * Math.PI / 180;
-    const forward = { x: Math.sin(angle), y: -Math.cos(angle) };
-    const right = { x: -forward.y, y: forward.x };
-    const joystickX = desired.x * right.x + desired.y * right.y;
-    const joystickY = -(desired.x * forward.x + desired.y * forward.y);
-    const joystickPoint = await evaluate(`(() => {
-      const joystick = document.querySelector('[data-walkthrough-joystick]');
-      const rect = joystick.getBoundingClientRect();
-      const radius = Math.max(20, rect.width * 0.31);
-      window.__qaJoystickPointerTypes ??= [];
-      if (!window.__qaJoystickPointerObserver) {
-        joystick.addEventListener('pointerdown', (event) => window.__qaJoystickPointerTypes.push(event.pointerType));
-        window.__qaJoystickPointerObserver = true;
-      }
-      return {
-        coarse: matchMedia('(pointer: coarse)').matches,
-        display: getComputedStyle(joystick).display,
-        hit: document.elementFromPoint(
-          rect.left + rect.width / 2,
-          rect.top + rect.height / 2,
-        )?.closest('[data-walkthrough-joystick]') === joystick,
-        width: rect.width,
-        height: rect.height,
-        centerX: rect.left + rect.width / 2,
-        centerY: rect.top + rect.height / 2,
-        x: rect.left + rect.width / 2 + radius * ${joystickX},
-        y: rect.top + rect.height / 2 + radius * ${joystickY},
-      };
-    })()`);
-    if (!joystickPoint.coarse || joystickPoint.display === 'none'
-      || joystickPoint.width <= 0 || joystickPoint.height <= 0 || !joystickPoint.hit) {
-      throw new Error(`${demoId}: joystick is not touch-ready ${JSON.stringify(joystickPoint)}`);
+  const angle = current.angle * Math.PI / 180;
+  const forward = { x: Math.sin(angle), y: -Math.cos(angle) };
+  const right = { x: -forward.y, y: forward.x };
+  const joystickX = desired.x * right.x + desired.y * right.y;
+  const joystickY = -(desired.x * forward.x + desired.y * forward.y);
+  const joystickPoint = await evaluate(`(() => {
+    const joystick = document.querySelector('[data-walkthrough-joystick]');
+    const rect = joystick.getBoundingClientRect();
+    const radius = Math.max(20, rect.width * 0.31);
+    window.__qaJoystickPointerTypes ??= [];
+    if (!window.__qaJoystickPointerObserver) {
+      joystick.addEventListener('pointerdown', (event) => window.__qaJoystickPointerTypes.push(event.pointerType));
+      window.__qaJoystickPointerObserver = true;
     }
-    const touchStartObserved = await armSignal(`new Promise((resolve) => {
+    return {
+      coarse: matchMedia('(pointer: coarse)').matches,
+      display: getComputedStyle(joystick).display,
+      hit: document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      )?.closest('[data-walkthrough-joystick]') === joystick,
+      width: rect.width,
+      height: rect.height,
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      x: rect.left + rect.width / 2 + radius * ${joystickX},
+      y: rect.top + rect.height / 2 + radius * ${joystickY},
+    };
+  })()`);
+  if (!joystickPoint.coarse || joystickPoint.display === 'none'
+    || joystickPoint.width <= 0 || joystickPoint.height <= 0 || !joystickPoint.hit) {
+    throw new Error(`${demoId}: joystick is not touch-ready ${JSON.stringify(joystickPoint)}`);
+  }
+  const touchStartObserved = await armSignal(`new Promise((resolve) => {
+    const joystick = document.querySelector('[data-walkthrough-joystick]');
+    joystick.addEventListener('pointerdown', (event) => resolve({
+      active: joystick.classList.contains('is-active'),
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    }), { once: true });
+  })`);
+  let touchActive = false;
+  try {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{
+        x: joystickPoint.centerX,
+        y: joystickPoint.centerY,
+        id: 41,
+        radiusX: 1,
+        radiusY: 1,
+      }],
+    });
+    touchActive = true;
+    const touchStart = await waitForSignal(touchStartObserved, `${demoId} joystick pointerdown`);
+    if (!touchStart.active || touchStart.pointerType !== 'touch') {
+      throw new Error(`${demoId}: joystick rejected touch start ${JSON.stringify(touchStart)}`);
+    }
+    const touchMoveObserved = await armSignal(`new Promise((resolve) => {
       const joystick = document.querySelector('[data-walkthrough-joystick]');
-      joystick.addEventListener('pointerdown', (event) => resolve({
+      joystick.addEventListener('pointermove', (event) => resolve({
         active: joystick.classList.contains('is-active'),
+        knob: document.querySelector('[data-joystick-knob]').style.transform,
         pointerId: event.pointerId,
         pointerType: event.pointerType,
       }), { once: true });
     })`);
-    let touchActive = false;
-    try {
-      await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [{
-          x: joystickPoint.centerX,
-          y: joystickPoint.centerY,
-          id: 41,
-          radiusX: 1,
-          radiusY: 1,
-        }],
-      });
-      touchActive = true;
-      const touchStart = await waitForSignal(touchStartObserved, `${demoId} joystick pointerdown`);
-      if (!touchStart.active || touchStart.pointerType !== 'touch') {
-        throw new Error(`${demoId}: joystick rejected touch start ${JSON.stringify(touchStart)}`);
-      }
-      const touchMoveObserved = await armSignal(`new Promise((resolve) => {
-        const joystick = document.querySelector('[data-walkthrough-joystick]');
-        joystick.addEventListener('pointermove', (event) => resolve({
-          active: joystick.classList.contains('is-active'),
-          knob: document.querySelector('[data-joystick-knob]').style.transform,
-          pointerId: event.pointerId,
-          pointerType: event.pointerType,
-        }), { once: true });
-      })`);
-      await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{
-          x: joystickPoint.x,
-          y: joystickPoint.y,
-          id: 41,
-          radiusX: 1,
-          radiusY: 1,
-        }],
-      });
-      const touchMove = await waitForSignal(touchMoveObserved, `${demoId} joystick pointermove`);
-      if (!touchMove.active || touchMove.pointerType !== 'touch'
-        || touchMove.pointerId !== touchStart.pointerId || touchMove.knob === 'translate(0px, 0px)') {
-        throw new Error(`${demoId}: joystick rejected touch move ${JSON.stringify(touchMove)}`);
-      }
-      const controlledFrames = await evaluate(`(() => {
-        const player = document.querySelector('[data-map-player]');
-        for (let frame = 1; frame <= 60; frame += 1) {
-          window.__qaFrames.step(1);
-          const next = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
-          if (Math.hypot(Number(next[1]) - ${current.x}, Number(next[2]) - ${current.y}) >= 5) return frame;
-        }
-        return 0;
-      })()`);
-      if (!controlledFrames) {
-        throw new Error(`${demoId}: camera did not move within 60 controlled frames`);
-      }
-    } finally {
-      if (touchActive) {
-        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-      }
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{
+        x: joystickPoint.x,
+        y: joystickPoint.y,
+        id: 41,
+        radiusX: 1,
+        radiusY: 1,
+      }],
+    });
+    const touchMove = await waitForSignal(touchMoveObserved, `${demoId} joystick pointermove`);
+    if (!touchMove.active || touchMove.pointerType !== 'touch'
+      || touchMove.pointerId !== touchStart.pointerId || touchMove.knob === 'translate(0px, 0px)') {
+      throw new Error(`${demoId}: joystick rejected touch move ${JSON.stringify(touchMove)}`);
     }
+    const chunkDistance = Math.min(20, Math.max(5, distance - 20));
+    const movement = await evaluate(`(() => {
+      const player = document.querySelector('[data-map-player]');
+      for (let frame = 1; frame <= 90; frame += 1) {
+        window.__qaFrames.step(1);
+        const next = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
+        const remaining = Math.hypot(${waypoint.x} - Number(next[1]), ${waypoint.y} - Number(next[2]));
+        const moved = Math.hypot(Number(next[1]) - ${current.x}, Number(next[2]) - ${current.y});
+        if (remaining <= 20 || moved >= ${chunkDistance}) return { frame, moved, remaining };
+      }
+      const next = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
+      return {
+        frame: 0,
+        moved: Math.hypot(Number(next[1]) - ${current.x}, Number(next[2]) - ${current.y}),
+        remaining: Math.hypot(${waypoint.x} - Number(next[1]), ${waypoint.y} - Number(next[2])),
+      };
+    })()`);
+    if (!movement.frame) {
+      throw new Error(`${demoId}: camera advanced only ${movement.moved.toFixed(1)} cm; ${movement.remaining.toFixed(1)} cm remain`);
+    }
+  } finally {
+    if (touchActive) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    }
+  }
   }
   throw new Error(`${demoId}: did not reach ${JSON.stringify(waypoint)} from ${JSON.stringify(current)}`);
 }
