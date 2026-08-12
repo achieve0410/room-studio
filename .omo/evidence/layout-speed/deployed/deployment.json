@@ -1,0 +1,20 @@
+{
+  "url": "https://achieve0410.github.io/room-studio/",
+  "httpStatus": 200,
+  "deployedSourceSha": "ec72238eec93e9085ba31ba65ea8374781ecf44d",
+  "pagesRunId": 31559365159,
+  "pagesRunUrl": "https://github.com/achieve0410/room-studio/actions/runs/31559365159",
+  "pagesConclusion": "success",
+  "asset": "assets/index-B7akTaGU.js",
+  "scenarioAssertions": {
+    "placement": "6/6",
+    "overlap": "6/6",
+    "numeric": "5/5",
+    "demos": "5/5",
+    "mobile": "7/7"
+  },
+  "consoleErrors": 0,
+  "unexpectedErrors": 0,
+  "capturedAt": "2026-08-12T03:13:48Z",
+  "note": "The final receipt-only commit does not change application source or the built asset. A final Pages redeploy from main must serve the same asset and semantic scenario results."
+}

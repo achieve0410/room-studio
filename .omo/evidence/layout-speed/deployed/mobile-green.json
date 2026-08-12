@@ -15,7 +15,7 @@
       "name": "single direct touch commits at target",
       "pass": true,
       "details": {
-        "id": "item-1786503143613-91f7d4dd804998",
+        "id": "item-1786504428064-8cb5b4692f02a8",
         "type": "sofa",
         "name": "소파",
         "shape": "roundRect",
@@ -76,6 +76,26 @@
         "contextMenuOpen": false,
         "canvasFocused": true
       }
+    },
+    {
+      "name": "mobile demo dialog traps focus and Escape restores opener",
+      "pass": true,
+      "details": {
+        "opened": true,
+        "focusableCount": 5,
+        "wrapped": true,
+        "restored": true
+      }
+    },
+    {
+      "name": "mobile overlap dialog traps focus and Escape restores canvas",
+      "pass": true,
+      "details": {
+        "opened": true,
+        "choiceCount": 2,
+        "wrapped": true,
+        "restored": true
+      }
     }
   ],
   "actions": [
@@ -122,6 +142,66 @@
           "x": 269.2564102564103,
           "y": 519.4871794871794
         }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-open]",
+        "center": {
+          "x": 244.375,
+          "y": 30.5,
+          "width": 44,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Tab",
+        "code": "Tab"
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 2,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 280,
+        "worldY": 190,
+        "point": {
+          "x": 176.43589743589746,
+          "y": 477.71794871794873
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Tab",
+        "code": "Tab"
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
       }
     }
   ],
