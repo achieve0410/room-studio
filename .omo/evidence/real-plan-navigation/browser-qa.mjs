@@ -264,6 +264,11 @@ async function moveTo(waypoint, demoId) {
       const joystick = document.querySelector('[data-walkthrough-joystick]');
       const rect = joystick.getBoundingClientRect();
       const radius = Math.max(20, rect.width * 0.31);
+      window.__qaJoystickPointerTypes ??= [];
+      if (!window.__qaJoystickPointerObserver) {
+        joystick.addEventListener('pointerdown', (event) => window.__qaJoystickPointerTypes.push(event.pointerType));
+        window.__qaJoystickPointerObserver = true;
+      }
       return {
         x: rect.left + rect.width / 2 + radius * ${joystickX},
         y: rect.top + rect.height / 2 + radius * ${joystickY},
@@ -273,7 +278,7 @@ async function moveTo(waypoint, demoId) {
       type: 'mouseMoved',
       x: joystickPoint.x,
       y: joystickPoint.y,
-      pointerType: 'touch',
+      pointerType: 'mouse',
     });
     await cdp.send('Input.dispatchMouseEvent', {
       type: 'mousePressed',
@@ -282,7 +287,7 @@ async function moveTo(waypoint, demoId) {
       button: 'left',
       buttons: 1,
       clickCount: 1,
-      pointerType: 'touch',
+      pointerType: 'mouse',
     });
     const moved = await cdp.send('Runtime.awaitPromise', {
       promiseObjectId: movement.result.objectId,
@@ -295,7 +300,7 @@ async function moveTo(waypoint, demoId) {
       button: 'left',
       buttons: 0,
       clickCount: 1,
-      pointerType: 'touch',
+      pointerType: 'mouse',
     });
     if (!moved.result.value) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
   }
@@ -393,6 +398,10 @@ try {
       await scanVisibleDoors(targetedDoorIds);
     }
     const visited = await evaluate(`[...window.__qaVisitedRooms]`);
+    const joystickPointerTypes = await evaluate(`[...new Set(window.__qaJoystickPointerTypes ?? [])]`);
+    if (joystickPointerTypes.length !== 1 || joystickPointerTypes[0] !== 'mouse') {
+      throw new Error(`${demo.id}: unsupported joystick pointer semantics ${JSON.stringify(joystickPointerTypes)}`);
+    }
     const expected = demo.zones.map(({ name }) => name);
     const missing = expected.filter((name) => !visited.includes(name));
     if (missing.length) throw new Error(`${demo.id}: unvisited rooms ${missing.join(', ')}`);
@@ -407,6 +416,7 @@ try {
       expected,
       visited,
       targetedDoorIds: [...targetedDoorIds],
+      joystickPointerTypes,
       final: current,
       passed: true,
     });
