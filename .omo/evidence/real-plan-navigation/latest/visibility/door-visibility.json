@@ -1,0 +1,497 @@
+{
+  "passed": true,
+  "reports": [
+    {
+      "id": "lh-mandeok5-59a",
+      "expectedInteriorDoors": 7,
+      "previewDoors": {
+        "total": 8,
+        "interior": 7,
+        "doors": [
+          {
+            "kind": "exterior",
+            "width": 7,
+            "height": 12,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 9.59375,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 10.796875,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 9.59375,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          }
+        ]
+      },
+      "planDoorCount": 8,
+      "planDoors": [
+        {
+          "id": "m59-door-entry",
+          "width": 83.26324462890625,
+          "height": 66.32476806640625,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "m59-door-bath1",
+          "width": 53.059844970703125,
+          "height": 65.998291015625,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "m59-door-kitchen",
+          "width": 76.63079833984375,
+          "height": 59.692352294921875,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "m59-door-living",
+          "width": 59.69232177734375,
+          "height": 76.630859375,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "m59-door-room2",
+          "width": 72.63079833984375,
+          "height": 59.69232177734375,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "m59-door-room3",
+          "width": 76.6307373046875,
+          "height": 59.6922607421875,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "m59-door-bath2",
+          "width": 65.998291015625,
+          "height": 53.059844970703125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "m59-door-room1",
+          "width": 72.63079833984375,
+          "height": 59.69232177734375,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        }
+      ],
+      "threeDimensionalDoors": {
+        "curtainOpacity": "0",
+        "controllers": 8,
+        "visibleMeshes": 8,
+        "visibleFrameParts": 24
+      },
+      "passed": true
+    },
+    {
+      "id": "lh-hoecheon-a18-74a",
+      "expectedInteriorDoors": 7,
+      "previewDoors": {
+        "total": 8,
+        "interior": 7,
+        "doors": [
+          {
+            "kind": "exterior",
+            "width": 12,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 12,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 12,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 9.59375,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 9.59375,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          }
+        ]
+      },
+      "planDoorCount": 8,
+      "planDoors": [
+        {
+          "id": "h74-door-entry",
+          "width": 49.584716796875,
+          "height": 59.5098876953125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h74-door-entry-hall",
+          "width": 59.5098876953125,
+          "height": 49.58465576171875,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h74-door-living",
+          "width": 49.58465576171875,
+          "height": 62.5098876953125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h74-door-room1",
+          "width": 54.55145263671875,
+          "height": 44.626220703125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h74-door-bath1",
+          "width": 49.59295654296875,
+          "height": 39.667755126953125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h74-door-room2",
+          "width": 54.5513916015625,
+          "height": 44.626220703125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h74-door-room3",
+          "width": 54.55145263671875,
+          "height": 44.626220703125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h74-door-bath2",
+          "width": 39.667724609375,
+          "height": 49.592987060546875,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        }
+      ],
+      "threeDimensionalDoors": {
+        "curtainOpacity": "0",
+        "controllers": 8,
+        "visibleMeshes": 8,
+        "visibleFrameParts": 24
+      },
+      "passed": true
+    },
+    {
+      "id": "lh-hoecheon-a18-84a",
+      "expectedInteriorDoors": 7,
+      "previewDoors": {
+        "total": 8,
+        "interior": 7,
+        "doors": [
+          {
+            "kind": "exterior",
+            "width": 12,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 12,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 12,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 9.59375,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 7,
+            "height": 10.796875,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          },
+          {
+            "kind": "interior",
+            "width": 9.59375,
+            "height": 7,
+            "display": "block",
+            "visibility": "visible",
+            "leafWidth": 2,
+            "leafColor": "rgb(191, 91, 62)"
+          }
+        ]
+      },
+      "planDoorCount": 8,
+      "planDoors": [
+        {
+          "id": "h84-door-entry",
+          "width": 46.88824462890625,
+          "height": 56.328125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h84-door-entry-hall",
+          "width": 56.328125,
+          "height": 46.888214111328125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h84-door-living",
+          "width": 46.88818359375,
+          "height": 56.328094482421875,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h84-door-room1",
+          "width": 51.6392822265625,
+          "height": 42.1993408203125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h84-door-bath1",
+          "width": 37.51055908203125,
+          "height": 46.950439453125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h84-door-room2",
+          "width": 51.6392822265625,
+          "height": 42.1993408203125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h84-door-room3",
+          "width": 54.6392822265625,
+          "height": 42.1993408203125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        },
+        {
+          "id": "h84-door-bath2",
+          "width": 37.5106201171875,
+          "height": 46.950439453125,
+          "stroke": "rgb(167, 78, 53)",
+          "strokeWidth": 3,
+          "opacity": 1,
+          "inViewport": true
+        }
+      ],
+      "threeDimensionalDoors": {
+        "curtainOpacity": "0",
+        "controllers": 8,
+        "visibleMeshes": 8,
+        "visibleFrameParts": 24
+      },
+      "passed": true
+    }
+  ]
+}

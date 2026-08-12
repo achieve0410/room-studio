@@ -24,9 +24,18 @@
         "width": "4961",
         "height": "3508"
       },
-      "supplyAreaSquareMeters": 59,
-      "areaEvidence": "type number embedded in the official archive entry name",
-      "geometryEvidence": "2,700·3,900·3,300 mm main room widths; entry/corridor/living adjacency; three bedrooms and two bathrooms"
+      "planType": "59A",
+      "planTypeEvidence": "plan type token embedded in the official archive entry name; not asserted as the modeled or supply area",
+      "geometryEvidence": "2,700·3,900·3,300 mm main room widths; entry/corridor/living adjacency; three bedrooms and two bathrooms",
+      "roomAdjacency": [
+        ["현관·복도", "욕실 1"],
+        ["현관·복도", "주방·식당"],
+        ["주방·식당", "거실"],
+        ["거실", "침실 2"],
+        ["주방·식당", "침실 3"],
+        ["침실 3", "욕실 2"],
+        ["거실", "침실 1"]
+      ]
     },
     {
       "fixtureId": "lh-hoecheon-a18-74a",
@@ -36,9 +45,18 @@
       "declaredCanvas": {
         "mime": "image/jpeg"
       },
-      "supplyAreaSquareMeters": 74,
-      "areaEvidence": "type number embedded in the official archive entry name",
-      "geometryEvidence": "3,800·4,360·2,820·2,860 mm main room widths; central living room; three bedrooms and two bathrooms"
+      "planType": "74A",
+      "planTypeEvidence": "plan type token embedded in the official archive entry name; not asserted as the modeled or supply area",
+      "geometryEvidence": "3,800·4,360·2,820·2,860 mm main room widths; central living room; three bedrooms and two bathrooms",
+      "roomAdjacency": [
+        ["현관·복도", "주방·식당"],
+        ["주방·식당", "거실"],
+        ["거실", "침실 1"],
+        ["주방·식당", "부부 욕실"],
+        ["거실", "침실 2"],
+        ["침실 2", "침실 3"],
+        ["침실 3", "공용 욕실"]
+      ]
     },
     {
       "fixtureId": "lh-hoecheon-a18-84a",
@@ -48,9 +66,18 @@
       "declaredCanvas": {
         "mime": "image/jpeg"
       },
-      "supplyAreaSquareMeters": 84,
-      "areaEvidence": "type number embedded in the official archive entry name",
-      "geometryEvidence": "3,160·3,120·4,660·3,800 mm main room widths; central living room; three bedrooms and two bathrooms"
+      "planType": "84A",
+      "planTypeEvidence": "plan type token embedded in the official archive entry name; not asserted as the modeled or supply area",
+      "geometryEvidence": "3,160·3,120·4,660·3,800 mm main room widths; central living room; three bedrooms and two bathrooms",
+      "roomAdjacency": [
+        ["현관·복도", "주방·식당"],
+        ["주방·식당", "거실"],
+        ["거실", "침실 1"],
+        ["침실 3", "공용 욕실"],
+        ["거실", "침실 2"],
+        ["침실 2", "침실 3"],
+        ["침실 1", "부부 욕실"]
+      ]
     }
   ],
   "adaptation": "The official records were inspected temporarily to derive principal dimensions, room counts, room adjacency, entrance/interior door boundaries, and exterior window positions. Room Studio retains only that abstract geometry and source receipts; no source image bytes are retained.",

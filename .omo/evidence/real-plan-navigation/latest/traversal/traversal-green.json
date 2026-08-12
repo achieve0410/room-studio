@@ -1,0 +1,128 @@
+{
+  "passed": true,
+  "reports": [
+    {
+      "id": "lh-mandeok5-59a",
+      "name": "부산만덕5 59A 아파트",
+      "expected": [
+        "거실",
+        "주방·식당",
+        "현관·복도",
+        "침실 2",
+        "침실 3",
+        "침실 1",
+        "욕실 1",
+        "욕실 2"
+      ],
+      "visited": [
+        "현관·복도",
+        "주방·식당",
+        "거실",
+        "침실 2",
+        "침실 3",
+        "침실 1",
+        "욕실 1",
+        "욕실 2"
+      ],
+      "targetedDoorIds": [
+        "m59-door-entry",
+        "m59-door-bath1",
+        "m59-door-kitchen",
+        "m59-door-living",
+        "m59-door-room1",
+        "m59-door-room3",
+        "m59-door-room2",
+        "m59-door-bath2"
+      ],
+      "final": {
+        "x": 718.2170971605688,
+        "y": 300.2799925449814,
+        "angle": 129.80570639406034,
+        "room": "욕실 2"
+      },
+      "passed": true
+    },
+    {
+      "id": "lh-hoecheon-a18-74a",
+      "name": "양주회천 A18 74A 아파트",
+      "expected": [
+        "거실",
+        "주방·식당",
+        "현관·복도",
+        "침실 1",
+        "침실 2",
+        "침실 3",
+        "부부 욕실",
+        "공용 욕실"
+      ],
+      "visited": [
+        "현관·복도",
+        "주방·식당",
+        "거실",
+        "침실 1",
+        "침실 2",
+        "침실 3",
+        "부부 욕실",
+        "공용 욕실"
+      ],
+      "targetedDoorIds": [
+        "h74-door-entry-hall",
+        "h74-door-entry",
+        "h74-door-living",
+        "h74-door-room2",
+        "h74-door-room1",
+        "h74-door-room3",
+        "h74-door-bath1",
+        "h74-door-bath2"
+      ],
+      "final": {
+        "x": 1209.5904433791657,
+        "y": 287.8711963675407,
+        "angle": -138.73830871529304,
+        "room": "공용 욕실"
+      },
+      "passed": true
+    },
+    {
+      "id": "lh-hoecheon-a18-84a",
+      "name": "양주회천 A18 84A 아파트",
+      "expected": [
+        "거실",
+        "주방·식당",
+        "현관·복도",
+        "침실 1",
+        "침실 2",
+        "침실 3",
+        "공용 욕실",
+        "부부 욕실"
+      ],
+      "visited": [
+        "현관·복도",
+        "주방·식당",
+        "거실",
+        "침실 1",
+        "침실 2",
+        "침실 3",
+        "공용 욕실",
+        "부부 욕실"
+      ],
+      "targetedDoorIds": [
+        "h84-door-entry",
+        "h84-door-entry-hall",
+        "h84-door-room2",
+        "h84-door-living",
+        "h84-door-room1",
+        "h84-door-room3",
+        "h84-door-bath1",
+        "h84-door-bath2"
+      ],
+      "final": {
+        "x": 1213.034973223042,
+        "y": 333.87660177224905,
+        "angle": 155.8259748763546,
+        "room": "부부 욕실"
+      },
+      "passed": true
+    }
+  ]
+}

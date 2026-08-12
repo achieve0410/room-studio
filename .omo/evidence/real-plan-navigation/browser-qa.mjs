@@ -27,7 +27,6 @@ if (!chrome) throw new Error('Chrome or Chromium is required');
 const url = process.argv[2] ?? 'http://127.0.0.1:4173/';
 const outputDir = resolve(process.argv[3] ?? '/tmp/room-studio-real-plan-traversal');
 const profile = await mkdtemp(join(tmpdir(), 'room-studio-real-plan-traversal-'));
-const port = 9341;
 let browser;
 let cdp;
 
@@ -125,8 +124,11 @@ function routeToZone(demo, start, target, blocked) {
   for (let cursor = 0; cursor < queue.length && !goal; cursor += 1) {
     const currentKey = queue[cursor];
     const current = pointOf(currentKey);
-    if (current.x > target.x + 20 && current.x < target.x + target.width - 20
-      && current.y > target.y + 20 && current.y < target.y + target.depth - 20) {
+    const reached = Number.isFinite(target.width)
+      ? current.x > target.x + 20 && current.x < target.x + target.width - 20
+        && current.y > target.y + 20 && current.y < target.y + target.depth - 20
+      : Math.hypot(current.x - target.x, current.y - target.y) <= step;
+    if (reached) {
       goal = currentKey;
       break;
     }
@@ -138,7 +140,7 @@ function routeToZone(demo, start, target, blocked) {
       queue.push(neighborKey);
     }
   }
-  if (!goal) throw new Error(`${demo.id}: no route to ${target.name}`);
+  if (!goal) throw new Error(`${demo.id}: no route to ${target.name ?? `${target.x},${target.y}`}`);
   const reverse = [];
   for (let cursor = goal; cursor; cursor = previous.get(cursor)) reverse.push(pointOf(cursor));
   const raw = [{ x: start.x, y: start.y }, ...reverse.reverse()];
@@ -214,6 +216,20 @@ async function clickSelector(selector) {
   await evaluate(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
 }
 
+async function mouseDrag(start, end) {
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x, y: start.y });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: start.x, y: start.y, button: 'left', buttons: 1, clickCount: 1,
+  });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x: end.x, y: end.y, button: 'left', buttons: 1,
+  });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: end.x, y: end.y, button: 'left', buttons: 0, clickCount: 1,
+  });
+  await evaluate(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+}
+
 async function moveTo(waypoint, demoId) {
   let current;
   for (let attempt = 0; attempt < 180; attempt += 1) {
@@ -263,6 +279,19 @@ async function moveTo(waypoint, demoId) {
   throw new Error(`${demoId}: did not reach ${JSON.stringify(waypoint)} from ${JSON.stringify(current)}`);
 }
 
+async function scanVisibleDoors(targetedDoorIds) {
+  const canvas = await evaluate(`(() => {
+    const rect = document.querySelector('[data-walkthrough-canvas]').getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  const tenDegrees = 10 / (0.0028 * 180 / Math.PI);
+  for (let step = 0; step < 36; step += 1) {
+    const target = await evaluate(`document.querySelector('[data-walkthrough]')?.dataset.targetDoorId ?? null`);
+    if (target) targetedDoorIds.add(target);
+    await mouseDrag(canvas, { x: canvas.x + tenDegrees, y: canvas.y });
+  }
+}
+
 let error;
 try {
   await rm(outputDir, { recursive: true, force: true });
@@ -272,16 +301,17 @@ try {
     browser = spawn(chrome, [
       '--headless=new', '--disable-background-networking', '--disable-component-update', '--disable-default-apps',
       '--disable-extensions', '--disable-sync', '--hide-scrollbars', '--no-first-run',
-      '--force-prefers-reduced-motion', `--remote-debugging-port=${port}`, '--window-size=1440,1000',
+      '--force-prefers-reduced-motion', '--remote-debugging-port=0', '--window-size=1440,1000',
       `--user-data-dir=${profile}`, 'about:blank',
     ], { stdio: ['ignore', 'ignore', 'pipe'] });
     browser.stderr.on('data', (chunk) => {
       stderr += chunk;
-      if (stderr.includes('DevTools listening on')) resolveReady();
+      const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:(\d+)\/devtools\/browser\/\S+)/);
+      if (match) resolveReady(Number(match[2]));
     });
     browser.once('exit', (code) => reject(new Error(`Chrome exited before CDP readiness: ${code}`)));
   });
-  await ready;
+  const port = await ready;
   const pages = await fetch(`http://127.0.0.1:${port}/json`).then((response) => response.json());
   const page = pages.find((candidate) => candidate.type === 'page' && candidate.url === 'about:blank');
   if (!page) throw new Error('Chrome did not expose the intended about:blank page target');
@@ -326,6 +356,8 @@ try {
       new MutationObserver(() => window.__qaVisitedRooms.add(document.querySelector('[data-current-room]').textContent))
         .observe(document.querySelector('[data-current-room]'), { childList: true, subtree: true, characterData: true });`);
     const blocked = collisionFor(demo);
+    const targetedDoorIds = new Set();
+    await scanVisibleDoors(targetedDoorIds);
     let current = await telemetry();
     for (const zone of demo.zones.filter(({ name }) => name !== current.room)) {
       const route = routeToZone(demo, current, zone, blocked);
@@ -335,14 +367,26 @@ try {
       }
       await waitFor(`document.querySelector('[data-current-room]').textContent === ${JSON.stringify(zone.name)}`, `${demo.id} entered ${zone.name}`);
       current = await telemetry();
+      await scanVisibleDoors(targetedDoorIds);
     }
     const visited = await evaluate(`[...window.__qaVisitedRooms]`);
     const expected = demo.zones.map(({ name }) => name);
     const missing = expected.filter((name) => !visited.includes(name));
     if (missing.length) throw new Error(`${demo.id}: unvisited rooms ${missing.join(', ')}`);
+    const expectedDoorIds = demo.structures.filter(({ type }) => type === 'door').map(({ id }) => id);
+    const missingDoorIds = expectedDoorIds.filter((id) => !targetedDoorIds.has(id));
+    if (missingDoorIds.length) throw new Error(`${demo.id}: doors never visibly targeted ${missingDoorIds.join(', ')}`);
     const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(join(outputDir, `${demo.id}-traversal.png`), Buffer.from(screenshot.data, 'base64'));
-    reports.push({ id: demo.id, name: demo.name, expected, visited, final: current, passed: true });
+    reports.push({
+      id: demo.id,
+      name: demo.name,
+      expected,
+      visited,
+      targetedDoorIds: [...targetedDoorIds],
+      final: current,
+      passed: true,
+    });
     await clickSelector('[data-walkthrough-exit]');
     await waitFor(`!document.querySelector('[data-walkthrough]')`, `${demo.id} walkthrough cleanup`);
   }

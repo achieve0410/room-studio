@@ -26,14 +26,14 @@ const windowOpening = (id, name, x, y, width, orientation = 'horizontal') => ({
 });
 const dimension = (id, name, x1, y1, x2, y2) => ({ id, name, x1, y1, x2, y2, locked: true });
 const source = ({
-  archiveEntry, supplyAreaSquareMeters, recordSha256, geometryBasis, roomAdjacency,
+  archiveEntry, planType, recordSha256, geometryBasis, roomAdjacency,
 }) => ({
   datasetUrl: DATASET_URL,
   catalogUrl: CATALOG_URL,
   archiveFileId: 'FILE_000000003519063',
   fileDetailSn: '1',
   archiveEntry,
-  supplyAreaSquareMeters,
+  planType,
   recordSha256,
   license: '이용허락범위 제한 없음',
   attribution: '한국토지주택공사(LH), 주택 평면도 현황',
@@ -81,7 +81,7 @@ const mandeok59 = {
   backgroundPlan: null,
   source: source({
     archiveEntry: '부산울산본부_부산만덕5(06,주환1)_01BL/01.59A-평면-01.json',
-    supplyAreaSquareMeters: 59,
+    planType: '59A',
     recordSha256: '1eee0500213a8862d5a3ebfaaaf6f570d096f9621618cc5802e3caf1d4a63e89',
     geometryBasis: '59A 기록의 2,700·3,900·3,300 mm 실 폭과 현관-복도-거실, 방 3개, 욕실 2개의 인접 관계를 축약했습니다.',
     roomAdjacency: [
@@ -131,7 +131,7 @@ const hoecheon74 = {
   backgroundPlan: null,
   source: source({
     archiveEntry: '서울본부_양주회천_A18/양주회천18bl-74A.json',
-    supplyAreaSquareMeters: 74,
+    planType: '74A',
     recordSha256: 'b1982ca7e5be25c770f068e5769f8785c89b0609e5339e85cf1a015ea9377bec',
     geometryBasis: '74A 기록의 3,800·4,360·2,820·2,860 mm 실 폭과 중앙 거실, 방 3개, 욕실 2개의 인접 관계를 축약했습니다.',
     roomAdjacency: [
@@ -181,7 +181,7 @@ const hoecheon84 = {
   backgroundPlan: null,
   source: source({
     archiveEntry: '서울본부_양주회천_A18/양주회천18bl-84A.json',
-    supplyAreaSquareMeters: 84,
+    planType: '84A',
     recordSha256: 'f63d26b4d176d9c9573f5f7a5575f52342bcf99c490b967f0c7869fdedcd8bd4',
     geometryBasis: '84A 기록의 3,160·3,120·4,660·3,800 mm 실 폭과 중앙 거실, 방 3개, 욕실 2개의 인접 관계를 축약했습니다.',
     roomAdjacency: [

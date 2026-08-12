@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { DEMO_LAYOUTS, demoLayoutById } from '../src/demo-layouts.js';
 import {
   doorsForAutomaticWallSegment,
   getDoorLeafSegments,
   getInteriorWallSegments,
+  itemBounds,
   isPointBlockedByDoorLeaves,
   isPointBlockedByFurniture,
   isPointBlockedByInteriorWall,
@@ -15,6 +17,9 @@ import {
 const DATASET_URL = 'https://www.data.go.kr/data/15037046/fileData.do';
 const CATALOG_URL = 'https://www.data.go.kr/catalog/15037046/fileData.json';
 const LICENSE = '이용허락범위 제한 없음';
+const SOURCE_RECEIPTS = JSON.parse(readFileSync(
+  new URL('../.omo/evidence/layout-speed/lh-source-records.json', import.meta.url),
+));
 const entities = (layout) => [...layout.zones, ...layout.items, ...layout.structures, ...layout.dimensions];
 const FURNITURE_TYPES = new Set(['bed', 'sofa', 'desk', 'table', 'rug', 'wardrobe', 'shelf', 'rack']);
 
@@ -70,7 +75,7 @@ test('ships three immutable, distinct LH model-home adaptations', () => {
   assert.deepEqual(DEMO_LAYOUTS.map(({ typology }) => typology).sort(), ['common-family', 'compact', 'larger-family']);
   assert.equal(new Set(DEMO_LAYOUTS.map(({ id }) => id)).size, 3);
   assert.equal(new Set(DEMO_LAYOUTS.map(({ source }) => source.archiveEntry)).size, 3);
-  assert.equal(new Set(DEMO_LAYOUTS.map(({ source }) => source.supplyAreaSquareMeters)).size, 3);
+  assert.deepEqual(DEMO_LAYOUTS.map(({ source }) => source.planType), ['59A', '74A', '84A']);
   for (const fixture of DEMO_LAYOUTS) {
     assert.ok(Object.isFrozen(fixture));
     assert.equal(fixture.backgroundPlan, null);
@@ -125,7 +130,10 @@ test('connects every model-home room through a door opening', () => {
     const { neighbors, matchedDoorIds } = doorConnectedZoneGraph(fixture);
     const actualEdges = new Set([...neighbors].flatMap(([from, destinations]) =>
       [...destinations].map((to) => [from, to].sort().join(' <> '))));
-    const expectedEdges = new Set(fixture.source.roomAdjacency.map((edge) => edge.slice().sort().join(' <> ')));
+    const receipt = SOURCE_RECEIPTS.records.find(({ fixtureId }) => fixtureId === fixture.id);
+    assert.ok(receipt, `${fixture.id}: independent source receipt exists`);
+    assert.deepEqual(fixture.source.roomAdjacency, receipt.roomAdjacency);
+    const expectedEdges = new Set(receipt.roomAdjacency.map((edge) => edge.slice().sort().join(' <> ')));
     assert.deepEqual(actualEdges, expectedEdges, `${fixture.id}: preserves official room adjacency`);
     assert.equal(
       fixture.structures.filter(({ type, exterior }) => type === 'door' && !exterior).length,
@@ -195,17 +203,19 @@ test('keeps every open interior door leaf clear of furniture', () => {
         };
       const leaf = getDoorLeafSegments([{ ...doorStructure, openAngle: 90 }])[0];
       const leafBounds = {
-        left: Math.min(hinge.x, leaf.start.x),
-        right: Math.max(hinge.x, leaf.start.x),
-        top: Math.min(hinge.y, leaf.start.y),
-        bottom: Math.max(hinge.y, leaf.start.y),
+        left: Math.min(hinge.x, leaf.end.x),
+        right: Math.max(hinge.x, leaf.end.x),
+        top: Math.min(hinge.y, leaf.end.y),
+        bottom: Math.max(hinge.y, leaf.end.y),
       };
-      const collides = fixture.items.some((item) => (
-        leafBounds.left < item.x + item.width / 2
-        && leafBounds.right > item.x - item.width / 2
-        && leafBounds.top < item.y + item.depth / 2
-        && leafBounds.bottom > item.y - item.depth / 2
-      ));
+      const collides = fixture.items.some((item) => {
+        const bounds = itemBounds(item);
+        return leafBounds.left < bounds.right
+        && leafBounds.right > bounds.left
+        && leafBounds.top < bounds.bottom
+        && leafBounds.bottom > bounds.top;
+      }
+      );
       assert.equal(collides, false, `${fixture.id}: ${doorStructure.name} open leaf clears furniture`);
     }
   }
@@ -224,7 +234,9 @@ test('contains attributable unrestricted source metadata without sensitive or co
     assert.ok(source.roomAdjacency.length >= 2);
     assert.match(source.recordSha256, /^[a-f0-9]{64}$/);
     assert.match(source.archiveEntry, /\.json$/);
-    assert.ok(Number.isFinite(source.supplyAreaSquareMeters));
+    assert.match(source.planType, /^\d+[A-Z]$/);
+    assert.ok(source.archiveEntry.toUpperCase().includes(source.planType));
+    assert.equal('supplyAreaSquareMeters' in source, false);
     const serialized = JSON.stringify(source);
     assert.doesNotMatch(serialized, /(?:data:image|base64|https?:\/\/(?:s3|storage|supabase)|\b(?:address|주소|resident|주민|brand|브랜드)\b)/i);
     assert.ok(!Object.keys(source).some((key) => /address|resident|brand|cloud/i.test(key)));

@@ -83,7 +83,7 @@
 - Design-token constraints: 기존 `--ink`, `--muted`, `--line`, `--paper`, `--accent` 재사용
 - Performance constraints: 새 UI 라이브러리와 의존성 추가 금지
 - Compatibility constraints: 기존 저장 데이터와 데스크톱 편집 동작, Supabase·Tailscale·공개 localStorage 전용 데모 경계를 보존
-- Test/screenshot expectations: 390×844, 768×1024, 1440×1000에서 44px 조작 영역, 배경 도면·치수·잠금·복제, 직접 변형, 3D 3개 시점·선택 초점·PNG 흐름을 포함한 113개 브라우저 검증을 확인
+- Test/screenshot expectations: 390×844, 768×1024, 1440×1000에서 44px 조작 영역, 배경 도면·치수·잠금·복제, 직접 변형, 3D 3개 시점·선택 초점·PNG 흐름을 포함한 114개 브라우저 검증과 실제 평면 문의 가시성·반응형·전 공간 통행 검증을 확인
 
 ## Open questions
 - [ ] 실제 사용자 테스트 후 모바일 도면 패닝 제스처의 필요성 재평가 / 제품 / 탐색 효율
