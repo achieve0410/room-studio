@@ -171,7 +171,7 @@ export async function launchChrome(chromePath) {
     async close() {
       cdp.close();
       await stopProcess(child);
-      await rm(profileDir, { recursive: true, force: true });
+      await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
   };
 }
