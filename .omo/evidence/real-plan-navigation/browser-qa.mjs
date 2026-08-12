@@ -276,28 +276,25 @@ async function moveTo(waypoint, demoId) {
         y: rect.top + rect.height / 2 + radius * ${joystickY},
       };
     })()`);
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: joystickPoint.centerX,
-      y: joystickPoint.centerY,
-      pointerType: 'mouse',
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{
+        x: joystickPoint.centerX,
+        y: joystickPoint.centerY,
+        id: 41,
+        radiusX: 1,
+        radiusY: 1,
+      }],
     });
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: joystickPoint.centerX,
-      y: joystickPoint.centerY,
-      button: 'left',
-      buttons: 1,
-      clickCount: 1,
-      pointerType: 'mouse',
-    });
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: joystickPoint.x,
-      y: joystickPoint.y,
-      button: 'left',
-      buttons: 1,
-      pointerType: 'mouse',
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{
+        x: joystickPoint.x,
+        y: joystickPoint.y,
+        id: 41,
+        radiusX: 1,
+        radiusY: 1,
+      }],
     });
     let moved;
     try {
@@ -306,15 +303,7 @@ async function moveTo(waypoint, demoId) {
         returnByValue: true,
       });
     } finally {
-      await cdp.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: joystickPoint.x,
-        y: joystickPoint.y,
-        button: 'left',
-        buttons: 0,
-        clickCount: 1,
-        pointerType: 'mouse',
-      });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     }
     if (!moved.result.value) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
   }
@@ -413,7 +402,7 @@ try {
     }
     const visited = await evaluate(`[...window.__qaVisitedRooms]`);
     const joystickPointerTypes = await evaluate(`[...new Set(window.__qaJoystickPointerTypes ?? [])]`);
-    if (joystickPointerTypes.length !== 1 || joystickPointerTypes[0] !== 'mouse') {
+    if (joystickPointerTypes.length !== 1 || joystickPointerTypes[0] !== 'touch') {
       throw new Error(`${demo.id}: unsupported joystick pointer semantics ${JSON.stringify(joystickPointerTypes)}`);
     }
     const expected = demo.zones.map(({ name }) => name);
