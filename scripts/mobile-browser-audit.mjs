@@ -1802,10 +1802,22 @@ try {
     return Object.fromEntries(saved.structures.map(({ id, x, y }) => [id, { x, y }]));
   })()`);
   const wallDragStart = await evaluate(`(() => {
-    const line = document.querySelector('.plan-wall.is-selected .structure-hit-target');
-    const point = line.getPointAtLength(line.getTotalLength() * 0.08).matrixTransform(line.getScreenCTM());
-    return { x: point.x, y: point.y };
+    const wallId = ${JSON.stringify(explicitWall.id)};
+    const lines = [...document.querySelectorAll('.plan-wall.is-selected .structure-hit-target')]
+      .sort((left, right) => right.getTotalLength() - left.getTotalLength());
+    const candidates = lines.flatMap((line) => [0.5, 0.35, 0.65].map((ratio) => {
+      const point = line.getPointAtLength(line.getTotalLength() * ratio).matrixTransform(line.getScreenCTM());
+      return { x: point.x, y: point.y };
+    }));
+    return candidates.find((point) => {
+      const firstInteractive = document.elementsFromPoint(point.x, point.y).find((node) => (
+        node.closest('[data-resize-handle], [data-structure-rotate], [data-structure-id]')
+      ));
+      return !firstInteractive?.closest('[data-resize-handle], [data-structure-rotate]')
+        && firstInteractive?.closest('[data-structure-id]')?.dataset.structureId === wallId;
+    }) ?? null;
   })()`);
+  if (!wallDragStart) throw new Error('Cannot resolve an unobstructed selected-wall drag point');
   await mouseDrag(wallDragStart, { x: wallDragStart.x + 68, y: wallDragStart.y + 42 });
   const structureMoveAfter = await evaluate(`(() => {
     const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
