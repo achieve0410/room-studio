@@ -440,6 +440,7 @@ function buildWallPiece(
     baseboard.userData = { type: 'wall-trim', dollhouseCutaway };
     scene.add(baseboard);
   }
+  return wall;
 }
 
 function isPositiveFacingExterior(segment, zones) {
@@ -740,7 +741,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
         );
       }
       const lintelHeight = Math.max(0, heightMeters - openingTop);
-      buildWallPiece(
+      const lintel = buildWallPiece(
         scene,
         segment.orientation,
         openingStart,
@@ -753,6 +754,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
         thickness,
         dollhouseCutaway,
       );
+      if (lintel && opening.doors.some(({ type }) => type === 'door')) lintel.userData.doorFramePart = true;
       const trimDepth = thickness + 0.035;
       [openingStart, openingEnd].forEach((doorEdge) => {
         const jamb = new THREE.Mesh(new THREE.BoxGeometry(
@@ -761,7 +763,11 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
           horizontal ? trimDepth : 0.055,
         ), trimMaterial);
         jamb.position.set(horizontal ? doorEdge / 100 : fixed / 100, openingBottom + (openingTop - openingBottom) / 2, horizontal ? fixed / 100 : doorEdge / 100);
-        jamb.userData = { type: 'wall-trim', dollhouseCutaway };
+        jamb.userData = {
+          type: 'wall-trim',
+          dollhouseCutaway,
+          doorFramePart: opening.doors.some(({ type }) => type === 'door'),
+        };
         scene.add(jamb);
       });
     });
@@ -808,7 +814,9 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
 }
 
 function findStartView(zones, items) {
-  const preferred = zones.find((zone) => zone.type === '거실') ?? zones[0];
+  const preferred = zones.find((zone) => zone.walkthroughStart)
+    ?? zones.find((zone) => zone.type === '거실')
+    ?? zones[0];
   const orderedZones = preferred ? [preferred, ...zones.filter((zone) => zone.id !== preferred.id)] : zones;
 
   for (const zone of orderedZones) {
@@ -1019,6 +1027,19 @@ export function openWalkthrough({
   ];
   let doorLeafSegments = getDoorLeafSegments(doors);
   const openingControllers = buildScene(scene, zones, items, sceneStructures, wallHeight, center);
+  const doorControllers = openingControllers.filter(({ kind }) => kind === 'door');
+  overlay.dataset.doorControllerCount = String(doorControllers.length);
+  overlay.dataset.visibleDoorMeshCount = String(doorControllers.reduce(
+    (count, controller) => count + controller.meshes.filter(({ material }) => material?.visible !== false
+      && material?.colorWrite !== false && material?.opacity > 0).length,
+    0,
+  ));
+  let visibleDoorFramePartCount = 0;
+  scene.traverse((object) => {
+    if (object.isMesh && object.userData.doorFramePart && object.material?.visible !== false
+      && object.material?.opacity > 0) visibleDoorFramePartCount += 1;
+  });
+  overlay.dataset.visibleDoorFramePartCount = String(visibleDoorFramePartCount);
   const furnitureLabels = [];
   const ceilingObjects = [];
   const dollhouseCutawayObjects = [];
@@ -1312,6 +1333,18 @@ export function openWalkthrough({
     previousPointer = { x: event.clientX, y: event.clientY };
     if (draggingLook) applyLookDelta(deltaX, deltaY);
   };
+  const requestCanvasPointerLock = () => {
+    if (!renderer.domElement.isConnected || renderer.domElement.ownerDocument !== document || !document.hasFocus()) {
+      setStatusMessage(status, '드래그로 시야를 조작하세요');
+      return;
+    }
+    try {
+      const request = renderer.domElement.requestPointerLock?.();
+      request?.catch?.(() => setStatusMessage(status, '드래그로 시야를 조작하세요'));
+    } catch {
+      setStatusMessage(status, '드래그로 시야를 조작하세요');
+    }
+  };
   const onPointerUp = (event) => {
     const pointerLocked = document.pointerLockElement === renderer.domElement;
     const wasTap = event.type === 'pointerup' && pointerStart && (pointerLocked || dragDistance < 8);
@@ -1319,7 +1352,7 @@ export function openWalkthrough({
       ? interactWithCenteredOpening()
       : interactWithOpening(event.clientX, event.clientY));
     if (wasTap && !usedOpening && !pointerLocked && pointerStart.pointerType === 'mouse') {
-      renderer.domElement.requestPointerLock?.();
+      requestCanvasPointerLock();
     }
     draggingLook = false;
     previousPointer = null;

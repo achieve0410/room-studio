@@ -289,6 +289,7 @@ function loadState() {
           height: numberValue(zone.height, wallHeight, 100, 600),
           color: normalizeHexColor(zone.color, DEFAULT_ZONE_COLOR),
           locked: Boolean(zone.locked),
+          walkthroughStart: Boolean(zone.walkthroughStart),
         };
       });
       const items = saved.items.map((source) => {
@@ -3663,21 +3664,28 @@ function renderStarterDialog() {
 function renderDemoGallery() {
   if (!demoGalleryOpen) return '';
   const pendingDemo = pendingDemoId ? DEMO_LAYOUTS.find(({ id }) => id === pendingDemoId) : null;
+  const previewDoorMarkup = (structure) => {
+    const hingeEnd = structure.hinge === 'end';
+    return `<b data-demo-preview-door="${structure.exterior ? 'exterior' : 'interior'}" style="--x:${structure.x};--y:${structure.y};--w:${structure.width};--r:${structure.orientation === 'vertical' ? 90 : 0}deg;--s:${structure.openSide};--hx:${hingeEnd ? -1 : 1};--ox:${hingeEnd ? '100%' : '0'}"></b>`;
+  };
   return `<div class="cloud-dialog-backdrop demo-gallery-backdrop" data-demo-backdrop>
     <section class="cloud-dialog demo-gallery" data-demo-gallery role="dialog" aria-modal="true" aria-labelledby="demo-gallery-title">
       <button class="cloud-dialog-close" data-demo-close type="button" aria-label="모델 홈 갤러리 닫기">×</button>
       <span class="eyebrow">LH MODEL HOME GALLERY</span>
-      <h2 id="demo-gallery-title">실제 면적 유형으로 시작하세요</h2>
-      <p>LH 공개 주택 평면도 기록의 면적 유형을 바탕으로 새로 구성한 배치 예시입니다. 원본 이미지·주소·개인정보는 포함하지 않습니다.</p>
+      <h2 id="demo-gallery-title">실제 LH 아파트 평면으로 시작하세요</h2>
+      <p>공개된 실제 주택 평면 기록의 주요 치수와 방·문·창 위치를 축약 재구성했습니다. 모든 방은 열린 문으로 연결되어 3D에서 바로 이동할 수 있으며, 원본 이미지·주소·개인정보는 포함하지 않습니다.</p>
       <div class="demo-grid">
         ${DEMO_LAYOUTS.map((demo) => {
-    const rooms = demo.zones.map(({ name }) => name).join(' · ');
     return `<article class="demo-card" data-demo-card="${demo.id}">
-          <div class="demo-card-plan" aria-hidden="true">${demo.zones.map((zone) => `<i style="--x:${zone.x};--y:${zone.y};--w:${zone.width};--d:${zone.depth};--c:${zone.color}"></i>`).join('')}</div>
+          <div class="demo-card-plan" aria-hidden="true">
+            ${demo.zones.map((zone) => `<i style="--x:${zone.x};--y:${zone.y};--w:${zone.width};--d:${zone.depth};--c:${zone.color}"></i>`).join('')}
+            ${demo.structures.filter(({ type }) => type === 'door').map(previewDoorMarkup).join('')}
+          </div>
           <span class="demo-area" data-demo-area>${demo.source.supplyAreaSquareMeters}㎡</span>
           <h3>${escapeHtml(demo.name)}</h3>
-          <p data-demo-rooms>${escapeHtml(rooms)}</p>
+          <p data-demo-rooms>${demo.zones.map(({ name }, index) => `<span>${index ? '· ' : ''}${escapeHtml(name)}</span>`).join(' ')}</p>
           <dl><div><dt>출처</dt><dd data-demo-source>${escapeHtml(demo.source.attribution)} · ${escapeHtml(demo.source.archiveEntry)}</dd></div></dl>
+          <p class="demo-geometry-basis" data-demo-geometry>${escapeHtml(demo.source.geometryBasis)}</p>
           <small data-demo-adaptation>${escapeHtml(demo.source.adaptationNotice)}</small>
           <button data-demo-layout="${demo.id}" type="button">이 모델 홈 열기</button>
         </article>`;
