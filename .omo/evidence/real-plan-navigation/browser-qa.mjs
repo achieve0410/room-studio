@@ -407,7 +407,8 @@ try {
     let stderr = '';
     browser = spawn(chrome, [
       '--headless=new', '--disable-background-networking', '--disable-component-update', '--disable-default-apps',
-      '--disable-extensions', '--disable-sync', '--hide-scrollbars', '--no-first-run',
+      '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows',
+      '--disable-extensions', '--disable-renderer-backgrounding', '--disable-sync', '--hide-scrollbars', '--no-first-run',
       '--force-prefers-reduced-motion', '--remote-debugging-port=0', '--window-size=1440,1000',
       `--user-data-dir=${profile}`, 'about:blank',
     ], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -459,6 +460,17 @@ try {
     await waitFor(`document.querySelector('[data-walkthrough-ready="true"]')`, `${demo.id} walkthrough`, 30_000);
     await clickSelector('[data-view-mode="walk"]');
     await waitFor(`document.querySelector('[data-walkthrough]').classList.contains('is-active')`, `${demo.id} walk mode`);
+    const pageState = await evaluate(`({
+      focused: document.hasFocus(),
+      visibility: document.visibilityState,
+    })`);
+    if (!pageState.focused || pageState.visibility !== 'visible') {
+      throw new Error(`${demo.id}: walkthrough page is backgrounded ${JSON.stringify(pageState)}`);
+    }
+    const animationReady = await armSignal(`new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+    })`);
+    await waitForSignal(animationReady, `${demo.id} walkthrough animation frames`);
     await waitFor(
       `document.querySelector('[data-current-room]').textContent === ${JSON.stringify(demo.zones.find(({ walkthroughStart }) => walkthroughStart).name)}`,
       `${demo.id} starts at entrance`,
