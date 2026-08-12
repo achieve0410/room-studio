@@ -86,9 +86,7 @@
   "commands": [
     "npm run check",
     "npm run test:browser:mobile",
-    "node .omo/evidence/layout-speed/browser-qa.mjs --url http://127.0.0.1:4173 --scenario demos --phase green --output-dir /tmp/room-studio-current-demos",
-    "node .omo/evidence/real-plan-navigation/responsive-qa.mjs http://127.0.0.1:4173/ /tmp/room-studio-real-plan-responsive",
-    "node .omo/evidence/real-plan-navigation/browser-qa.mjs http://127.0.0.1:4173/ /tmp/room-studio-real-plan-traversal",
-    "node .omo/evidence/real-plan-navigation/door-visibility-qa.mjs http://127.0.0.1:4173/ /tmp/room-studio-door-visibility"
+    "CI=true npm run test:browser:real-plans",
+    "node .omo/evidence/layout-speed/browser-qa.mjs --url http://127.0.0.1:4173 --scenario demos --phase green --output-dir .omx/artifacts/real-plan-navigation/gallery"
   ]
 }

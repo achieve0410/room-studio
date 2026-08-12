@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { preview } from 'vite';
 import { safeArtifactPath } from '../.omo/evidence/real-plan-navigation/artifact-path.mjs';
 
 const chrome = [
@@ -15,23 +16,11 @@ if (!chrome) throw new Error('Chrome or Chromium is required');
 
 const root = resolve(import.meta.dirname, '..');
 const outputRoot = safeArtifactPath(process.argv[2], '.omx/artifacts/real-plan-navigation');
-const preview = spawn(process.execPath, [
-  resolve(root, 'node_modules/vite/bin/vite.js'),
-  'preview', '--host', '127.0.0.1', '--port', '4173', '--strictPort',
-], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+let previewServer;
 
-async function stop(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  child.kill('SIGTERM');
-  await Promise.race([
-    new Promise((resolveExit) => child.once('exit', resolveExit)),
-    new Promise((resolveTimeout) => setTimeout(resolveTimeout, 5_000)),
-  ]);
-}
-
-async function run(script, output) {
+async function run(script, url, output) {
   await new Promise((resolveRun, reject) => {
-    const child = spawn(process.execPath, [resolve(root, script), 'http://127.0.0.1:4173/', output], {
+    const child = spawn(process.execPath, [resolve(root, script), url, output], {
       cwd: root,
       env: { ...process.env, CHROME_BIN: chrome },
       stdio: 'inherit',
@@ -43,29 +32,24 @@ async function run(script, output) {
 let failure;
 try {
   await rm(outputRoot, { recursive: true, force: true });
-  await new Promise((resolveReady, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Vite preview did not start within 20 seconds')), 20_000);
-    let output = '';
-    const onOutput = (chunk) => {
-      output += chunk;
-      if (!output.includes('http://127.0.0.1:4173/')) return;
-      clearTimeout(timeout);
-      resolveReady();
-    };
-    preview.stdout.setEncoding('utf8');
-    preview.stderr.setEncoding('utf8');
-    preview.stdout.on('data', onOutput);
-    preview.stderr.on('data', onOutput);
-    preview.once('exit', (code) => reject(new Error(`Vite preview exited before readiness: ${code}`)));
+  previewServer = await preview({
+    root,
+    preview: {
+      host: '127.0.0.1',
+      port: 0,
+    },
   });
+  const address = previewServer.httpServer.address();
+  if (!address || typeof address === 'string') throw new Error('Vite preview did not expose a TCP port');
+  const previewUrl = `http://127.0.0.1:${address.port}/`;
   await Promise.all([
-    run('.omo/evidence/real-plan-navigation/door-visibility-qa.mjs', join(outputRoot, 'visibility')),
-    run('.omo/evidence/real-plan-navigation/responsive-qa.mjs', join(outputRoot, 'responsive')),
-    run('.omo/evidence/real-plan-navigation/browser-qa.mjs', join(outputRoot, 'traversal')),
+    run('.omo/evidence/real-plan-navigation/door-visibility-qa.mjs', previewUrl, join(outputRoot, 'visibility')),
+    run('.omo/evidence/real-plan-navigation/responsive-qa.mjs', previewUrl, join(outputRoot, 'responsive')),
+    run('.omo/evidence/real-plan-navigation/browser-qa.mjs', previewUrl, join(outputRoot, 'traversal')),
   ]);
 } catch (error) {
   failure = error;
 } finally {
-  await stop(preview);
+  await previewServer?.close();
 }
 if (failure) throw failure;
