@@ -269,12 +269,34 @@ async function moveTo(waypoint, demoId) {
         y: rect.top + rect.height / 2 + radius * ${joystickY},
       };
     })()`);
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{ x: joystickPoint.x, y: joystickPoint.y, id: 41, radiusX: 1, radiusY: 1 }],
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: joystickPoint.x,
+      y: joystickPoint.y,
+      pointerType: 'touch',
     });
-    const moved = await cdp.send('Runtime.awaitPromise', { promiseObjectId: movement.result.objectId, returnByValue: true });
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: joystickPoint.x,
+      y: joystickPoint.y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+      pointerType: 'touch',
+    });
+    const moved = await cdp.send('Runtime.awaitPromise', {
+      promiseObjectId: movement.result.objectId,
+      returnByValue: true,
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: joystickPoint.x,
+      y: joystickPoint.y,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+      pointerType: 'touch',
+    });
     if (!moved.result.value) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
   }
   throw new Error(`${demoId}: did not reach ${JSON.stringify(waypoint)} from ${JSON.stringify(current)}`);
