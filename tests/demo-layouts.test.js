@@ -132,7 +132,11 @@ test('connects every model-home room through a door opening', () => {
       [...destinations].map((to) => [from, to].sort().join(' <> '))));
     const receipt = SOURCE_RECEIPTS.records.find(({ fixtureId }) => fixtureId === fixture.id);
     assert.ok(receipt, `${fixture.id}: independent source receipt exists`);
-    assert.deepEqual(fixture.source.roomAdjacency, receipt.roomAdjacency);
+    assert.deepEqual(
+      fixture.source.roomAdjacency.map((edge) => edge.slice().sort().join(' <> ')).sort(),
+      receipt.roomAdjacency.map((edge) => edge.slice().sort().join(' <> ')).sort(),
+      `${fixture.id}: fixture adjacency matches the independent source receipt`,
+    );
     const expectedEdges = new Set(receipt.roomAdjacency.map((edge) => edge.slice().sort().join(' <> ')));
     assert.deepEqual(actualEdges, expectedEdges, `${fixture.id}: preserves official room adjacency`);
     assert.equal(
