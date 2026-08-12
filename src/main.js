@@ -9,6 +9,8 @@ import {
 } from './layout-tools.js';
 import { parseProjectFile, projectFileName, serializeProjectFile } from './project-file.js';
 import { createDecisionReport, decisionReportFileName } from './project-report.js';
+import { createNumericEditTransaction, rankHitCandidates, snapPendingPlacement } from './editor-interactions.js';
+import { DEMO_LAYOUTS, demoLayoutById } from './demo-layouts.js';
 import {
   alignDoorToWall,
   GRID_CM,
@@ -353,6 +355,10 @@ function loadState() {
 
 const startsWithoutStoredLayout = localStorage.getItem(STORAGE_KEY) === null;
 let state = loadState();
+let placementSession = null;
+let overlapPicker = null;
+let overlapSelectionBypass = null;
+let numericEdit = null;
 let drag = null;
 let resize = null;
 let rotateGesture = null;
@@ -408,6 +414,8 @@ let cloudGeneration = 0;
 let cloudFeedback = cloudConfigured ? '로그인 기능을 준비하는 중…' : '클라우드 연결 설정이 필요합니다.';
 let cloudFeedbackTone = '';
 let starterDialogOpen = startsWithoutStoredLayout;
+let demoGalleryOpen = false;
+let pendingDemoId = null;
 let projectDialogOpen = false;
 let projectFileFeedback = '';
 let projectFileFeedbackTone = '';
@@ -615,6 +623,7 @@ function restoreSnapshot(snapshot, destination) {
   backgroundDrag = null;
   marquee = null;
   precisionTool = null;
+  numericEdit = null;
   alignmentGuides = [];
   mobileContextMenu = null;
   mobileMoveArmed = false;
@@ -739,6 +748,52 @@ function replaceLocalLayout(serializedLayout = null) {
   historyFuture.length = 0;
   cloudDirty = false;
   layoutChangeVersion += 1;
+}
+
+function hasMeaningfulLocalLayout() {
+  return state.zones.length > 0 || state.items.length > 0 || state.structures.length > 0 || state.dimensions.length > 0;
+}
+
+function openDemoGallery() {
+  starterDialogOpen = false;
+  demoGalleryOpen = true;
+  pendingDemoId = null;
+  render();
+  document.querySelector('[data-demo-layout]')?.focus();
+}
+
+function closeDemoGallery() {
+  demoGalleryOpen = false;
+  pendingDemoId = null;
+  render();
+  document.querySelector('[data-demo-open]')?.focus();
+}
+
+function requestDemoLayout(id) {
+  if (!demoLayoutById(id)) return;
+  if (hasMeaningfulLocalLayout()) {
+    pendingDemoId = id;
+    render();
+    document.querySelector('[data-demo-confirm-accept]')?.focus();
+    return;
+  }
+  applyDemoLayout(id);
+}
+
+function applyDemoLayout(id) {
+  const demo = demoLayoutById(id);
+  if (!demo) return;
+  const { source, typology, ...layout } = demo;
+  replaceLocalLayout(JSON.stringify(layout));
+  activeProjectId = null;
+  activeProjectRevision = null;
+  activeProjectName = demo.name;
+  cloudDirty = false;
+  demoGalleryOpen = false;
+  pendingDemoId = null;
+  editorNotice = `${demo.name}을 열었습니다. 배치와 3D 미리보기를 자유롭게 수정해 보세요.`;
+  pendingFocus = { kind: 'canvas' };
+  render();
 }
 
 function setCloudFeedback(message, tone = '') {
@@ -1485,9 +1540,278 @@ function addZonePart() {
   updateState({ zones: [...state.zones, part], selection: { kind: 'zone', id: part.id } });
 }
 
+function placementAtPoint(point) {
+  if (!placementSession) return null;
+  let entity = snapPendingPlacement(placementSession.entity, point);
+  if (placementSession.kind === 'structure' && entity.type !== 'wall') {
+    const baseStructures = placementSession.baseStructures ?? state.structures;
+    entity = settleMovedStructures(
+      [...baseStructures.filter((structure) => structure.id !== entity.id), entity],
+      new Set([entity.id]),
+    ).find((structure) => structure.id === entity.id);
+  }
+  return entity;
+}
+
+function placementTransform(entity) {
+  const rotation = entity.type === 'wall' || entity.type === 'door' || entity.type === 'window'
+    ? entity.orientation === 'vertical' ? 90 : 0
+    : entity.rotation ?? 0;
+  return `translate(${entity.x} ${entity.y}) rotate(${rotation})`;
+}
+
+function updatePlacementPreview(event) {
+  if (!placementSession) return;
+  const entity = placementAtPoint(svgPoint(event));
+  placementSession = { ...placementSession, entity };
+  document.querySelector('[data-placement-ghost]')?.setAttribute('transform', placementTransform(entity));
+  const position = document.querySelector('[data-placement-position]');
+  if (position) position.textContent = `X ${Math.round(entity.x)} · Y ${Math.round(entity.y)}cm`;
+}
+
+function beginPlacement(kind, entity, label, baseStructures = null) {
+  placementSession = {
+    kind,
+    entity,
+    label,
+    baseStructures,
+  };
+  if (isMobileLayout()) mobilePanel = 'canvas';
+  editorNotice = `${label}: 도면을 눌러 놓으세요. Esc로 취소할 수 있습니다.`;
+  pendingFocus = { kind: 'canvas' };
+  render();
+}
+
+function cancelPlacement() {
+  if (!placementSession) return;
+  const label = placementSession.label;
+  placementSession = null;
+  editorNotice = `${label}를 취소했습니다.`;
+  pendingFocus = { kind: 'canvas' };
+  render();
+}
+
+function commitPlacement(event) {
+  if (!placementSession) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const session = placementSession;
+  const entity = placementAtPoint(svgPoint(event));
+  placementSession = null;
+  editorNotice = `${entity.name}을(를) 배치했습니다.`;
+  pendingFocus = { kind: 'canvas' };
+  if (session.kind === 'item') {
+    updateState({
+      items: [...state.items, entity],
+      selection: { kind: 'item', id: entity.id },
+    });
+    return;
+  }
+  const baseStructures = session.baseStructures ?? state.structures;
+  const structures = [...baseStructures.filter((structure) => structure.id !== entity.id), entity];
+  updateState({
+    structures: entity.type === 'wall'
+      ? structures
+      : settleMovedStructures(structures, new Set([entity.id])),
+    selection: { kind: 'structure', id: entity.id },
+  });
+}
+
+function hitCandidateFromElement(element) {
+  const control = element.closest('[data-resize-handle], [data-item-rotate], [data-structure-rotate]');
+  if (control) return { kind: 'control', id: control.dataset.resizeHandle ?? control.dataset.itemRotate ?? control.dataset.structureRotate };
+  const structure = element.closest('[data-structure-id]');
+  if (structure) {
+    const entity = state.structures.find((entry) => entry.id === structure.dataset.structureId);
+    return entity ? {
+      kind: entity.type === 'wall' ? 'structure' : 'opening',
+      selectionKind: 'structure',
+      id: entity.id,
+      label: entity.name,
+    } : null;
+  }
+  const itemNode = element.closest('[data-item-id]');
+  if (itemNode) {
+    const entity = state.items.find((entry) => entry.id === itemNode.dataset.itemId);
+    return entity ? { kind: 'item', selectionKind: 'item', id: entity.id, label: entity.name } : null;
+  }
+  const zoneNode = element.closest('[data-zone-id]');
+  if (zoneNode) {
+    const entity = state.zones.find((entry) => entry.id === zoneNode.dataset.zoneId);
+    return entity ? { kind: 'zone', selectionKind: 'zone', id: entity.id, label: entity.name } : null;
+  }
+  return null;
+}
+
+function pointerHitCandidates(event) {
+  const candidates = document.elementsFromPoint(event.clientX, event.clientY)
+    .map(hitCandidateFromElement)
+    .filter(Boolean);
+  return rankHitCandidates(candidates);
+}
+
+function handleOverlapPointer(event) {
+  if (placementSession || event.button !== 0) return;
+  const candidates = pointerHitCandidates(event);
+  if (candidates.some(({ kind }) => kind === 'control')) return;
+  if (overlapSelectionBypass) {
+    const bypassed = candidates.some(({ selectionKind, id }) => (
+      selectionKind === overlapSelectionBypass.kind && id === overlapSelectionBypass.id
+    ));
+    overlapSelectionBypass = null;
+    if (bypassed) return;
+  }
+  const selectedTarget = event.target.closest('[data-item-id], [data-structure-id]');
+  const selectedKind = selectedTarget?.hasAttribute('data-item-id') ? 'item' : selectedTarget ? 'structure' : null;
+  const selectedId = selectedTarget?.dataset.itemId ?? selectedTarget?.dataset.structureId;
+  if (selectedKind && state.selection?.kind === selectedKind && state.selection.id === selectedId) return;
+  const selectedCandidate = candidates.find(({ selectionKind, id }) => (
+    selectionKind === state.selection?.kind && id === state.selection.id
+  ));
+  if (selectedCandidate) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    startEntityPress(event, selectedCandidate.selectionKind, selectedCandidate.id);
+    return;
+  }
+  const foregroundCandidates = candidates.filter(({ kind }) => kind !== 'zone');
+  if (foregroundCandidates.length < 2) {
+    if (overlapPicker) {
+      overlapPicker = null;
+      render();
+    }
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const canvas = document.querySelector('.canvas-wrap');
+  const bounds = canvas.getBoundingClientRect();
+  overlapPicker = {
+    candidates: foregroundCandidates,
+    left: Math.max(12, Math.min(event.clientX - bounds.left, bounds.width - 248)),
+    top: Math.max(12, Math.min(event.clientY - bounds.top, bounds.height - 180)),
+  };
+  render();
+  document.querySelector('[data-overlap-choice]')?.focus();
+}
+
+function chooseOverlapCandidate(candidate) {
+  overlapSelectionBypass = { kind: candidate.selectionKind, id: candidate.id };
+  overlapPicker = null;
+  selectEntity(candidate.selectionKind, candidate.id);
+  render();
+}
+
+function closeOverlapPicker() {
+  overlapPicker = null;
+  pendingFocus = { kind: 'canvas' };
+  render();
+}
+
+function quickNumericCollection(kind) {
+  return kind === 'zone' ? 'zones' : kind === 'item' ? 'items' : 'structures';
+}
+
+function quickNumericFields(kind, entity) {
+  if (kind === 'item') {
+    return [
+      ['x', 'X'], ['y', 'Y'], ['width', 'W'], ['depth', 'D'], ['rotation', 'R°'],
+    ];
+  }
+  if (kind === 'zone') return [['x', 'X'], ['y', 'Y'], ['width', 'W'], ['depth', 'D']];
+  if (kind === 'structure' && entity.type === 'wall') return [['x', 'X'], ['y', 'Y'], ['length', 'L']];
+  if (kind === 'structure') return [['x', 'X'], ['y', 'Y'], ['width', 'W']];
+  return [];
+}
+
+function normalizeQuickNumericEntity(kind, original, preview) {
+  const next = { ...original, ...preview };
+  next.x = numberValue(next.x, original.x, -5000, 5000);
+  next.y = numberValue(next.y, original.y, -5000, 5000);
+  if (kind === 'item') {
+    next.width = numberValue(next.width, original.width, 20, 600);
+    next.depth = numberValue(next.depth, original.depth, 20, 600);
+    next.rotation = normalizeAngle(Number.isFinite(Number(next.rotation)) ? Number(next.rotation) : original.rotation);
+    if (next.shape === 'circle') {
+      if (preview.width !== undefined) next.depth = next.width;
+      if (preview.depth !== undefined) next.width = next.depth;
+    }
+  } else if (kind === 'zone') {
+    next.width = numberValue(next.width, original.width, 100, 1200);
+    next.depth = numberValue(next.depth, original.depth, 100, 1200);
+  } else if (next.type === 'wall') {
+    const attachedOpeningWidth = Math.max(40, ...state.structures
+      .filter((structure) => structure.type !== 'wall' && structure.wallId === next.id)
+      .map((opening) => opening.width));
+    next.length = numberValue(next.length, original.length, attachedOpeningWidth, 2000);
+  } else {
+    next.width = numberValue(next.width, original.width, next.type === 'door' ? 50 : 60, next.type === 'door' ? 300 : 400);
+  }
+  return next;
+}
+
+function syncQuickNumericPreview(kind, entity) {
+  if (kind !== 'item') return;
+  const group = document.querySelector(`[data-item-id="${entity.id}"]`);
+  if (!group) return;
+  group.setAttribute('transform', `translate(${entity.x} ${entity.y}) rotate(${entity.rotation})`);
+  const hitTarget = group.querySelector('.item-hit-target');
+  const shape = group.querySelector('.item-shape');
+  if (hitTarget) hitTarget.innerHTML = shapeMarkup(entity, { hitTarget: true });
+  if (shape) shape.innerHTML = shapeMarkup(entity);
+}
+
+function previewQuickNumericField(input) {
+  const value = Number(input.value);
+  if (!Number.isFinite(value)) return;
+  const kind = input.dataset.quickKind;
+  const id = input.dataset.quickId;
+  const collection = quickNumericCollection(kind);
+  const current = state[collection].find((entity) => entity.id === id);
+  if (!current) return;
+  if (!numericEdit || numericEdit.kind !== kind || numericEdit.id !== id) {
+    numericEdit = {
+      kind,
+      id,
+      original: { ...current },
+      transaction: createNumericEditTransaction(current),
+      historySnapshot: layoutSnapshot(),
+    };
+  }
+  const preview = numericEdit.transaction.preview({ [input.dataset.quickField]: value });
+  const entity = normalizeQuickNumericEntity(kind, numericEdit.original, preview);
+  numericEdit.preview = entity;
+  state = {
+    ...state,
+    [collection]: state[collection].map((entry) => entry.id === id ? entity : entry),
+  };
+  syncQuickNumericPreview(kind, entity);
+}
+
+function commitQuickNumericEdit(field = null) {
+  if (!numericEdit) return;
+  const historySnapshot = numericEdit.historySnapshot;
+  numericEdit.transaction.commit();
+  numericEdit = null;
+  commitHistory(historySnapshot);
+  saveState();
+  pendingFocus = field ? { kind: 'quick-field', field } : null;
+  render();
+}
+
+function cancelQuickNumericEdit(field = null) {
+  if (!numericEdit) return;
+  const snapshot = numericEdit.historySnapshot;
+  numericEdit.transaction.cancel();
+  numericEdit = null;
+  state = { ...state, ...snapshot };
+  pendingFocus = field ? { kind: 'quick-field', field } : { kind: 'canvas' };
+  render();
+}
+
 function addFurniture(template) {
   const item = createItem(template, state.zones, state.items.length);
-  updateState({ items: [...state.items, item], selection: { kind: 'item', id: item.id } });
+  beginPlacement('item', item, `${item.name} 배치`);
 }
 
 function addCustomFurniture() {
@@ -1522,8 +1846,7 @@ function addWall() {
     thickness: 4,
     orientation: 'horizontal',
   };
-  if (isMobileLayout()) mobilePanel = 'canvas';
-  updateState({ structures: [...state.structures, wall], selection: { kind: 'structure', id: wall.id } });
+  beginPlacement('structure', wall, `${wall.name} 배치`);
 }
 
 function addDoor(doorType) {
@@ -1557,8 +1880,7 @@ function addDoor(doorType) {
     openRatio: 0,
     wallId: wall?.id ?? null,
   };
-  if (isMobileLayout()) mobilePanel = 'canvas';
-  updateState({ structures: [...state.structures, door], selection: { kind: 'structure', id: door.id } });
+  beginPlacement('structure', door, `${door.name} 배치`);
 }
 
 function addWindow() {
@@ -1591,11 +1913,10 @@ function addWindow() {
     openRatio: 0,
     wallId: wall?.id ?? null,
   };
-  if (isMobileLayout()) mobilePanel = 'canvas';
   const structures = state.structures.map((structure) => (
     structure.id === wall?.id && structure.length < width ? { ...structure, length: width } : structure
   ));
-  updateState({ structures: [...structures, windowStructure], selection: { kind: 'structure', id: windowStructure.id } });
+  beginPlacement('structure', windowStructure, `${windowStructure.name} 배치`, structures);
 }
 
 function deleteSelectedZonePart() {
@@ -1855,6 +2176,48 @@ function syncAlignmentGuides() {
   });
 }
 
+function placementGhostMarkup() {
+  if (!placementSession) return '';
+  const entity = placementSession.entity;
+  let shape = '';
+  if (placementSession.kind === 'item') {
+    if (entity.shape === 'circle') {
+      shape = `<circle cx="0" cy="0" r="${entity.width / 2}" />`;
+    } else if (entity.shape === 'ellipse') {
+      shape = `<ellipse cx="0" cy="0" rx="${entity.width / 2}" ry="${entity.depth / 2}" />`;
+    } else {
+      shape = `<rect x="${-entity.width / 2}" y="${-entity.depth / 2}" width="${entity.width}" height="${entity.depth}" rx="${entity.shape === 'roundRect' ? 14 : 2}" />`;
+    }
+  } else if (entity.type === 'wall') {
+    shape = `<line x1="${-entity.length / 2}" y1="0" x2="${entity.length / 2}" y2="0" />`;
+  } else if (entity.type === 'window') {
+    shape = `<rect x="${-entity.width / 2}" y="-8" width="${entity.width}" height="16" rx="3" />`;
+  } else {
+    shape = `<rect x="${-entity.width / 2}" y="-10" width="${entity.width}" height="20" rx="3" />`;
+  }
+  return `<g class="placement-layer" aria-hidden="true">
+    <g class="placement-ghost placement-${placementSession.kind}" data-placement-ghost transform="${placementTransform(entity)}">${shape}</g>
+  </g>`;
+}
+
+function renderPlacementHud() {
+  if (!placementSession) return '';
+  const entity = placementSession.entity;
+  return `<div class="placement-hud" data-placement-session role="status">
+    <span><strong>${escapeHtml(placementSession.label)}</strong><small data-placement-position>X ${Math.round(entity.x)} · Y ${Math.round(entity.y)}cm</small></span>
+    <button data-placement-cancel type="button">배치 취소</button>
+  </div>`;
+}
+
+function renderOverlapPicker() {
+  if (!overlapPicker) return '';
+  return `<div class="overlap-picker" data-overlap-picker role="dialog" aria-label="겹친 대상 선택"
+    style="--picker-left:${overlapPicker.left}px;--picker-top:${overlapPicker.top}px">
+    <span><strong>겹친 대상 ${overlapPicker.candidates.length}개</strong><small>움직일 대상을 고르세요</small></span>
+    <div>${overlapPicker.candidates.map((candidate) => `<button data-overlap-choice="${candidate.selectionKind}:${candidate.id}" type="button"><b>${escapeHtml(candidate.label)}</b><small>${candidate.selectionKind === 'item' ? '가구' : candidate.kind === 'opening' ? '문·창' : '벽'}</small></button>`).join('')}</div>
+  </div>`;
+}
+
 function transformHudContent(mode = 'selected') {
   const modeLabels = {
     selected: '선택됨',
@@ -1909,12 +2272,20 @@ function transformHudContent(mode = 'selected') {
 }
 
 function renderTransformHud() {
+  if (placementSession) return '';
   const content = transformHudContent();
   if (!content) return '';
-  return `<div class="transform-hud" data-transform-hud data-mode="selected" aria-hidden="true">
-    <span data-transform-label>${content.label}</span>
-    <strong data-transform-primary>${content.primary}</strong>
-    <small data-transform-secondary>${content.secondary}</small>
+  const entity = selectionKeys.size === 1 ? selectedEntity() : null;
+  const fields = entity && state.selection && !entity.locked
+    ? quickNumericFields(state.selection.kind, entity)
+    : [];
+  return `<div class="transform-hud ${fields.length ? 'has-quick-fields' : ''}" data-transform-hud data-mode="selected">
+    <span class="transform-summary-label" data-transform-label>${content.label}</span>
+    <strong class="transform-summary-primary" data-transform-primary>${content.primary}</strong>
+    <small class="transform-summary-secondary" data-transform-secondary>${content.secondary}</small>
+    ${fields.length ? `<div class="quick-numeric-fields" aria-label="${escapeHtml(entity.name)} 빠른 수치 편집">
+      ${fields.map(([field, label]) => `<label><span>${label}</span><input data-quick-field="${field}" data-quick-kind="${state.selection.kind}" data-quick-id="${entity.id}" type="number" inputmode="decimal" value="${Math.round(entity[field])}" aria-label="${escapeHtml(entity.name)} ${label}" /></label>`).join('')}
+    </div>` : ''}
   </div>`;
 }
 
@@ -2935,12 +3306,23 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
     const sizeLabel = details.parts.length > 1
       ? `${details.parts.length}조각 · ${(calculateUnionArea(details.parts) / 10000).toFixed(1)}m² · H ${zone.height ?? 240}cm`
       : `${meters(zone.width)} × ${meters(zone.depth)} · H ${zone.height ?? 240}cm`;
+    const zoneItems = state.items.filter((item) => pointInZone({ x: item.x, y: item.y }, zone));
+    const labelCandidates = [
+      { x: zone.x + 12, y: zone.y + 22, anchor: 'start' },
+      { x: zone.x + zone.width - 12, y: zone.y + 22, anchor: 'end' },
+      { x: zone.x + 12, y: zone.y + zone.depth - 28, anchor: 'start' },
+      { x: zone.x + zone.width - 12, y: zone.y + zone.depth - 28, anchor: 'end' },
+    ];
+    const labelPosition = labelCandidates.reduce((best, candidate) => {
+      const clearance = Math.min(...zoneItems.map((item) => Math.hypot(candidate.x - item.x, candidate.y - item.y)), 10000);
+      return clearance > best.clearance ? { ...candidate, clearance } : best;
+    }, { ...labelCandidates[0], clearance: -1 });
     return `<g class="plan-zone ${details.parts.length > 1 ? 'is-compound' : ''} ${spaceSelected ? 'is-space-selected' : ''} ${selected ? 'is-selected' : ''} ${zone.locked ? 'is-locked' : ''} ${zoneOverlaps.has(zone.id) ? 'has-overlap' : ''}" data-zone-id="${zone.id}">
       <rect class="zone-hit-target" x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}"
         fill="none" stroke="transparent" stroke-width="44" vector-effect="non-scaling-stroke" pointer-events="stroke" />
       <rect x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}" fill="${zone.color}" />
-      ${showLabel ? `<text x="${zone.x + zone.width / 2}" y="${zone.y + zone.depth / 2 - 5}">${escapeHtml(zone.name)}</text>
-      <text class="zone-size" x="${zone.x + zone.width / 2}" y="${zone.y + zone.depth / 2 + 15}">${sizeLabel}</text>` : ''}
+      ${showLabel ? `<text class="zone-name" x="${labelPosition.x}" y="${labelPosition.y}" text-anchor="${labelPosition.anchor}">${escapeHtml(zone.name)}</text>
+      <text class="zone-size" x="${labelPosition.x}" y="${labelPosition.y + 16}" text-anchor="${labelPosition.anchor}">${sizeLabel}</text>` : ''}
     </g>`;
   }).join('');
   const openings = state.structures.filter((structure) => structure.type !== 'wall');
@@ -3034,10 +3416,10 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
       </image>`
     : '';
   const dimensions = state.dimensions.map(dimensionMarkup).join('');
-  return `<svg id="plan-canvas" class="plan-svg" viewBox="${viewBox}" tabindex="0" aria-label="다중 공간 가구 배치도">
+  return `<svg id="plan-canvas" class="plan-svg ${placementSession ? 'is-placing' : ''}" viewBox="${viewBox}" tabindex="0" aria-label="다중 공간 가구 배치도">
     <defs><pattern id="grid" width="${GRID_CM}" height="${GRID_CM}" patternUnits="userSpaceOnUse"><path d="M ${GRID_CM} 0 L 0 0 0 ${GRID_CM}" fill="none" stroke="#d7d3c9" stroke-width="0.7" /></pattern></defs>
     <rect class="grid-background" x="${canvasViewBox.left}" y="${canvasViewBox.top}" width="${canvasViewBox.width}" height="${canvasViewBox.height}" fill="url(#grid)" />
-    ${backgroundMarkup}${zones}<g class="structural-walls">${automaticWalls}</g>${spaceOutlines}${items}${structures}${dimensions}${groupBoundsMarkup}${guideMarkup}${resizeOverlay}${marqueeMarkup}${precisionMarkup()}
+    ${backgroundMarkup}${zones}<g class="structural-walls">${automaticWalls}</g>${spaceOutlines}${items}${structures}${dimensions}${placementGhostMarkup()}${groupBoundsMarkup}${guideMarkup}${resizeOverlay}${marqueeMarkup}${precisionMarkup()}
   </svg>`;
 }
 
@@ -3278,6 +3660,39 @@ function renderStarterDialog() {
   </div>`;
 }
 
+function renderDemoGallery() {
+  if (!demoGalleryOpen) return '';
+  const pendingDemo = pendingDemoId ? DEMO_LAYOUTS.find(({ id }) => id === pendingDemoId) : null;
+  return `<div class="cloud-dialog-backdrop demo-gallery-backdrop" data-demo-backdrop>
+    <section class="cloud-dialog demo-gallery" data-demo-gallery role="dialog" aria-modal="true" aria-labelledby="demo-gallery-title">
+      <button class="cloud-dialog-close" data-demo-close type="button" aria-label="모델 홈 갤러리 닫기">×</button>
+      <span class="eyebrow">LH MODEL HOME GALLERY</span>
+      <h2 id="demo-gallery-title">실제 면적 유형으로 시작하세요</h2>
+      <p>LH 공개 주택 평면도 기록의 면적 유형을 바탕으로 새로 구성한 배치 예시입니다. 원본 이미지·주소·개인정보는 포함하지 않습니다.</p>
+      <div class="demo-grid">
+        ${DEMO_LAYOUTS.map((demo) => {
+    const rooms = demo.zones.map(({ name }) => name).join(' · ');
+    return `<article class="demo-card" data-demo-card="${demo.id}">
+          <div class="demo-card-plan" aria-hidden="true">${demo.zones.map((zone) => `<i style="--x:${zone.x};--y:${zone.y};--w:${zone.width};--d:${zone.depth};--c:${zone.color}"></i>`).join('')}</div>
+          <span class="demo-area" data-demo-area>${demo.source.supplyAreaSquareMeters}㎡</span>
+          <h3>${escapeHtml(demo.name)}</h3>
+          <p data-demo-rooms>${escapeHtml(rooms)}</p>
+          <dl><div><dt>출처</dt><dd data-demo-source>${escapeHtml(demo.source.attribution)} · ${escapeHtml(demo.source.archiveEntry)}</dd></div></dl>
+          <small data-demo-adaptation>${escapeHtml(demo.source.adaptationNotice)}</small>
+          <button data-demo-layout="${demo.id}" type="button">이 모델 홈 열기</button>
+        </article>`;
+  }).join('')}
+      </div>
+      <p class="demo-license">공공데이터포털 <a href="${DEMO_LAYOUTS[0].source.datasetUrl}" target="_blank" rel="noreferrer">한국토지주택공사 주택 평면도 현황</a> · ${escapeHtml(DEMO_LAYOUTS[0].source.license)}</p>
+      ${pendingDemo ? `<div class="demo-confirm" data-demo-confirm role="alertdialog" aria-modal="true" aria-labelledby="demo-confirm-title">
+        <strong id="demo-confirm-title">현재 도면을 바꿀까요?</strong>
+        <p>저장된 브라우저 도면 대신 <b>${escapeHtml(pendingDemo.name)}</b>을 엽니다. 필요한 경우 먼저 도면 파일을 내보내세요.</p>
+        <div><button data-demo-confirm-cancel type="button">돌아가기</button><button class="is-danger" data-demo-confirm-accept type="button">현재 도면 바꾸기</button></div>
+      </div>` : ''}
+    </section>
+  </div>`;
+}
+
 function renderCloudDialog() {
   if (!cloudDialogOpen) return '';
   const closeButton = '<button class="cloud-dialog-close" data-cloud-close type="button" aria-label="클라우드 창 닫기">×</button>';
@@ -3376,6 +3791,13 @@ function renderBlueprintControls() {
   </div>`;
 }
 
+function placementControlArmed(value) {
+  if (!placementSession) return false;
+  if (placementSession.kind === 'item') return placementSession.entity.type === value;
+  if (value === 'wall' || value === 'window') return placementSession.entity.type === value;
+  return placementSession.entity.type === 'door' && placementSession.entity.doorType === value;
+}
+
 function render() {
   const focusedMobileLayout = isMobileLayout();
   const mobilePanelAttributes = (panel) => {
@@ -3393,7 +3815,7 @@ function render() {
   const maxHeight = state.items.length ? Math.max(...state.items.map((item) => item.height + (item.elevation ?? 0))) : 0;
   const warningCount = new Set([...collisions, ...outOfBounds, ...heightViolations]).size + zoneOverlaps.size;
   const mobileStatus = `${mobileMultiSelect ? '그룹 선택 켜짐' : '그룹 선택 꺼짐'} · 선택 ${selectionKeys.size}개${mobileMoveArmed ? ' · 이동 준비됨' : ''}`;
-  const cloudBackgroundAttributes = cloudDialogOpen || projectDialogOpen || starterDialogOpen || mobileContextMenu ? 'inert aria-hidden="true"' : '';
+  const cloudBackgroundAttributes = cloudDialogOpen || projectDialogOpen || starterDialogOpen || demoGalleryOpen || mobileContextMenu ? 'inert aria-hidden="true"' : '';
   const cloudState = cloudFeedbackTone === 'error' ? 'error' : !cloudConfigured ? 'setup' : cloudSession ? 'synced' : 'idle';
 
   const accountName = cloudSession?.user?.user_metadata?.full_name || cloudSession?.user?.email?.split('@')[0];
@@ -3401,6 +3823,7 @@ function render() {
     <a class="brand" href="#"><span class="brand-mark"><i></i><i></i><i></i></span><span><strong>ROOM</strong> STUDIO</span></a>
     <div class="topbar-cloud">
       <button class="project-account-button" data-start-open type="button" aria-haspopup="dialog"><b aria-hidden="true">✦</b><span>시작</span></button>
+      <button class="project-account-button demo-open-button" data-demo-open type="button" aria-haspopup="dialog"><b aria-hidden="true">⌂</b><span>모델 홈</span></button>
       <button class="project-account-button" data-project-open type="button" aria-haspopup="dialog"><b aria-hidden="true">↥</b><span>도면 파일</span></button>
       <div class="save-state" data-state="${cloudState}"><span></span><span data-cloud-status>${escapeHtml(cloudFeedback)}</span></div>
       <button class="cloud-account-button" data-cloud-open type="button" aria-haspopup="dialog"><b aria-hidden="true">${cloudSession ? '●' : '○'}</b><span>${escapeHtml(accountName || (cloudConfigured ? '로그인' : '클라우드 설정'))}</span></button>
@@ -3421,13 +3844,13 @@ function render() {
         <div class="structure-library">
           <div class="section-title compact"><span>02</span><h2>벽·문·창</h2></div>
           <p class="section-help">벽을 선택한 뒤 문이나 창을 추가하면 벽에 연결됩니다. 선택을 해제하면 공간 경계에 직접 놓을 수 있습니다.</p>
-          <div class="structure-add-row"><button data-add-structure="wall" type="button">━ 벽</button><button data-add-structure="swing" type="button">◜ 여닫이문</button><button data-add-structure="sliding" type="button">⇆ 미닫이문</button><button data-add-structure="window" type="button">▤ 미닫이창</button></div>
+          <div class="structure-add-row"><button class="${placementControlArmed('wall') ? 'is-placement-armed' : ''}" data-add-structure="wall" type="button" aria-pressed="${placementControlArmed('wall')}">━ 벽</button><button class="${placementControlArmed('swing') ? 'is-placement-armed' : ''}" data-add-structure="swing" type="button" aria-pressed="${placementControlArmed('swing')}">◜ 여닫이문</button><button class="${placementControlArmed('sliding') ? 'is-placement-armed' : ''}" data-add-structure="sliding" type="button" aria-pressed="${placementControlArmed('sliding')}">⇆ 미닫이문</button><button class="${placementControlArmed('window') ? 'is-placement-armed' : ''}" data-add-structure="window" type="button" aria-pressed="${placementControlArmed('window')}">▤ 미닫이창</button></div>
           <div class="structure-list">${state.structures.map((structure) => `<button class="${isSelected('structure', structure.id) ? 'active' : ''}" data-select-structure="${structure.id}" type="button"><b aria-hidden="true">${structure.type === 'wall' ? '━' : structure.type === 'window' ? '▤' : structure.doorType === 'sliding' ? '⇆' : '◜'}</b><span><strong>${escapeHtml(structure.name)}</strong><small>${structure.type === 'wall' ? `${ORIENTATIONS[structure.orientation]} · ${structure.length}cm · T ${structure.thickness ?? 4}cm` : structure.type === 'window' ? `샷시 미닫이 · ${ORIENTATIONS[structure.orientation]} · ${structure.width}×${structure.height}cm · 창턱 ${structure.sillHeight ?? 90}cm · ${Math.round(structure.openRatio ?? 0)}% 열림` : `${DOOR_TYPES[structure.doorType]} · ${ORIENTATIONS[structure.orientation]} · ${structure.width}cm · ${structure.wallId ? '벽 연결' : '직접 배치'} · ${structure.doorType === 'swing' ? `${Math.round(structure.openAngle ?? 0)}° 열림` : `${Math.round(structure.openRatio ?? 0)}% 열림`}`}</small></span></button>`).join('')}</div>
         </div>
       </section>
       <section class="furniture-section" id="mobile-panel-furniture" ${mobilePanelAttributes('furniture')}>
         <div class="section-title"><span>03</span><h2>가구 라이브러리</h2></div>
-        <div class="furniture-library">${furnitureTemplates.map((template) => `<button type="button" data-add-type="${template.type}"><i class="shape-${template.shape}" style="--item:${template.color}"></i><span><strong>${escapeHtml(template.name)}</strong><small>${SHAPES[template.shape]} · H ${template.height}cm</small></span><b>＋</b></button>`).join('')}</div>
+        <div class="furniture-library">${furnitureTemplates.map((template) => `<button class="${placementControlArmed(template.type) ? 'is-placement-armed' : ''}" type="button" data-add-type="${template.type}" aria-pressed="${placementControlArmed(template.type)}"><i class="shape-${template.shape}" style="--item:${template.color}"></i><span><strong>${escapeHtml(template.name)}</strong><small>${SHAPES[template.shape]} · H ${template.height}cm</small></span><b>＋</b></button>`).join('')}</div>
       </section>
       <section class="custom-section">
         <div class="section-title"><span>04</span><h2>커스텀 가구</h2></div>
@@ -3446,7 +3869,7 @@ function render() {
         <span>방향키 1cm · Shift+방향키 40cm · ⌘/Ctrl+C·V · Shift 클릭 다중 선택</span>
         <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="add-dimension" class="${precisionTool?.type === 'dimension' ? 'is-active' : ''}" type="button">↔ 거리 측정</button><details class="canvas-more-actions" ${isMobileLayout() ? '' : 'open'}><summary>더보기</summary><div role="group" aria-label="추가 도면 도구"><button id="duplicate-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>⧉ 복제</button><button id="copy-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>복사</button><button id="paste-selection" type="button" ${internalClipboard ? '' : 'disabled'}>붙여넣기</button><button id="clear-furniture" type="button">가구 비우기</button></div></details></div>
       </div>
-      <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderTransformHud()}${editorNotice || precisionTool ? `<div class="editor-notice ${precisionTool ? 'is-tool-active' : ''}" role="status"><span>${escapeHtml(editorNotice)}</span>${precisionTool ? '<button id="cancel-precision-tool" type="button">취소</button>' : ''}</div>` : ''}</div>
+      <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderPlacementHud()}${renderOverlapPicker()}${renderTransformHud()}${editorNotice || precisionTool ? `<div class="editor-notice ${precisionTool ? 'is-tool-active' : ''}" role="status"><span>${escapeHtml(editorNotice)}</span>${precisionTool ? '<button id="cancel-precision-tool" type="button">취소</button>' : ''}</div>` : ''}</div>
       <div class="stats-bar"><div><span>집 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span>바닥 점유</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 확인</span><strong>${warningCount ? `${warningCount}개 확인` : '문제 없음'}</strong></div></div>
       <div class="legend"><span><i class="collision-dot"></i>가구 3D 충돌</span><span><i class="height-dot"></i>공간 높이 초과</span><span><i class="outside-dot"></i>집 밖 배치</span><span><i class="zone-dot"></i>공간 중복</span></div>
     </section>
@@ -3458,6 +3881,7 @@ function render() {
   ${renderMobileSelectionBar()}
   ${renderMobileContextMenu()}
   ${renderStarterDialog()}
+  ${renderDemoGallery()}
   ${renderProjectDialog()}
   ${renderCloudDialog()}
   <div id="mobile-status" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;">${mobileStatus}</div>
@@ -3485,6 +3909,12 @@ function focusPendingTarget() {
     document.querySelector(`[data-item-rotate="${focusRequest.id}"]`)?.focus();
     return;
   }
+  if (focusRequest.kind === 'quick-field') {
+    const input = document.querySelector(`[data-quick-field="${focusRequest.field}"]`);
+    input?.focus();
+    input?.select();
+    return;
+  }
   const selector = {
     'panel-heading': '#inspector-heading',
     'context-menu': '[data-context-action="move"]',
@@ -3510,6 +3940,22 @@ function moveMobileTabFocus(event, currentPanel) {
 }
 
 function bindEvents() {
+  document.querySelector('[data-demo-open]')?.addEventListener('click', openDemoGallery);
+  document.querySelector('[data-demo-close]')?.addEventListener('click', closeDemoGallery);
+  document.querySelector('[data-demo-backdrop]')?.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeDemoGallery();
+  });
+  document.querySelectorAll('[data-demo-layout]').forEach((button) => button.addEventListener('click', () => {
+    requestDemoLayout(button.dataset.demoLayout);
+  }));
+  document.querySelector('[data-demo-confirm-cancel]')?.addEventListener('click', () => {
+    pendingDemoId = null;
+    render();
+    document.querySelector('[data-demo-layout]')?.focus();
+  });
+  document.querySelector('[data-demo-confirm-accept]')?.addEventListener('click', () => {
+    if (pendingDemoId) applyDemoLayout(pendingDemoId);
+  });
   document.querySelector('[data-start-open]')?.addEventListener('click', () => {
     starterDialogOpen = true;
     pendingFocus = { kind: 'starter-sample' };
@@ -3887,11 +4333,21 @@ function bindEvents() {
   }));
   document.querySelector('[data-background-plan]')?.addEventListener('pointerdown', startBackgroundDrag);
   document.querySelector('.grid-background').addEventListener('pointerdown', startMarquee);
-  document.querySelector('#plan-canvas').addEventListener('pointerdown', handlePrecisionPoint, true);
-  document.querySelector('#plan-canvas').addEventListener('wheel', zoomCanvasWithWheel, { passive: false });
-  document.querySelector('#plan-canvas').addEventListener('contextmenu', (event) => {
+  const planCanvas = document.querySelector('#plan-canvas');
+  planCanvas.addEventListener('pointermove', updatePlacementPreview, true);
+  planCanvas.addEventListener('pointerdown', commitPlacement, true);
+  planCanvas.addEventListener('pointerdown', handleOverlapPointer, true);
+  planCanvas.addEventListener('pointerdown', handlePrecisionPoint, true);
+  planCanvas.addEventListener('wheel', zoomCanvasWithWheel, { passive: false });
+  planCanvas.addEventListener('contextmenu', (event) => {
     if (isMobileLayout()) event.preventDefault();
   });
+  document.querySelector('[data-placement-cancel]')?.addEventListener('click', cancelPlacement);
+  document.querySelectorAll('[data-overlap-choice]').forEach((button) => button.addEventListener('click', () => {
+    const [selectionKind, id] = button.dataset.overlapChoice.split(':');
+    const candidate = overlapPicker?.candidates.find((entry) => entry.selectionKind === selectionKind && entry.id === id);
+    if (candidate) chooseOverlapCandidate(candidate);
+  }));
   document.querySelectorAll('[data-resize-handle]').forEach((node) => node.addEventListener('pointerdown', (event) => {
     startResize(event, node.dataset.resizeKind, node.dataset.resizeId, node.dataset.resizeHandle);
   }));
@@ -3997,6 +4453,22 @@ function bindEvents() {
       [field]: input.type === 'number' ? Number(input.value) : input.value,
     }, { historySnapshot }));
   });
+  document.querySelectorAll('[data-quick-field]').forEach((input) => {
+    input.addEventListener('pointerdown', (event) => event.stopPropagation());
+    input.addEventListener('input', () => previewQuickNumericField(input));
+    input.addEventListener('keydown', (event) => {
+      if (!['Enter', 'Escape'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') cancelQuickNumericEdit(input.dataset.quickField);
+      else commitQuickNumericEdit(input.dataset.quickField);
+    });
+    input.addEventListener('blur', (event) => {
+      if (!numericEdit) return;
+      if (event.relatedTarget?.matches?.('[data-quick-field]')) return;
+      commitQuickNumericEdit();
+    });
+  });
   document.querySelectorAll('[data-door-opening]').forEach((button) => button.addEventListener('click', () => {
     setDoorOpening(state.selection.id, Number(button.dataset.doorOpening));
   }));
@@ -4020,6 +4492,17 @@ document.addEventListener('keydown', (event) => {
     focusable[nextIndex].focus();
     return;
   }
+  if (demoGalleryOpen && event.key === 'Escape') {
+    event.preventDefault();
+    if (pendingDemoId) {
+      pendingDemoId = null;
+      render();
+      document.querySelector('[data-demo-layout]')?.focus();
+    } else {
+      closeDemoGallery();
+    }
+    return;
+  }
   if (starterDialogOpen && event.key === 'Escape') {
     event.preventDefault();
     starterDialogOpen = false;
@@ -4039,6 +4522,16 @@ document.addEventListener('keydown', (event) => {
     cloudDialogOpen = false;
     render();
     document.querySelector('[data-cloud-open]')?.focus();
+    return;
+  }
+  if (overlapPicker && event.key === 'Escape') {
+    event.preventDefault();
+    closeOverlapPicker();
+    return;
+  }
+  if (placementSession && event.key === 'Escape') {
+    event.preventDefault();
+    cancelPlacement();
     return;
   }
   if (mobileContextMenu && event.key === 'Escape') {
