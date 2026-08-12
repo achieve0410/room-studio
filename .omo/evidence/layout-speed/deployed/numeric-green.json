@@ -1,0 +1,194 @@
+{
+  "scenario": "numeric",
+  "phase": "green",
+  "url": "https://achieve0410.github.io/room-studio/",
+  "passed": true,
+  "assertions": [
+    {
+      "name": "selected item exposes immediate quick fields",
+      "pass": true,
+      "details": {
+        "widthExists": true,
+        "rotationExists": true,
+        "widthValue": "180",
+        "rotationValue": "0"
+      }
+    },
+    {
+      "name": "multiple inputs preview geometry live",
+      "pass": true,
+      "details": {
+        "liveWidth": 230
+      }
+    },
+    {
+      "name": "Enter commits final width and rotation",
+      "pass": true,
+      "details": {
+        "id": "numeric-item",
+        "type": "sofa",
+        "name": "테스트 소파",
+        "shape": "roundRect",
+        "x": 260,
+        "y": 190,
+        "width": 230,
+        "depth": 90,
+        "height": 80,
+        "elevation": 0,
+        "rotation": 30,
+        "color": "#c8a985",
+        "locked": false
+      }
+    },
+    {
+      "name": "one undo restores the complete pre-edit snapshot",
+      "pass": true,
+      "details": {
+        "restored": {
+          "id": "numeric-item",
+          "type": "sofa",
+          "name": "테스트 소파",
+          "shape": "roundRect",
+          "x": 260,
+          "y": 190,
+          "width": 180,
+          "depth": 90,
+          "height": 80,
+          "elevation": 0,
+          "rotation": 0,
+          "color": "#c8a985",
+          "locked": false
+        },
+        "undoAfter": {
+          "x": 933.1640625,
+          "y": 190.046875,
+          "width": 62.328125,
+          "height": 26,
+          "disabled": true
+        }
+      }
+    },
+    {
+      "name": "Escape cancels draft without adding history",
+      "pass": true,
+      "details": {
+        "cancelled": {
+          "id": "numeric-item",
+          "type": "sofa",
+          "name": "테스트 소파",
+          "shape": "roundRect",
+          "x": 260,
+          "y": 190,
+          "width": 180,
+          "depth": 90,
+          "height": 80,
+          "elevation": 0,
+          "rotation": 0,
+          "color": "#c8a985",
+          "locked": false
+        },
+        "undoAfterCancel": {
+          "x": 933.1640625,
+          "y": 190.046875,
+          "width": 62.328125,
+          "height": 26,
+          "disabled": true
+        }
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 1,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 260,
+        "worldY": 190,
+        "point": {
+          "x": 651.3076923076924,
+          "y": 544.1494391025641
+        }
+      }
+    },
+    {
+      "name": "quick-field",
+      "details": {
+        "field": "width",
+        "values": [
+          "190",
+          "215",
+          "230"
+        ],
+        "commitKey": null
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Enter",
+        "code": "Enter"
+      }
+    },
+    {
+      "name": "quick-field",
+      "details": {
+        "field": "rotation",
+        "values": [
+          "15",
+          "30"
+        ],
+        "commitKey": "Enter"
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "#undo-action",
+        "center": {
+          "x": 933.1640625,
+          "y": 190.046875,
+          "width": 62.328125,
+          "height": 26,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 260,
+        "worldY": 190,
+        "point": {
+          "x": 651.3076923076924,
+          "y": 544.1494391025641
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "quick-field",
+      "details": {
+        "field": "width",
+        "values": [
+          "260"
+        ],
+        "commitKey": "Escape"
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}

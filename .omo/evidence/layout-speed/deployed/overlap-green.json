@@ -1,0 +1,134 @@
+{
+  "scenario": "overlap",
+  "phase": "green",
+  "url": "https://achieve0410.github.io/room-studio/",
+  "passed": true,
+  "assertions": [
+    {
+      "name": "multiple foreground hits open deterministic picker",
+      "pass": true,
+      "details": {
+        "visible": true,
+        "choices": [
+          {
+            "value": "item:overlap-b",
+            "text": "겹친 테이블가구"
+          },
+          {
+            "value": "item:overlap-a",
+            "text": "겹친 소파가구"
+          }
+        ],
+        "active": "item:overlap-b"
+      }
+    },
+    {
+      "name": "picker lists both foreground candidates",
+      "pass": true,
+      "details": [
+        {
+          "value": "item:overlap-b",
+          "text": "겹친 테이블가구"
+        },
+        {
+          "value": "item:overlap-a",
+          "text": "겹친 소파가구"
+        }
+      ]
+    },
+    {
+      "name": "Escape closes picker and restores canvas focus",
+      "pass": true,
+      "details": {
+        "pickerClosed": true,
+        "canvasFocused": true
+      }
+    },
+    {
+      "name": "requested overlap candidate alone is selected",
+      "pass": true,
+      "details": {
+        "requested": true,
+        "other": false
+      }
+    },
+    {
+      "name": "overlap selection never mutates geometry",
+      "pass": true,
+      "details": null
+    },
+    {
+      "name": "single foreground item bypasses picker",
+      "pass": true,
+      "details": {
+        "pickerVisible": false,
+        "selected": true
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 3,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 280,
+        "worldY": 190,
+        "point": {
+          "x": 671.2051282051282,
+          "y": 544.1494391025641
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 280,
+        "worldY": 190,
+        "point": {
+          "x": 671.2051282051282,
+          "y": 544.1494391025641
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-overlap-choice=\"item:overlap-b\"]",
+        "center": {
+          "x": 790.203125,
+          "y": 619.140625,
+          "width": 214,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 510,
+        "worldY": 150,
+        "point": {
+          "x": 900.0256410256411,
+          "y": 504.3545673076923
+        }
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}

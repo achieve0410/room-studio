@@ -1,0 +1,317 @@
+[
+  {
+    "name": "seed-layout",
+    "details": {
+      "zones": 1,
+      "items": 1,
+      "structures": 0
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-open]",
+      "center": {
+        "x": 988.171875,
+        "y": 34.5,
+        "width": 75.71875,
+        "height": 40,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-layout=\"lh-compact-37\"]",
+      "center": {
+        "x": 376.6640625,
+        "y": 677.09375,
+        "width": 301.328125,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-confirm-accept]",
+      "center": {
+        "x": 1072.5,
+        "y": 794.234375,
+        "width": 279,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "#open-walkthrough",
+      "center": {
+        "x": 1061,
+        "y": 160.546875,
+        "width": 76,
+        "height": 31,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-walkthrough-exit]",
+      "center": {
+        "x": 1377.609375,
+        "y": 46,
+        "width": 74.78125,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-project-open]",
+      "center": {
+        "x": 1082.2109375,
+        "y": 34.5,
+        "width": 84.359375,
+        "height": 40,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-project-report]",
+      "center": {
+        "x": 720,
+        "y": 436.8125,
+        "width": 498,
+        "height": 46,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "key",
+    "details": {
+      "key": "Escape",
+      "code": "Escape"
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-open]",
+      "center": {
+        "x": 988.171875,
+        "y": 34.5,
+        "width": 75.71875,
+        "height": 40,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-layout=\"lh-family-84a\"]",
+      "center": {
+        "x": 719.9921875,
+        "y": 677.09375,
+        "width": 301.328125,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-confirm-accept]",
+      "center": {
+        "x": 1072.5,
+        "y": 794.234375,
+        "width": 279,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "#open-walkthrough",
+      "center": {
+        "x": 1061,
+        "y": 160.546875,
+        "width": 76,
+        "height": 31,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-walkthrough-exit]",
+      "center": {
+        "x": 1377.609375,
+        "y": 46,
+        "width": 74.78125,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-project-open]",
+      "center": {
+        "x": 1082.2109375,
+        "y": 34.5,
+        "width": 84.359375,
+        "height": 40,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-project-report]",
+      "center": {
+        "x": 720,
+        "y": 436.8125,
+        "width": 498,
+        "height": 46,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "key",
+    "details": {
+      "key": "Escape",
+      "code": "Escape"
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-open]",
+      "center": {
+        "x": 988.171875,
+        "y": 34.5,
+        "width": 75.71875,
+        "height": 40,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-layout=\"lh-family-114a\"]",
+      "center": {
+        "x": 1063.328125,
+        "y": 677.09375,
+        "width": 301.34375,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-confirm-accept]",
+      "center": {
+        "x": 1072.5,
+        "y": 794.234375,
+        "width": 279,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "#open-walkthrough",
+      "center": {
+        "x": 1061,
+        "y": 160.546875,
+        "width": 76,
+        "height": 31,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-walkthrough-exit]",
+      "center": {
+        "x": 1377.609375,
+        "y": 46,
+        "width": 74.78125,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-project-open]",
+      "center": {
+        "x": 1082.2109375,
+        "y": 34.5,
+        "width": 84.359375,
+        "height": 40,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-project-report]",
+      "center": {
+        "x": 720,
+        "y": 436.8125,
+        "width": 498,
+        "height": 46,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "key",
+    "details": {
+      "key": "Escape",
+      "code": "Escape"
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-demo-open]",
+      "center": {
+        "x": 988.171875,
+        "y": 34.5,
+        "width": 75.71875,
+        "height": 40,
+        "disabled": false
+      }
+    }
+  }
+]

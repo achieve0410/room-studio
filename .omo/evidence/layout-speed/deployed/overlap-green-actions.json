@@ -1,0 +1,63 @@
+[
+  {
+    "name": "seed-layout",
+    "details": {
+      "zones": 1,
+      "items": 3,
+      "structures": 0
+    }
+  },
+  {
+    "name": "click-world",
+    "details": {
+      "worldX": 280,
+      "worldY": 190,
+      "point": {
+        "x": 671.2051282051282,
+        "y": 544.1494391025641
+      }
+    }
+  },
+  {
+    "name": "key",
+    "details": {
+      "key": "Escape",
+      "code": "Escape"
+    }
+  },
+  {
+    "name": "click-world",
+    "details": {
+      "worldX": 280,
+      "worldY": 190,
+      "point": {
+        "x": 671.2051282051282,
+        "y": 544.1494391025641
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-overlap-choice=\"item:overlap-b\"]",
+      "center": {
+        "x": 790.203125,
+        "y": 619.140625,
+        "width": 214,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click-world",
+    "details": {
+      "worldX": 510,
+      "worldY": 150,
+      "point": {
+        "x": 900.0256410256411,
+        "y": 504.3545673076923
+      }
+    }
+  }
+]
