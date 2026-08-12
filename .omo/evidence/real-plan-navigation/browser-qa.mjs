@@ -443,6 +443,7 @@ try {
   await cdp.send('Runtime.enable');
   await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
     source: `(() => {
+      window.__roomStudioQaRenderProfile = true;
       const nativeRequest = window.requestAnimationFrame.bind(window);
       const nativeCancel = window.cancelAnimationFrame.bind(window);
       let controlled = false;

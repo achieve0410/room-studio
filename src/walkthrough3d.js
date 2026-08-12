@@ -23,6 +23,14 @@ const WALL_THICKNESS_M = 0.06;
 const DOOR_HEIGHT_M = 2.05;
 let activeCleanup = null;
 
+export function walkthroughRendererProfile(qaRenderProfile = false) {
+  return {
+    antialias: !qaRenderProfile,
+    pixelRatio: qaRenderProfile ? 0.5 : Math.min(window.devicePixelRatio, 2),
+    shadows: !qaRenderProfile,
+  };
+}
+
 export function setStatusMessage(status, message) {
   const documentRef = status.ownerDocument;
   status.replaceChildren(
@@ -992,14 +1000,15 @@ export function openWalkthrough({
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xcbd2d1);
   scene.fog = new THREE.FogExp2(0xcbd2d1, 0.025);
+  const renderProfile = walkthroughRendererProfile(window.__roomStudioQaRenderProfile);
   const renderer = new THREE.WebGLRenderer({
-    antialias: true,
+    antialias: renderProfile.antialias,
     powerPreference: 'high-performance',
     preserveDrawingBuffer: true,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(renderProfile.pixelRatio);
   renderer.setSize(stage.clientWidth, stage.clientHeight, false);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = renderProfile.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
