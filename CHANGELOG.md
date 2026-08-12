@@ -17,7 +17,7 @@ All notable user-facing changes are documented in this file. Room Studio follows
 
 - Model-home plan-type badges no longer imply that the adapted editor geometry equals a supply area; loaded plans continue to report their separately calculated modeled area.
 - 3D navigation prompts now match touch or keyboard/mouse input, respect device safe areas, and fade nearby custom-furniture labels when they would obscure an opening interaction.
-- Browser coverage now includes 114 mobile and desktop assertions plus dedicated real-plan door visibility, responsive, and all-room traversal audits.
+- Browser coverage now includes 114 mobile and desktop assertions plus dedicated real-plan door visibility, responsive, all-room traversal, and artifact-path safety audits.
 
 ## [1.0.0] - 2026-07-27
 

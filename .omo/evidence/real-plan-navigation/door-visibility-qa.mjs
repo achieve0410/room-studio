@@ -1,5 +1,5 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import process from 'node:process';
 import {
   capture,
   evaluate,
@@ -7,10 +7,11 @@ import {
   setViewport,
 } from '../room-studio-improvements/browser-qa-lib.mjs';
 import { DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
+import { safeArtifactPath } from './artifact-path.mjs';
 
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const url = process.argv[2] ?? 'http://127.0.0.1:4173/';
-const outputDir = resolve(process.argv[3] ?? '/tmp/room-studio-door-visibility');
+const outputDir = safeArtifactPath(process.argv[3], '.omx/artifacts/real-plan-navigation/visibility');
 const browser = await launchChrome(CHROME);
 
 async function nextFrames() {
