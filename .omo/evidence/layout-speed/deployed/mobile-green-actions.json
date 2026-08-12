@@ -1,0 +1,47 @@
+[
+  {
+    "name": "seed-layout",
+    "details": {
+      "zones": 1,
+      "items": 0,
+      "structures": 0
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-mobile-panel=\"furniture\"]",
+      "center": {
+        "x": 241.75,
+        "y": 814.5,
+        "width": 93.5,
+        "height": 59,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-add-type=\"sofa\"]",
+      "center": {
+        "x": 282.75,
+        "y": 141,
+        "width": 170.5,
+        "height": 44,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "touch-world",
+    "details": {
+      "worldX": 480,
+      "worldY": 280,
+      "point": {
+        "x": 269.2564102564103,
+        "y": 519.4871794871794
+      }
+    }
+  }
+]

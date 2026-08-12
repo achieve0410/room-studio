@@ -1,0 +1,130 @@
+{
+  "scenario": "mobile",
+  "phase": "green",
+  "url": "https://achieve0410.github.io/room-studio/",
+  "passed": true,
+  "assertions": [
+    {
+      "name": "touch library action arms placement immediately",
+      "pass": true,
+      "details": {
+        "armed": true
+      }
+    },
+    {
+      "name": "single direct touch commits at target",
+      "pass": true,
+      "details": {
+        "id": "item-1786503143613-91f7d4dd804998",
+        "type": "sofa",
+        "name": "소파",
+        "shape": "roundRect",
+        "width": 210,
+        "depth": 90,
+        "height": 85,
+        "color": "#91a38f",
+        "x": 480,
+        "y": 280,
+        "elevation": 0,
+        "rotation": 0
+      }
+    },
+    {
+      "name": "touch placement avoids context-menu takeover",
+      "pass": true,
+      "details": {
+        "noOverflow": true,
+        "contextMenuOpen": false,
+        "canvasFocused": true
+      }
+    },
+    {
+      "name": "mobile controls meet 44px target",
+      "pass": true,
+      "details": [
+        {
+          "selector": "[data-add-type=\"sofa\"]",
+          "x": 282.75,
+          "y": 141,
+          "width": 170.5,
+          "height": 44,
+          "disabled": false
+        },
+        {
+          "selector": "[data-placement-cancel]",
+          "x": 317,
+          "y": 319,
+          "width": 76,
+          "height": 44,
+          "disabled": false
+        },
+        {
+          "selector": "[data-demo-open]",
+          "x": 244.375,
+          "y": 30.5,
+          "width": 44,
+          "height": 44,
+          "disabled": false
+        }
+      ]
+    },
+    {
+      "name": "mobile surface has no horizontal overflow",
+      "pass": true,
+      "details": {
+        "noOverflow": true,
+        "contextMenuOpen": false,
+        "canvasFocused": true
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 0,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-mobile-panel=\"furniture\"]",
+        "center": {
+          "x": 241.75,
+          "y": 814.5,
+          "width": 93.5,
+          "height": 59,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-add-type=\"sofa\"]",
+        "center": {
+          "x": 282.75,
+          "y": 141,
+          "width": 170.5,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "touch-world",
+      "details": {
+        "worldX": 480,
+        "worldY": 280,
+        "point": {
+          "x": 269.2564102564103,
+          "y": 519.4871794871794
+        }
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}

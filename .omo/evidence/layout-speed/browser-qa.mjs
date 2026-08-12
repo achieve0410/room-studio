@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   capture,
@@ -10,7 +10,11 @@ import {
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const STORAGE_KEY = 'room-studio-layout-v2';
-const evidenceDir = dirname(fileURLToPath(import.meta.url));
+const defaultEvidenceDir = dirname(fileURLToPath(import.meta.url));
+const outputDirIndex = process.argv.indexOf('--output-dir');
+const evidenceDir = outputDirIndex >= 0
+  ? resolve(process.argv[outputDirIndex + 1])
+  : defaultEvidenceDir;
 const urlIndex = process.argv.indexOf('--url');
 const targetUrl = urlIndex >= 0 ? process.argv[urlIndex + 1] : 'http://127.0.0.1:4173';
 const scenarioIndex = process.argv.indexOf('--scenario');

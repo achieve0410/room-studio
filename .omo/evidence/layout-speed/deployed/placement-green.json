@@ -1,0 +1,135 @@
+{
+  "scenario": "placement",
+  "phase": "green",
+  "url": "https://achieve0410.github.io/room-studio/",
+  "passed": true,
+  "assertions": [
+    {
+      "name": "library arms placement session",
+      "pass": true,
+      "details": {
+        "armed": true
+      }
+    },
+    {
+      "name": "placement ghost is visible",
+      "pass": true,
+      "details": {
+        "ghost": true
+      }
+    },
+    {
+      "name": "drop commits at snapped pointer target",
+      "pass": true,
+      "details": {
+        "created": {
+          "id": "item-1786503136463-208edafe3749",
+          "type": "sofa",
+          "name": "소파",
+          "shape": "roundRect",
+          "width": 210,
+          "depth": 90,
+          "height": 85,
+          "color": "#91a38f",
+          "x": 500,
+          "y": 300,
+          "elevation": 0,
+          "rotation": 0
+        }
+      }
+    },
+    {
+      "name": "newly placed item remains selected",
+      "pass": true,
+      "details": {
+        "createdId": "item-1786503136463-208edafe3749"
+      }
+    },
+    {
+      "name": "one undo removes exactly the placement",
+      "pass": true,
+      "details": {
+        "before": 0,
+        "afterUndo": 0
+      }
+    },
+    {
+      "name": "Escape cancels without adding an item",
+      "pass": true,
+      "details": {
+        "before": 0,
+        "countBeforeEscape": 0,
+        "afterEscape": 0
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 0,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-add-type=\"sofa\"]",
+        "center": {
+          "x": 208.5,
+          "y": 718.78125,
+          "width": 121,
+          "height": 52,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 500,
+        "worldY": 300,
+        "point": {
+          "x": 890.0769230769231,
+          "y": 653.5853365384615
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "#undo-action",
+        "center": {
+          "x": 933.1640625,
+          "y": 190.046875,
+          "width": 62.328125,
+          "height": 26,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-add-type=\"sofa\"]",
+        "center": {
+          "x": 208.5,
+          "y": 718.78125,
+          "width": 121,
+          "height": 52,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}

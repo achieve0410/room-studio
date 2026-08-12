@@ -1,0 +1,504 @@
+{
+  "scenario": "demos",
+  "phase": "green",
+  "url": "https://achieve0410.github.io/room-studio/",
+  "passed": true,
+  "assertions": [
+    {
+      "name": "persistent demo entry opens gallery",
+      "pass": true,
+      "details": {
+        "open": true,
+        "cards": [
+          {
+            "id": "lh-compact-37",
+            "text": "37㎡\n          37㎡ 컴팩트 모델 홈\n          거실 겸 주방 · 침실 · 욕실\n          출처한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산전포(06,주1)_01BL/(평면)전포지구-오피스37-1112.json\n          원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다.\n          이 모델 홈 열기",
+            "source": "한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산전포(06,주1)_01BL/(평면)전포지구-오피스37-1112.json",
+            "area": "37㎡",
+            "rooms": "거실 겸 주방 · 침실 · 욕실",
+            "adaptation": "원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다."
+          },
+          {
+            "id": "lh-family-84a",
+            "text": "84㎡\n          84㎡ 패밀리 모델 홈\n          거실 · 주방 · 안방 · 방 2 · 욕실\n          출처한국토지주택공사(LH), 주택 평면도 현황 · 서울본부_양주회천_A18/양주회천18bl-84A.json\n          원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다.\n          이 모델 홈 열기",
+            "source": "한국토지주택공사(LH), 주택 평면도 현황 · 서울본부_양주회천_A18/양주회천18bl-84A.json",
+            "area": "84㎡",
+            "rooms": "거실 · 주방 · 안방 · 방 2 · 욕실",
+            "adaptation": "원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다."
+          },
+          {
+            "id": "lh-family-114a",
+            "text": "114㎡\n          114㎡ 라지 패밀리 모델 홈\n          거실 · 주방 · 안방 · 방 2 · 방 3\n          출처한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산만덕5(06,주환1)_01BL/11.114A-평면-01.json\n          원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다.\n          이 모델 홈 열기",
+            "source": "한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산만덕5(06,주환1)_01BL/11.114A-평면-01.json",
+            "area": "114㎡",
+            "rooms": "거실 · 주방 · 안방 · 방 2 · 방 3",
+            "adaptation": "원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다."
+          }
+        ]
+      }
+    },
+    {
+      "name": "gallery exposes at least three attributed plans",
+      "pass": true,
+      "details": [
+        {
+          "id": "lh-compact-37",
+          "text": "37㎡\n          37㎡ 컴팩트 모델 홈\n          거실 겸 주방 · 침실 · 욕실\n          출처한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산전포(06,주1)_01BL/(평면)전포지구-오피스37-1112.json\n          원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다.\n          이 모델 홈 열기",
+          "source": "한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산전포(06,주1)_01BL/(평면)전포지구-오피스37-1112.json",
+          "area": "37㎡",
+          "rooms": "거실 겸 주방 · 침실 · 욕실",
+          "adaptation": "원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다."
+        },
+        {
+          "id": "lh-family-84a",
+          "text": "84㎡\n          84㎡ 패밀리 모델 홈\n          거실 · 주방 · 안방 · 방 2 · 욕실\n          출처한국토지주택공사(LH), 주택 평면도 현황 · 서울본부_양주회천_A18/양주회천18bl-84A.json\n          원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다.\n          이 모델 홈 열기",
+          "source": "한국토지주택공사(LH), 주택 평면도 현황 · 서울본부_양주회천_A18/양주회천18bl-84A.json",
+          "area": "84㎡",
+          "rooms": "거실 · 주방 · 안방 · 방 2 · 욕실",
+          "adaptation": "원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다."
+        },
+        {
+          "id": "lh-family-114a",
+          "text": "114㎡\n          114㎡ 라지 패밀리 모델 홈\n          거실 · 주방 · 안방 · 방 2 · 방 3\n          출처한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산만덕5(06,주환1)_01BL/11.114A-평면-01.json\n          원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다.\n          이 모델 홈 열기",
+          "source": "한국토지주택공사(LH), 주택 평면도 현황 · 부산울산본부_부산만덕5(06,주환1)_01BL/11.114A-평면-01.json",
+          "area": "114㎡",
+          "rooms": "거실 · 주방 · 안방 · 방 2 · 방 3",
+          "adaptation": "원본 평면도 기록의 면적 유형을 바탕으로 Room Studio용 가구 배치 예시를 새로 재구성했으며 원본 이미지를 포함하지 않습니다."
+        }
+      ]
+    },
+    {
+      "name": "demo replacement protects existing local work",
+      "pass": true,
+      "details": {
+        "id": "lh-compact-37",
+        "confirmationVisible": true,
+        "userLayoutProtectedBeforeConfirm": true,
+        "zones": 3,
+        "items": 3,
+        "structures": 2,
+        "geometry": "{\"zones\":[{\"x\":0,\"y\":0,\"width\":520,\"depth\":280},{\"x\":0,\"y\":280,\"width\":300,\"depth\":260},{\"x\":300,\"y\":280,\"width\":220,\"depth\":260}],\"items\":[{\"x\":145,\"y\":90,\"width\":160,\"depth\":80},{\"x\":405,\"y\":150,\"width\":100,\"depth\":70},{\"x\":145,\"y\":405,\"width\":140,\"depth\":200}]}",
+        "walkthroughOpened": true,
+        "report": {
+          "filename": "room-studio-37m2-컴팩트-모델-홈-decision-report.html",
+          "containsName": true
+        }
+      }
+    },
+    {
+      "name": "every demo has furnished unique layout geometry",
+      "pass": true,
+      "details": [
+        {
+          "id": "lh-compact-37",
+          "confirmationVisible": true,
+          "userLayoutProtectedBeforeConfirm": true,
+          "zones": 3,
+          "items": 3,
+          "structures": 2,
+          "geometry": "{\"zones\":[{\"x\":0,\"y\":0,\"width\":520,\"depth\":280},{\"x\":0,\"y\":280,\"width\":300,\"depth\":260},{\"x\":300,\"y\":280,\"width\":220,\"depth\":260}],\"items\":[{\"x\":145,\"y\":90,\"width\":160,\"depth\":80},{\"x\":405,\"y\":150,\"width\":100,\"depth\":70},{\"x\":145,\"y\":405,\"width\":140,\"depth\":200}]}",
+          "walkthroughOpened": true,
+          "report": {
+            "filename": "room-studio-37m2-컴팩트-모델-홈-decision-report.html",
+            "containsName": true
+          }
+        },
+        {
+          "id": "lh-family-84a",
+          "confirmationVisible": true,
+          "userLayoutProtectedBeforeConfirm": true,
+          "zones": 5,
+          "items": 4,
+          "structures": 3,
+          "geometry": "{\"zones\":[{\"x\":0,\"y\":0,\"width\":430,\"depth\":310},{\"x\":430,\"y\":0,\"width\":270,\"depth\":310},{\"x\":0,\"y\":310,\"width\":280,\"depth\":290},{\"x\":280,\"y\":310,\"width\":210,\"depth\":290},{\"x\":490,\"y\":310,\"width\":210,\"depth\":290}],\"items\":[{\"x\":160,\"y\":120,\"width\":210,\"depth\":90},{\"x\":560,\"y\":155,\"width\":150,\"depth\":85},{\"x\":135,\"y\":445,\"width\":160,\"depth\":210},{\"x\":380,\"y\":430,\"width\":110,\"depth\":55}]}",
+          "walkthroughOpened": true,
+          "report": {
+            "filename": "room-studio-84m2-패밀리-모델-홈-decision-report.html",
+            "containsName": true
+          }
+        },
+        {
+          "id": "lh-family-114a",
+          "confirmationVisible": true,
+          "userLayoutProtectedBeforeConfirm": true,
+          "zones": 5,
+          "items": 5,
+          "structures": 4,
+          "geometry": "{\"zones\":[{\"x\":0,\"y\":0,\"width\":500,\"depth\":350},{\"x\":500,\"y\":0,\"width\":320,\"depth\":350},{\"x\":0,\"y\":350,\"width\":300,\"depth\":320},{\"x\":300,\"y\":350,\"width\":260,\"depth\":320},{\"x\":560,\"y\":350,\"width\":260,\"depth\":320}],\"items\":[{\"x\":190,\"y\":130,\"width\":240,\"depth\":95},{\"x\":655,\"y\":175,\"width\":180,\"depth\":90},{\"x\":145,\"y\":500,\"width\":180,\"depth\":220},{\"x\":420,\"y\":490,\"width\":120,\"depth\":60},{\"x\":690,\"y\":485,\"width\":140,\"depth\":45}]}",
+          "walkthroughOpened": true,
+          "report": {
+            "filename": "room-studio-114m2-라지-패밀리-모델-홈-decision-report.html",
+            "containsName": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "every demo builds 3D and exports report",
+      "pass": true,
+      "details": [
+        {
+          "id": "lh-compact-37",
+          "confirmationVisible": true,
+          "userLayoutProtectedBeforeConfirm": true,
+          "zones": 3,
+          "items": 3,
+          "structures": 2,
+          "geometry": "{\"zones\":[{\"x\":0,\"y\":0,\"width\":520,\"depth\":280},{\"x\":0,\"y\":280,\"width\":300,\"depth\":260},{\"x\":300,\"y\":280,\"width\":220,\"depth\":260}],\"items\":[{\"x\":145,\"y\":90,\"width\":160,\"depth\":80},{\"x\":405,\"y\":150,\"width\":100,\"depth\":70},{\"x\":145,\"y\":405,\"width\":140,\"depth\":200}]}",
+          "walkthroughOpened": true,
+          "report": {
+            "filename": "room-studio-37m2-컴팩트-모델-홈-decision-report.html",
+            "containsName": true
+          }
+        },
+        {
+          "id": "lh-family-84a",
+          "confirmationVisible": true,
+          "userLayoutProtectedBeforeConfirm": true,
+          "zones": 5,
+          "items": 4,
+          "structures": 3,
+          "geometry": "{\"zones\":[{\"x\":0,\"y\":0,\"width\":430,\"depth\":310},{\"x\":430,\"y\":0,\"width\":270,\"depth\":310},{\"x\":0,\"y\":310,\"width\":280,\"depth\":290},{\"x\":280,\"y\":310,\"width\":210,\"depth\":290},{\"x\":490,\"y\":310,\"width\":210,\"depth\":290}],\"items\":[{\"x\":160,\"y\":120,\"width\":210,\"depth\":90},{\"x\":560,\"y\":155,\"width\":150,\"depth\":85},{\"x\":135,\"y\":445,\"width\":160,\"depth\":210},{\"x\":380,\"y\":430,\"width\":110,\"depth\":55}]}",
+          "walkthroughOpened": true,
+          "report": {
+            "filename": "room-studio-84m2-패밀리-모델-홈-decision-report.html",
+            "containsName": true
+          }
+        },
+        {
+          "id": "lh-family-114a",
+          "confirmationVisible": true,
+          "userLayoutProtectedBeforeConfirm": true,
+          "zones": 5,
+          "items": 5,
+          "structures": 4,
+          "geometry": "{\"zones\":[{\"x\":0,\"y\":0,\"width\":500,\"depth\":350},{\"x\":500,\"y\":0,\"width\":320,\"depth\":350},{\"x\":0,\"y\":350,\"width\":300,\"depth\":320},{\"x\":300,\"y\":350,\"width\":260,\"depth\":320},{\"x\":560,\"y\":350,\"width\":260,\"depth\":320}],\"items\":[{\"x\":190,\"y\":130,\"width\":240,\"depth\":95},{\"x\":655,\"y\":175,\"width\":180,\"depth\":90},{\"x\":145,\"y\":500,\"width\":180,\"depth\":220},{\"x\":420,\"y\":490,\"width\":120,\"depth\":60},{\"x\":690,\"y\":485,\"width\":140,\"depth\":45}]}",
+          "walkthroughOpened": true,
+          "report": {
+            "filename": "room-studio-114m2-라지-패밀리-모델-홈-decision-report.html",
+            "containsName": true
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 1,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-open]",
+        "center": {
+          "x": 988.171875,
+          "y": 34.5,
+          "width": 75.71875,
+          "height": 40,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-layout=\"lh-compact-37\"]",
+        "center": {
+          "x": 376.6640625,
+          "y": 677.09375,
+          "width": 301.328125,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-confirm-accept]",
+        "center": {
+          "x": 1072.5,
+          "y": 794.234375,
+          "width": 279,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "#open-walkthrough",
+        "center": {
+          "x": 1061,
+          "y": 160.546875,
+          "width": 76,
+          "height": 31,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-walkthrough-exit]",
+        "center": {
+          "x": 1377.609375,
+          "y": 46,
+          "width": 74.78125,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-project-open]",
+        "center": {
+          "x": 1082.2109375,
+          "y": 34.5,
+          "width": 84.359375,
+          "height": 40,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-project-report]",
+        "center": {
+          "x": 720,
+          "y": 436.8125,
+          "width": 498,
+          "height": 46,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-open]",
+        "center": {
+          "x": 988.171875,
+          "y": 34.5,
+          "width": 75.71875,
+          "height": 40,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-layout=\"lh-family-84a\"]",
+        "center": {
+          "x": 719.9921875,
+          "y": 677.09375,
+          "width": 301.328125,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-confirm-accept]",
+        "center": {
+          "x": 1072.5,
+          "y": 794.234375,
+          "width": 279,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "#open-walkthrough",
+        "center": {
+          "x": 1061,
+          "y": 160.546875,
+          "width": 76,
+          "height": 31,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-walkthrough-exit]",
+        "center": {
+          "x": 1377.609375,
+          "y": 46,
+          "width": 74.78125,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-project-open]",
+        "center": {
+          "x": 1082.2109375,
+          "y": 34.5,
+          "width": 84.359375,
+          "height": 40,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-project-report]",
+        "center": {
+          "x": 720,
+          "y": 436.8125,
+          "width": 498,
+          "height": 46,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-open]",
+        "center": {
+          "x": 988.171875,
+          "y": 34.5,
+          "width": 75.71875,
+          "height": 40,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-layout=\"lh-family-114a\"]",
+        "center": {
+          "x": 1063.328125,
+          "y": 677.09375,
+          "width": 301.34375,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-confirm-accept]",
+        "center": {
+          "x": 1072.5,
+          "y": 794.234375,
+          "width": 279,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "#open-walkthrough",
+        "center": {
+          "x": 1061,
+          "y": 160.546875,
+          "width": 76,
+          "height": 31,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-walkthrough-exit]",
+        "center": {
+          "x": 1377.609375,
+          "y": 46,
+          "width": 74.78125,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-project-open]",
+        "center": {
+          "x": 1082.2109375,
+          "y": 34.5,
+          "width": 84.359375,
+          "height": 40,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-project-report]",
+        "center": {
+          "x": 720,
+          "y": 436.8125,
+          "width": 498,
+          "height": 46,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-open]",
+        "center": {
+          "x": 988.171875,
+          "y": 34.5,
+          "width": 75.71875,
+          "height": 40,
+          "disabled": false
+        }
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}
