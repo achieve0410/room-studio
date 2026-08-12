@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { preview } from 'vite';
 import { safeArtifactPath } from '../.omo/evidence/real-plan-navigation/artifact-path.mjs';
+import { terminateProcessTree } from './process-tree.mjs';
 
 const chrome = [
   process.env.CHROME_BIN,
@@ -18,22 +19,9 @@ if (!chrome) throw new Error('Chrome or Chromium is required');
 const root = resolve(import.meta.dirname, '..');
 const outputRoot = safeArtifactPath(process.argv[2], '.omx/artifacts/real-plan-navigation');
 const auditTimeoutMs = Number(process.env.REAL_PLAN_AUDIT_TIMEOUT_MS ?? 25 * 60 * 1000);
-const profileRoot = process.env.REAL_PLAN_AUDIT_PROFILE_ROOT
-  ?? await mkdtemp(join(tmpdir(), 'room-studio-real-plan-audit-'));
+const profileParent = process.env.REAL_PLAN_AUDIT_PROFILE_PARENT ?? tmpdir();
+const profileRoot = await mkdtemp(join(profileParent, 'room-studio-real-plan-audit-'));
 let previewServer;
-
-function terminateProcessTree(child) {
-  if (process.platform !== 'win32') {
-    process.kill(-child.pid, 'SIGKILL');
-    return;
-  }
-  const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
-    stdio: 'ignore',
-  });
-  killer.once('error', (error) => {
-    console.error(`Failed to terminate audit process tree ${child.pid}: ${error.message}`);
-  });
-}
 
 async function run(script, url, output) {
   await new Promise((resolveRun, reject) => {
@@ -48,10 +36,11 @@ async function run(script, url, output) {
       stdio: 'inherit',
     });
     let timedOut = false;
+    let termination = Promise.resolve();
     const timer = setTimeout(() => {
       timedOut = true;
       try {
-        terminateProcessTree(child);
+        termination = terminateProcessTree(child);
       } catch (error) {
         if (error.code !== 'ESRCH') reject(error);
       }
@@ -60,11 +49,16 @@ async function run(script, url, output) {
       clearTimeout(timer);
       reject(error);
     });
-    child.once('close', (code) => {
+    child.once('close', async (code) => {
       clearTimeout(timer);
-      if (timedOut) reject(new Error(`${script} exceeded ${auditTimeoutMs} ms`));
-      else if (code === 0) resolveRun();
-      else reject(new Error(`${script} exited ${code}`));
+      try {
+        await termination;
+        if (timedOut) reject(new Error(`${script} exceeded ${auditTimeoutMs} ms`));
+        else if (code === 0) resolveRun();
+        else reject(new Error(`${script} exited ${code}`));
+      } catch (error) {
+        reject(error);
+      }
     });
   });
 }
