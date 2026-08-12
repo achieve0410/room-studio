@@ -256,7 +256,7 @@ async function moveTo(waypoint, demoId) {
           }
         });
         observer.observe(player, { attributes: true, attributeFilter: ['transform'] });
-        setTimeout(() => { observer.disconnect(); resolve(false); }, 1000);
+        setTimeout(() => { observer.disconnect(); resolve(false); }, 3000);
       })`,
       awaitPromise: false,
     });
@@ -270,38 +270,52 @@ async function moveTo(waypoint, demoId) {
         window.__qaJoystickPointerObserver = true;
       }
       return {
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
         x: rect.left + rect.width / 2 + radius * ${joystickX},
         y: rect.top + rect.height / 2 + radius * ${joystickY},
       };
     })()`);
     await cdp.send('Input.dispatchMouseEvent', {
       type: 'mouseMoved',
-      x: joystickPoint.x,
-      y: joystickPoint.y,
+      x: joystickPoint.centerX,
+      y: joystickPoint.centerY,
       pointerType: 'mouse',
     });
     await cdp.send('Input.dispatchMouseEvent', {
       type: 'mousePressed',
-      x: joystickPoint.x,
-      y: joystickPoint.y,
+      x: joystickPoint.centerX,
+      y: joystickPoint.centerY,
       button: 'left',
       buttons: 1,
       clickCount: 1,
       pointerType: 'mouse',
     });
-    const moved = await cdp.send('Runtime.awaitPromise', {
-      promiseObjectId: movement.result.objectId,
-      returnByValue: true,
-    });
     await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
+      type: 'mouseMoved',
       x: joystickPoint.x,
       y: joystickPoint.y,
       button: 'left',
-      buttons: 0,
-      clickCount: 1,
+      buttons: 1,
       pointerType: 'mouse',
     });
+    let moved;
+    try {
+      moved = await cdp.send('Runtime.awaitPromise', {
+        promiseObjectId: movement.result.objectId,
+        returnByValue: true,
+      });
+    } finally {
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: joystickPoint.x,
+        y: joystickPoint.y,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
+        pointerType: 'mouse',
+      });
+    }
     if (!moved.result.value) throw new Error(`${demoId}: camera stopped at ${JSON.stringify(current)}`);
   }
   throw new Error(`${demoId}: did not reach ${JSON.stringify(waypoint)} from ${JSON.stringify(current)}`);
