@@ -16,16 +16,37 @@ if (!chrome) throw new Error('Chrome or Chromium is required');
 
 const root = resolve(import.meta.dirname, '..');
 const outputRoot = safeArtifactPath(process.argv[2], '.omx/artifacts/real-plan-navigation');
+const auditTimeoutMs = Number(process.env.REAL_PLAN_AUDIT_TIMEOUT_MS ?? 25 * 60 * 1000);
 let previewServer;
 
 async function run(script, url, output) {
   await new Promise((resolveRun, reject) => {
     const child = spawn(process.execPath, [resolve(root, script), url, output], {
       cwd: root,
+      detached: process.platform !== 'win32',
       env: { ...process.env, CHROME_BIN: chrome },
       stdio: 'inherit',
     });
-    child.once('exit', (code) => code === 0 ? resolveRun() : reject(new Error(`${script} exited ${code}`)));
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        if (process.platform === 'win32') child.kill('SIGKILL');
+        else process.kill(-child.pid, 'SIGKILL');
+      } catch (error) {
+        if (error.code !== 'ESRCH') reject(error);
+      }
+    }, auditTimeoutMs);
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      if (timedOut) reject(new Error(`${script} exceeded ${auditTimeoutMs} ms`));
+      else if (code === 0) resolveRun();
+      else reject(new Error(`${script} exited ${code}`));
+    });
   });
 }
 
@@ -42,11 +63,13 @@ try {
   const address = previewServer.httpServer.address();
   if (!address || typeof address === 'string') throw new Error('Vite preview did not expose a TCP port');
   const previewUrl = `http://127.0.0.1:${address.port}/`;
-  await Promise.all([
+  const audits = await Promise.allSettled([
     run('.omo/evidence/real-plan-navigation/door-visibility-qa.mjs', previewUrl, join(outputRoot, 'visibility')),
     run('.omo/evidence/real-plan-navigation/responsive-qa.mjs', previewUrl, join(outputRoot, 'responsive')),
     run('.omo/evidence/real-plan-navigation/browser-qa.mjs', previewUrl, join(outputRoot, 'traversal')),
   ]);
+  const rejected = audits.find(({ status }) => status === 'rejected');
+  if (rejected) throw rejected.reason;
 } catch (error) {
   failure = error;
 } finally {
