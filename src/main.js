@@ -2211,7 +2211,7 @@ function renderPlacementHud() {
 
 function renderOverlapPicker() {
   if (!overlapPicker) return '';
-  return `<div class="overlap-picker" data-overlap-picker role="dialog" aria-label="겹친 대상 선택"
+  return `<div class="overlap-picker" data-overlap-picker role="dialog" aria-modal="true" aria-label="겹친 대상 선택"
     style="--picker-left:${overlapPicker.left}px;--picker-top:${overlapPicker.top}px">
     <span><strong>겹친 대상 ${overlapPicker.candidates.length}개</strong><small>움직일 대상을 고르세요</small></span>
     <div>${overlapPicker.candidates.map((candidate) => `<button data-overlap-choice="${candidate.selectionKind}:${candidate.id}" type="button"><b>${escapeHtml(candidate.label)}</b><small>${candidate.selectionKind === 'item' ? '가구' : candidate.kind === 'opening' ? '문·창' : '벽'}</small></button>`).join('')}</div>

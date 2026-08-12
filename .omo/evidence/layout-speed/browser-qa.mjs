@@ -573,11 +573,73 @@ async function runMobile(cdp) {
     && Math.abs(placed.items[0].x - 480) <= 15
     && Math.abs(placed.items[0].y - 280) <= 15;
 
+  await clickSelector(cdp, '[data-demo-open]');
+  const demoFocusSetup = await evaluate(cdp, `(() => {
+    const dialog = document.querySelector('[data-demo-gallery][aria-modal="true"]');
+    const focusable = dialog
+      ? [...dialog.querySelectorAll('button:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')]
+        .filter((node) => node.getClientRects().length)
+      : [];
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (first) first.dataset.qaFirstFocus = 'true';
+    last?.focus();
+    return { opened: Boolean(dialog), focusableCount: focusable.length };
+  })()`);
+  await pressKey(cdp, 'Tab', 'Tab');
+  const demoFocusWrapped = await evaluate(cdp, `document.activeElement?.dataset.qaFirstFocus === 'true'`);
+  await pressKey(cdp, 'Escape', 'Escape');
+  const demoFocusRestored = await evaluate(cdp, `(
+    !document.querySelector('[data-demo-gallery]')
+    && document.activeElement?.matches('[data-demo-open]')
+  )`);
+
+  const overlapA = item({ id: 'mobile-overlap-a', name: '모바일 겹침 A', x: 280, y: 190 });
+  const overlapB = item({
+    id: 'mobile-overlap-b',
+    name: '모바일 겹침 B',
+    type: 'table',
+    shape: 'rect',
+    x: 280,
+    y: 190,
+    width: 140,
+    depth: 100,
+    color: '#b59069',
+  });
+  await seedAndReload(cdp, layout({ items: [overlapA, overlapB] }));
+  await clickWorld(cdp, 280, 190);
+  const overlapFocusSetup = await evaluate(cdp, `(() => {
+    const dialog = document.querySelector('[data-overlap-picker][aria-modal="true"]');
+    const choices = dialog ? [...dialog.querySelectorAll('[data-overlap-choice]')] : [];
+    const first = choices[0];
+    const last = choices.at(-1);
+    if (first) first.dataset.qaFirstFocus = 'true';
+    last?.focus();
+    return { opened: Boolean(dialog), choiceCount: choices.length };
+  })()`);
+  await pressKey(cdp, 'Tab', 'Tab');
+  const overlapFocusWrapped = await evaluate(cdp, `document.activeElement?.dataset.qaFirstFocus === 'true'`);
+  await pressKey(cdp, 'Escape', 'Escape');
+  const overlapFocusRestored = await evaluate(cdp, `(
+    !document.querySelector('[data-overlap-picker]')
+    && document.activeElement?.id === 'plan-canvas'
+  )`);
+
   record('touch library action arms placement immediately', armed, { armed });
   record('single direct touch commits at target', directPlacement, placed.items[0] ?? null);
   record('touch placement avoids context-menu takeover', !surfaceState.contextMenuOpen, surfaceState);
   record('mobile controls meet 44px target', controls.every(({ width, height }) => width >= 44 && height >= 44), controls);
   record('mobile surface has no horizontal overflow', surfaceState.noOverflow, surfaceState);
+  record(
+    'mobile demo dialog traps focus and Escape restores opener',
+    demoFocusSetup.opened && demoFocusSetup.focusableCount >= 2 && demoFocusWrapped && demoFocusRestored,
+    { ...demoFocusSetup, wrapped: demoFocusWrapped, restored: demoFocusRestored },
+  );
+  record(
+    'mobile overlap dialog traps focus and Escape restores canvas',
+    overlapFocusSetup.opened && overlapFocusSetup.choiceCount >= 2 && overlapFocusWrapped && overlapFocusRestored,
+    { ...overlapFocusSetup, wrapped: overlapFocusWrapped, restored: overlapFocusRestored },
+  );
 }
 
 await mkdir(evidenceDir, { recursive: true });
