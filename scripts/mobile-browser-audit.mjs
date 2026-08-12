@@ -60,7 +60,14 @@ function cleanup() {
   cleanupPromise ??= (async () => {
     cdp?.close();
     await Promise.all([stopProcess(chromeProcess), stopProcess(previewProcess)]);
-    if (chromeProfile) await rm(chromeProfile, { force: true, recursive: true });
+    if (chromeProfile) {
+      await rm(chromeProfile, {
+        force: true,
+        recursive: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    }
   })();
   return cleanupPromise;
 }

@@ -383,7 +383,18 @@ async function moveTo(waypoint, demoId) {
         || touchMove.pointerId !== touchStart.pointerId || touchMove.knob === 'translate(0px, 0px)') {
         throw new Error(`${demoId}: joystick rejected touch move ${JSON.stringify(touchMove)}`);
       }
-      await evaluate(`window.__qaFrames.step(12)`);
+      const controlledFrames = await evaluate(`(() => {
+        const player = document.querySelector('[data-map-player]');
+        for (let frame = 1; frame <= 60; frame += 1) {
+          window.__qaFrames.step(1);
+          const next = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
+          if (Math.hypot(Number(next[1]) - ${current.x}, Number(next[2]) - ${current.y}) >= 5) return frame;
+        }
+        return 0;
+      })()`);
+      if (!controlledFrames) {
+        throw new Error(`${demoId}: camera did not move within 60 controlled frames`);
+      }
       moved = await waitForSignal(movement.result.objectId, `${demoId} camera movement`, 5_000);
     } finally {
       if (touchActive) {
