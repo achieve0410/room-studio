@@ -1,4 +1,9 @@
 {
+  "targetCommit": "PR #25 head; exact SHA is recorded by CI and deployment receipts",
+  "recordedAt": "2026-08-12T07:00:00Z",
+  "replacementRationale": "The prior 37, 84A, and 114A fixtures were replaced because 37 had no traversable room graph, 84A duplicated an accepted source without visible door evidence, and 114A was a two-level duplex that the single-floor editor could not represent honestly.",
+  "archivedEvidence": ".omo/evidence/layout-speed/archive/pre-real-plan-navigation contains the superseded local model-home receipts; deployed receipts remain historical proof of the currently public pre-PR version until a new Pages deployment is recorded.",
+  "durableEvidence": ".omo/evidence/real-plan-navigation/latest contains sanitized current gallery/2D/settled-3D, responsive, and 8-room/8-door-per-model traversal receipts.",
   "red": {
     "command": "node --test tests/demo-layouts.test.js",
     "result": "lh-compact-37: only 1/3 zones are reachable"
@@ -11,15 +16,15 @@
     "receipts": ".omo/evidence/layout-speed/lh-source-records.json"
   },
   "green": {
-    "focusedTests": "6/6 passed; 21/21 interior door leaves clear furniture",
-    "fullCheck": "66/66 tests passed; Vite production build passed",
-    "mobileBrowserAudit": "114/114 assertions passed; 0 console errors",
+    "focusedTests": "6/6 passed; 21/21 interior door leaves clear furniture using full leaf segments and rotation-aware item bounds",
+    "fullCheck": "66/66 tests passed; Vite production build passed after review fixes",
+    "mobileBrowserAudit": "114/114 assertions passed after bounded event-wait fixes; 0 console errors",
     "demoBrowserAudit": "5/5 assertions passed; 0 console errors",
     "doorVisibilityAudit": {
       "passed": true,
       "galleryPreviewPerDemo": "8 total doors; 7 interior doors",
       "loadedPlanPerDemo": "8 visible door groups with 3px leaf strokes",
-      "settled3dPerDemo": "curtain opacity 0; 8 door controllers; 8 visible leaves; at least 24 rendered frame parts"
+      "settled3dPerDemo": "curtain opacity 0; 8 door controllers; 8 visible leaves; at least 24 rendered frame parts; traversal audit ray-targets all 8/8 door IDs in each model"
     },
     "responsiveAudit": {
       "passed": true,

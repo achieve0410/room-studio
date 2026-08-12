@@ -33,11 +33,21 @@ jobs:
         run: npm run check
       - name: Run browser interaction audit
         run: npm run test:browser:mobile
+      - name: Run real-plan door and traversal audit
+        run: npm run test:browser:real-plans
       - name: Upload browser audit artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: browser-audit-${{ github.run_attempt }}
           path: .omx/artifacts/mobile-ux-hardening/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload real-plan browser artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: real-plan-browser-audit-${{ github.run_attempt }}
+          path: .omx/artifacts/real-plan-navigation/
           if-no-files-found: warn
           retention-days: 7

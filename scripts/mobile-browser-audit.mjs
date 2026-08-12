@@ -2041,18 +2041,26 @@ try {
       { x: windowWalkthroughCanvas.x + 35, y: windowWalkthroughCanvas.y },
     );
     targetedWindowId = await evaluate(`new Promise((resolve) => {
+      const overlay = document.querySelector('[data-walkthrough]');
+      const expected = ${JSON.stringify(windowId)};
       let stableFrames = 0;
-      let elapsedFrames = 0;
+      const finish = (value) => {
+        observer.disconnect();
+        clearTimeout(timeout);
+        resolve(value);
+      };
       const check = () => {
-        const target = document.querySelector('[data-walkthrough]')?.dataset.targetWindowId ?? null;
-        stableFrames = target === ${JSON.stringify(windowId)} ? stableFrames + 1 : 0;
-        elapsedFrames += 1;
-        if (stableFrames >= 3 || elapsedFrames >= 8) {
-          resolve(stableFrames >= 3 ? target : null);
+        const target = overlay?.dataset.targetWindowId ?? null;
+        stableFrames = target === expected ? stableFrames + 1 : 0;
+        if (stableFrames >= 3) {
+          finish(target);
           return;
         }
         requestAnimationFrame(check);
       };
+      const observer = new MutationObserver(check);
+      observer.observe(overlay, { attributes: true, attributeFilter: ['data-target-window-id'] });
+      const timeout = setTimeout(() => finish(null), 500);
       requestAnimationFrame(check);
     })`);
   }
@@ -2065,27 +2073,21 @@ try {
       expression: `new Promise((resolve) => {
         const overlay = document.querySelector('[data-walkthrough]');
         const expectedPrefix = ${JSON.stringify(`${windowId}:`)};
+        let timeout;
         const check = () => {
           const action = overlay?.dataset.lastWindowAction ?? null;
           if (!action?.startsWith(expectedPrefix)) return false;
           observer.disconnect();
+          clearTimeout(timeout);
           resolve(action);
           return true;
         };
         const observer = new MutationObserver(check);
         observer.observe(overlay, { attributes: true, attributeFilter: ['data-last-window-action'] });
-        let frames = 0;
-        const bound = () => {
-          if (check()) return;
-          frames += 1;
-          if (frames >= 120) {
-            observer.disconnect();
-            resolve(null);
-            return;
-          }
-          requestAnimationFrame(bound);
-        };
-        requestAnimationFrame(bound);
+        timeout = setTimeout(() => {
+          observer.disconnect();
+          resolve(null);
+        }, 2_000);
       })`,
       awaitPromise: false,
     });

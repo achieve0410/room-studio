@@ -89,12 +89,15 @@ try {
       const rect = door.getBoundingClientRect();
       const panel = door.querySelector('.door-panel');
       const style = getComputedStyle(panel);
+      const viewport = { width: innerWidth, height: innerHeight };
       return {
         id: door.dataset.structureId,
         width: rect.width,
         height: rect.height,
         stroke: style.stroke,
         strokeWidth: Number.parseFloat(style.strokeWidth),
+        opacity: Number.parseFloat(style.opacity),
+        inViewport: rect.right > 0 && rect.bottom > 0 && rect.left < viewport.width && rect.top < viewport.height,
       };
     }))`);
     await capture(browser.cdp, `${outputDir}/${demo.id}-plan.png`);
@@ -132,7 +135,9 @@ try {
           && display !== 'none' && visibility === 'visible' && leafWidth >= 2
         ))
         && planDoors.length === demo.structures.filter(({ type }) => type === 'door').length
-        && planDoors.every(({ width, height, strokeWidth }) => width > 0 && height > 0 && strokeWidth >= 3)
+        && planDoors.every(({ width, height, stroke, strokeWidth, opacity, inViewport }) => (
+          width > 0 && height > 0 && stroke !== 'none' && strokeWidth >= 3 && opacity > 0 && inViewport
+        ))
         && threeDimensionalDoors.curtainOpacity === '0'
         && threeDimensionalDoors.controllers === demo.structures.filter(({ type }) => type === 'door').length
         && threeDimensionalDoors.visibleMeshes >= threeDimensionalDoors.controllers

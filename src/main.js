@@ -3681,7 +3681,7 @@ function renderDemoGallery() {
             ${demo.zones.map((zone) => `<i style="--x:${zone.x};--y:${zone.y};--w:${zone.width};--d:${zone.depth};--c:${zone.color}"></i>`).join('')}
             ${demo.structures.filter(({ type }) => type === 'door').map(previewDoorMarkup).join('')}
           </div>
-          <span class="demo-area" data-demo-area>${demo.source.supplyAreaSquareMeters}㎡</span>
+          <span class="demo-area" data-demo-area>${escapeHtml(demo.source.planType)}형</span>
           <h3>${escapeHtml(demo.name)}</h3>
           <p data-demo-rooms>${demo.zones.map(({ name }, index) => `<span>${index ? '· ' : ''}${escapeHtml(name)}</span>`).join(' ')}</p>
           <dl><div><dt>출처</dt><dd data-demo-source>${escapeHtml(demo.source.attribution)} · ${escapeHtml(demo.source.archiveEntry)}</dd></div></dl>

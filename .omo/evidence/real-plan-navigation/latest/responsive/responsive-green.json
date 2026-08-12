@@ -1,0 +1,90 @@
+{
+  "passed": true,
+  "url": "http://127.0.0.1:4173/",
+  "results": [
+    {
+      "name": "portrait-390x844",
+      "width": 390,
+      "height": 844,
+      "pass": true,
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "documentOverflow": 0,
+        "galleryOverflow": 0,
+        "cardWidths": [
+          316,
+          316,
+          316
+        ],
+        "controls": [
+          {
+            "label": "×",
+            "width": 44,
+            "height": 44
+          },
+          {
+            "label": "이 모델 홈 열기",
+            "width": 286,
+            "height": 44
+          },
+          {
+            "label": "이 모델 홈 열기",
+            "width": 286,
+            "height": 44
+          },
+          {
+            "label": "이 모델 홈 열기",
+            "width": 286,
+            "height": 44
+          }
+        ],
+        "clippedText": []
+      }
+    },
+    {
+      "name": "compact-landscape-844x390",
+      "width": 844,
+      "height": 390,
+      "pass": true,
+      "metrics": {
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "documentOverflow": 0,
+        "galleryOverflow": 0,
+        "cardWidths": [
+          770,
+          770,
+          770
+        ],
+        "controls": [
+          {
+            "label": "×",
+            "width": 44,
+            "height": 44
+          },
+          {
+            "label": "이 모델 홈 열기",
+            "width": 740,
+            "height": 44
+          },
+          {
+            "label": "이 모델 홈 열기",
+            "width": 740,
+            "height": 44
+          },
+          {
+            "label": "이 모델 홈 열기",
+            "width": 740,
+            "height": 44
+          }
+        ],
+        "clippedText": []
+      }
+    }
+  ]
+}

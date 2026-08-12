@@ -6,6 +6,7 @@ All notable user-facing changes are documented in this file. Room Studio follows
 
 ### Added
 
+- Three single-floor LH plan-type adaptations (59A, 74A, and 84A) with visible entrance/inter-room doors in gallery, 2D, and 3D plus full-room walkthrough routes.
 - PPT-style 2D selection frames, 44px resize and continuous rotation handles, exact angle input, and live position/size/angle feedback.
 - A shared selection boundary that makes mobile and desktop group movement easier to understand.
 - PNG/JPG floor-plan backgrounds with bounded image optimization, two-point scale calibration, opacity, movement locking, and backward-compatible local or cloud persistence.
@@ -14,8 +15,9 @@ All notable user-facing changes are documented in this file. Room Studio follows
 
 ### Changed
 
+- Model-home plan-type badges no longer imply that the adapted editor geometry equals a supply area; loaded plans continue to report their separately calculated modeled area.
 - 3D navigation prompts now match touch or keyboard/mouse input, respect device safe areas, and fade nearby custom-furniture labels when they would obscure an opening interaction.
-- Browser coverage now includes 113 mobile and desktop assertions, including the Precision & Preview workflow.
+- Browser coverage now includes 114 mobile and desktop assertions plus dedicated real-plan door visibility, responsive, and all-room traversal audits.
 
 ## [1.0.0] - 2026-07-27
 
