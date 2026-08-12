@@ -291,6 +291,18 @@ async function mouseDrag(start, end, modifiers = 0) {
   await doubleRaf();
 }
 
+async function placePendingAtWorld(x, y) {
+  const point = await evaluate(`(() => {
+    const svg = document.querySelector('#plan-canvas');
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return null;
+    const point = new DOMPoint(${x}, ${y}).matrixTransform(matrix);
+    return { x: point.x, y: point.y };
+  })()`);
+  if (!point) throw new Error('Cannot resolve pending placement point');
+  await mouseClick(point);
+}
+
 function touchPoint(id, point) {
   return { id, x: point.x, y: point.y, radiusX: 2, radiusY: 2, force: 1 };
 }
@@ -592,8 +604,10 @@ try {
   ));
   await evaluate(`(() => {
     document.querySelector('[data-add-structure="wall"]').click();
-    document.querySelector('[data-add-structure="swing"]').click();
   })()`);
+  await placePendingAtWorld(320, 300);
+  await evaluate(`document.querySelector('[data-add-structure="swing"]').click()`);
+  await placePendingAtWorld(320, 300);
   await evaluate(`(() => {
     const node = document.querySelector('.plan-door.is-selected');
     const rect = node.getBoundingClientRect();
@@ -1511,8 +1525,9 @@ try {
     null,
   ));
   await mouseClick(await centerOf('[data-select-zone]', 0));
+  await evaluate(`document.querySelector('[data-add-structure="swing"]').click()`);
+  await placePendingAtWorld(400, 90);
   await evaluate(`(() => {
-    document.querySelector('[data-add-structure="swing"]').click();
     let input = document.querySelector('[data-structure-field="orientation"]');
     input.value = 'vertical';
     input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1630,6 +1645,7 @@ try {
     0,
   ));
   await mouseClick(await centerOf('[data-add-structure="swing"]'));
+  await placePendingAtWorld(760, 500);
   const standaloneDoor = await evaluate(`(() => ({
     saved: JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures[0],
     openingMasks: document.querySelectorAll('.plan-door .door-opening').length,
@@ -1642,8 +1658,11 @@ try {
   ));
   await mouseClick(await centerOf('[data-delete-selection]'));
   await mouseClick(await centerOf('[data-add-structure="wall"]'));
+  await placePendingAtWorld(250, 150);
   await mouseClick(await centerOf('[data-add-structure="swing"]'));
+  await placePendingAtWorld(160, 150);
   await mouseClick(await centerOf('[data-add-structure="sliding"]'));
+  await placePendingAtWorld(340, 150);
   const structureCreation = await evaluate(`(() => {
     const saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
     const hitTargets = [...document.querySelectorAll('.plan-structure .structure-hit-target')].map((node) => {
@@ -1783,8 +1802,8 @@ try {
     return Object.fromEntries(saved.structures.map(({ id, x, y }) => [id, { x, y }]));
   })()`);
   const wallDragStart = await evaluate(`(() => {
-    const line = document.querySelector('.plan-wall.is-selected .wall-stroke');
-    const point = line.getPointAtLength(line.getTotalLength() * 0.47).matrixTransform(line.getScreenCTM());
+    const line = document.querySelector('.plan-wall.is-selected .structure-hit-target');
+    const point = line.getPointAtLength(line.getTotalLength() * 0.08).matrixTransform(line.getScreenCTM());
     return { x: point.x, y: point.y };
   })()`);
   await mouseDrag(wallDragStart, { x: wallDragStart.x + 68, y: wallDragStart.y + 42 });
@@ -1943,6 +1962,11 @@ try {
   await setStructureField(explicitWall.id, 'height', 100);
   await evaluate(`document.querySelector('[data-select-structure="${explicitWall.id}"]').click()`);
   await mouseClick(await centerOf('[data-add-structure="window"]'));
+  const currentWallPoint = await evaluate(`(() => {
+    const wall = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ id }) => id === ${JSON.stringify(explicitWall.id)});
+    return { x: wall.x, y: wall.y };
+  })()`);
+  await placePendingAtWorld(currentWallPoint.x, currentWallPoint.y);
   const windowId = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ type }) => type === 'window').id`);
   const lowWallWindow = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ id }) => id === ${JSON.stringify(windowId)})`);
   report.interactionAssertions.push(assertion(
@@ -1979,14 +2003,15 @@ try {
   ));
   report.screenshots.push(await screenshot('desktop-sliding-window-2d'));
 
-  await setStructureField(windowId, 'x', 200);
-  await setStructureField(windowId, 'y', 300);
   await evaluate(`(() => {
     document.querySelector('#custom-name').value = '반려견 휴식장';
     document.querySelector('#custom-width').value = '120';
     document.querySelector('#custom-depth').value = '80';
     document.querySelector('#custom-height').value = '70';
     document.querySelector('#add-custom').click();
+  })()`);
+  await placePendingAtWorld(200, 150);
+  await evaluate(`(() => {
     const setField = (field, value) => {
       const input = document.querySelector('[data-item-field="' + field + '"]');
       input.value = String(value);
@@ -2044,15 +2069,14 @@ try {
   await mouseClick(await centerOf('[data-walkthrough-exit]'));
   await waitForExpression(`document.querySelector('[data-walkthrough]') === null`, 'window and custom furniture 3D cleanup');
 
-  await evaluate(`(async () => {
-    for (const type of ${JSON.stringify([
-      'toilet', 'washbasin', 'kitchenSink', 'kitchenIsland', 'laundryTower',
-      'clothesRackSingle', 'clothesRackDoubleRow', 'clothesRackDoubleTier',
-    ])}) {
-      document.querySelector('[data-add-type="' + type + '"]').click();
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    }
-  })()`);
+  const requestedTypes = [
+    'toilet', 'washbasin', 'kitchenSink', 'kitchenIsland', 'laundryTower',
+    'clothesRackSingle', 'clothesRackDoubleRow', 'clothesRackDoubleTier',
+  ];
+  for (const [index, type] of requestedTypes.entries()) {
+    await evaluate(`document.querySelector('[data-add-type="${type}"]').click()`);
+    await placePendingAtWorld(140 + (index % 4) * 130, 120 + Math.floor(index / 4) * 150);
+  }
   const requestedFurnitureState = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.filter(({ type }) => ${JSON.stringify([
     'toilet', 'washbasin', 'kitchenSink', 'kitchenIsland', 'laundryTower',
     'clothesRackSingle', 'clothesRackDoubleRow', 'clothesRackDoubleTier',
@@ -2261,6 +2285,7 @@ try {
   ));
 
   await evaluate(`document.querySelector('[data-add-type="sofa"]').click()`);
+  await placePendingAtWorld(420, 260);
   const precisionItemBefore = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.at(-1)`);
   await keyStroke('ArrowRight', 'ArrowRight');
   const precisionItemNudged = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).items.at(-1)`);
