@@ -1,0 +1,21 @@
+[
+  {
+    "name": "seed-layout",
+    "details": {
+      "zones": 1,
+      "items": 1,
+      "structures": 0
+    }
+  },
+  {
+    "name": "click-world",
+    "details": {
+      "worldX": 260,
+      "worldY": 190,
+      "point": {
+        "x": 651.3076923076924,
+        "y": 544.1494391025641
+      }
+    }
+  }
+]

@@ -1,0 +1,12 @@
+✔ snapPendingPlacement snaps furniture and structures without mutating the pending value (1.553167ms)
+✔ rankHitCandidates deduplicates, ranks, and hides a containing zone for one foreground hit (0.122958ms)
+✔ rankHitCandidates returns every foreground choice in interaction priority order (0.07975ms)
+✔ numeric edit transaction previews cumulatively, commits once, and cancels exactly (0.195625ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 48.884125

@@ -1,0 +1,59 @@
+{
+  "dataset": {
+    "title": "한국토지주택공사 주택 평면도 현황",
+    "publisher": "한국토지주택공사",
+    "datasetUrl": "https://www.data.go.kr/data/15037046/fileData.do",
+    "catalogUrl": "https://www.data.go.kr/catalog/15037046/fileData.json",
+    "license": "이용허락범위 제한 없음"
+  },
+  "archive": {
+    "fileId": "FILE_000000003519063",
+    "fileDetailSn": "1",
+    "officialFileName": "한국토지주택공사 주택 평면도 현황_20210915 PART-2.zip",
+    "downloadedBytes": 356725466,
+    "sha256": "57809e0f961ab48611cf59882c52ea0867bd5208e96217cd4549b08d7ba7fdfc",
+    "committed": false
+  },
+  "records": [
+    {
+      "archiveEntry": "부산울산본부_부산전포(06,주1)_01BL/(평면)전포지구-오피스37-1112.json",
+      "recordBytes": 1912213,
+      "recordSha256": "34aba94ce0a6c349c082c39502460569d884f174e91865f1d3561ec25775541f",
+      "declaredCanvas": {
+        "width": "4000",
+        "height": "2829"
+      },
+      "supplyAreaSquareMeters": 37,
+      "areaEvidence": "type number embedded in the official archive entry name"
+    },
+    {
+      "archiveEntry": "서울본부_양주회천_A18/양주회천18bl-84A.json",
+      "recordBytes": 231646,
+      "recordSha256": "f63d26b4d176d9c9573f5f7a5575f52342bcf99c490b967f0c7869fdedcd8bd4",
+      "declaredCanvas": {
+        "mime": "image/jpeg"
+      },
+      "supplyAreaSquareMeters": 84,
+      "areaEvidence": "type number embedded in the official archive entry name"
+    },
+    {
+      "archiveEntry": "부산울산본부_부산만덕5(06,주환1)_01BL/11.114A-평면-01.json",
+      "recordBytes": 5522313,
+      "recordSha256": "76340be5d097ed39ae3c3283dfe0c725c9b5b0569e146a09336e0adfdfd53491",
+      "declaredCanvas": {
+        "width": "4961",
+        "height": "3508"
+      },
+      "supplyAreaSquareMeters": 114,
+      "areaEvidence": "type number embedded in the official archive entry name"
+    }
+  ],
+  "adaptation": "Only record identifiers and area types were retained. Fixture geometry and furnishings are original Room Studio adaptations; no source image bytes were retained.",
+  "cleanupReceipt": {
+    "temporaryRootPattern": "/tmp/lh-floorplans.*",
+    "archiveRemoved": true,
+    "extractedSourceImagesCreated": false,
+    "remainingArtifacts": 0,
+    "verifiedBy": "shell glob after recursive temporary-root removal"
+  }
+}

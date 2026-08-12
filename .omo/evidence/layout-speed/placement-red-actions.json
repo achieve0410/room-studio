@@ -1,0 +1,67 @@
+[
+  {
+    "name": "seed-layout",
+    "details": {
+      "zones": 1,
+      "items": 0,
+      "structures": 0
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-add-type=\"sofa\"]",
+      "center": {
+        "x": 208.5,
+        "y": 718.78125,
+        "width": 121,
+        "height": 52,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click-world",
+    "details": {
+      "worldX": 500,
+      "worldY": 300,
+      "point": {
+        "x": 890.0769230769231,
+        "y": 653.5853365384615
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "#undo-action",
+      "center": {
+        "x": 933.1640625,
+        "y": 190.046875,
+        "width": 62.328125,
+        "height": 26,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "click",
+    "details": {
+      "selector": "[data-add-type=\"sofa\"]",
+      "center": {
+        "x": 208.5,
+        "y": 718.78125,
+        "width": 121,
+        "height": 52,
+        "disabled": false
+      }
+    }
+  },
+  {
+    "name": "key",
+    "details": {
+      "key": "Escape",
+      "code": "Escape"
+    }
+  }
+]

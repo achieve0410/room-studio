@@ -1,0 +1,103 @@
+{
+  "scenario": "overlap",
+  "phase": "red",
+  "url": "http://127.0.0.1:4173",
+  "passed": false,
+  "assertions": [
+    {
+      "name": "multiple foreground hits open deterministic picker",
+      "pass": false,
+      "details": {
+        "visible": false,
+        "choices": [],
+        "active": null
+      }
+    },
+    {
+      "name": "picker lists both foreground candidates",
+      "pass": false,
+      "details": []
+    },
+    {
+      "name": "Escape closes picker and restores canvas focus",
+      "pass": false,
+      "details": {
+        "pickerClosed": true,
+        "canvasFocused": false
+      }
+    },
+    {
+      "name": "requested overlap candidate alone is selected",
+      "pass": false,
+      "details": {
+        "requested": true,
+        "other": false
+      }
+    },
+    {
+      "name": "overlap selection never mutates geometry",
+      "pass": true,
+      "details": null
+    },
+    {
+      "name": "single foreground item bypasses picker",
+      "pass": true,
+      "details": {
+        "pickerVisible": false,
+        "selected": true
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 3,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 280,
+        "worldY": 190,
+        "point": {
+          "x": 671.2051282051282,
+          "y": 544.1494391025641
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 280,
+        "worldY": 190,
+        "point": {
+          "x": 671.2051282051282,
+          "y": 544.1494391025641
+        }
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 510,
+        "worldY": 150,
+        "point": {
+          "x": 900.0256410256411,
+          "y": 504.3545673076923
+        }
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "unexpectedError": null
+}
