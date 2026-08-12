@@ -1,21 +1,21 @@
 {
   "scenario": "mobile",
   "phase": "red",
-  "url": "http://127.0.0.1:4173",
+  "url": "https://achieve0410.github.io/room-studio/",
   "passed": false,
   "assertions": [
     {
       "name": "touch library action arms placement immediately",
-      "pass": false,
+      "pass": true,
       "details": {
-        "armed": false
+        "armed": true
       }
     },
     {
       "name": "single direct touch commits at target",
-      "pass": false,
+      "pass": true,
       "details": {
-        "id": "item-1786494717558-87a5774a6d31b8",
+        "id": "item-1786503671596-a09f5f9ea5d908",
         "type": "sofa",
         "name": "소파",
         "shape": "roundRect",
@@ -23,8 +23,8 @@
         "depth": 90,
         "height": 85,
         "color": "#91a38f",
-        "x": 320,
-        "y": 210,
+        "x": 480,
+        "y": 280,
         "elevation": 0,
         "rotation": 0
       }
@@ -35,12 +35,12 @@
       "details": {
         "noOverflow": true,
         "contextMenuOpen": false,
-        "canvasFocused": false
+        "canvasFocused": true
       }
     },
     {
       "name": "mobile controls meet 44px target",
-      "pass": false,
+      "pass": true,
       "details": [
         {
           "selector": "[data-add-type=\"sofa\"]",
@@ -52,13 +52,19 @@
         },
         {
           "selector": "[data-placement-cancel]",
-          "width": 0,
-          "height": 0
+          "x": 317,
+          "y": 319,
+          "width": 76,
+          "height": 44,
+          "disabled": false
         },
         {
           "selector": "[data-demo-open]",
-          "width": 0,
-          "height": 0
+          "x": 244.375,
+          "y": 30.5,
+          "width": 44,
+          "height": 44,
+          "disabled": false
         }
       ]
     },
@@ -68,7 +74,27 @@
       "details": {
         "noOverflow": true,
         "contextMenuOpen": false,
-        "canvasFocused": false
+        "canvasFocused": true
+      }
+    },
+    {
+      "name": "mobile demo dialog traps focus and Escape restores opener",
+      "pass": true,
+      "details": {
+        "opened": true,
+        "focusableCount": 5,
+        "wrapped": true,
+        "restored": true
+      }
+    },
+    {
+      "name": "mobile overlap dialog traps focus and Escape restores canvas",
+      "pass": false,
+      "details": {
+        "opened": false,
+        "choiceCount": 0,
+        "wrapped": false,
+        "restored": true
       }
     }
   ],
@@ -116,6 +142,66 @@
           "x": 269.2564102564103,
           "y": 519.4871794871794
         }
+      }
+    },
+    {
+      "name": "click",
+      "details": {
+        "selector": "[data-demo-open]",
+        "center": {
+          "x": 244.375,
+          "y": 30.5,
+          "width": 44,
+          "height": 44,
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Tab",
+        "code": "Tab"
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
+      }
+    },
+    {
+      "name": "seed-layout",
+      "details": {
+        "zones": 1,
+        "items": 2,
+        "structures": 0
+      }
+    },
+    {
+      "name": "click-world",
+      "details": {
+        "worldX": 280,
+        "worldY": 190,
+        "point": {
+          "x": 176.43589743589746,
+          "y": 477.71794871794873
+        }
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Tab",
+        "code": "Tab"
+      }
+    },
+    {
+      "name": "key",
+      "details": {
+        "key": "Escape",
+        "code": "Escape"
       }
     }
   ],
