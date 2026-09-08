@@ -1,8 +1,11 @@
+import { CURRENT_SCHEMA_VERSION, MAX_LAYOUT_BYTES, preparePersistedLayout } from './consultation.js';
+
+export { CURRENT_SCHEMA_VERSION } from './consultation.js';
+
 const PROJECT_FORMAT = 'room-studio';
 const PROJECT_FORMAT_VERSION = 1;
-const CURRENT_SCHEMA_VERSION = 2;
 
-export const MAX_PROJECT_FILE_BYTES = 1_048_576;
+export const MAX_PROJECT_FILE_BYTES = MAX_LAYOUT_BYTES;
 
 export class ProjectFileError extends Error {
   constructor(code, message, options) {
@@ -20,29 +23,11 @@ const normalizeProjectName = (value) => {
 };
 
 function persistedLayout(layout) {
-  if (
-    !layout
-    || typeof layout !== 'object'
-    || !Array.isArray(layout.zones)
-    || !Array.isArray(layout.items)
-    || !Array.isArray(layout.structures)
-    || (layout.dimensions !== undefined && !Array.isArray(layout.dimensions))
-    || !Number.isFinite(Number(layout.wallHeight))
-  ) {
-    throw new ProjectFileError('INVALID_LAYOUT', '유효한 도면 데이터가 아닙니다.');
-  }
-
   try {
-    return JSON.parse(JSON.stringify({
-      zones: layout.zones,
-      items: layout.items,
-      structures: layout.structures,
-      dimensions: layout.dimensions ?? [],
-      backgroundPlan: layout.backgroundPlan ?? null,
-      wallHeight: Number(layout.wallHeight),
-    }));
+    return preparePersistedLayout(layout);
   } catch (error) {
-    throw new ProjectFileError('INVALID_LAYOUT', '도면 데이터를 파일로 만들 수 없습니다.', { cause: error });
+    if (error.code === 'FILE_TOO_LARGE') throw new ProjectFileError(error.code, error.message, { cause: error });
+    throw new ProjectFileError('INVALID_LAYOUT', '유효한 도면 데이터가 아닙니다.', { cause: error });
   }
 }
 
@@ -82,7 +67,7 @@ export function parseProjectFile(source) {
   if (envelope.formatVersion !== PROJECT_FORMAT_VERSION) {
     throw new ProjectFileError('UNSUPPORTED_VERSION', '지원하지 않는 파일 버전입니다.');
   }
-  if (![1, CURRENT_SCHEMA_VERSION].includes(envelope.schemaVersion)) {
+  if (![1, 2, CURRENT_SCHEMA_VERSION].includes(envelope.schemaVersion)) {
     throw new ProjectFileError('UNSUPPORTED_SCHEMA', '지원하지 않는 도면 스키마입니다.');
   }
 

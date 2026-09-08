@@ -43,6 +43,8 @@ The client uses PKCE for magic-link and OAuth redirects. The callback returns to
 
 Database migrations reject malformed, unsupported, or larger-than-1 MiB layout snapshots, limit each account to 100 projects, and retain the latest 100 manual versions per project. These are defense-in-depth abuse limits, not a substitute for monitoring, authentication controls, or provider billing limits.
 
+The consultation workflow requires `20260908000000_consultation_options.sql` before deploying the schema-3 browser client. It adds A/B consultation validation to projects and saved versions without changing owner policies or the save RPC signature. Coordinate the client update and ask existing users to reload old tabs: older clients cannot preserve the new consultation fields. Both options and their background images share the existing 1 MiB document limit.
+
 Before public signup, use a disposable account to verify that current-project deletion removes its version rows, account deletion invalidates the session and cascades profile/projects/versions, and the browser returns to a blank local draft. Also verify the operator's backup and log-retention behavior; database row deletion does not rewrite existing provider backups immediately.
 
 ## Operator responsibilities

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createComparisonOption, normalizeConsultation } from '../src/consultation.js';
 import {
   MAX_PROJECT_FILE_BYTES,
   parseProjectFile,
@@ -42,7 +43,7 @@ test('portable project files round-trip drawing data without cloud metadata', ()
   // Then the format is self-describing and only persisted drawing data survives
   assert.equal(envelope.format, 'room-studio');
   assert.equal(envelope.formatVersion, 1);
-  assert.equal(envelope.schemaVersion, 2);
+  assert.equal(envelope.schemaVersion, 3);
   assert.equal(parsed.projectName, '우리 집');
   assert.deepEqual(parsed.layout, {
     zones: completeLayout.zones,
@@ -102,4 +103,28 @@ test('portable project filenames stay readable and filesystem-safe', () => {
   // Given a project name with path and punctuation characters
   // When a download filename is generated, then separators cannot escape the download directory
   assert.equal(projectFileName(' 우리 집 / 1층? '), 'room-studio-우리-집-1층.roomstudio.json');
+});
+
+test('schema 3 portable files preserve both alternatives and consultant metadata without identity', () => {
+  const layout = createComparisonOption(completeLayout);
+  layout.consultation.businessName = 'Studio';
+  layout.consultation.options.B.nextSteps = 'Measure doorway';
+  const serialized = serializeProjectFile({ projectName: 'Client project', layout });
+  assert.deepEqual(parseProjectFile(serialized).layout, layout);
+  assert.equal(serialized.includes('must-not-export'), false);
+  for (const schemaVersion of [1, 2]) {
+    const envelope = JSON.parse(serializeProjectFile({ layout: completeLayout }));
+    envelope.schemaVersion = schemaVersion;
+    assert.equal(Object.hasOwn(parseProjectFile(JSON.stringify(envelope)).layout, 'consultation'), false);
+  }
+});
+
+test('portable boundary rejects invalid consultation and total two-option envelope overflow', () => {
+  const envelope = JSON.parse(serializeProjectFile({ layout: completeLayout }));
+  envelope.layout.consultation = { ...normalizeConsultation(), businessName: 3 };
+  assert.throws(() => parseProjectFile(JSON.stringify(envelope)), (error) => error.code === 'INVALID_LAYOUT');
+  const layout = createComparisonOption(completeLayout);
+  layout.backgroundPlan = { dataUrl: 'x'.repeat(550_000) };
+  layout.consultation.inactiveGeometry.backgroundPlan = { dataUrl: 'x'.repeat(550_000) };
+  assert.throws(() => serializeProjectFile({ layout }), (error) => error.code === 'FILE_TOO_LARGE');
 });
