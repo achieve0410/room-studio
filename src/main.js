@@ -12,6 +12,19 @@ import { createDecisionReport, decisionReportFileName } from './project-report.j
 import { createNumericEditTransaction, rankHitCandidates, snapPendingPlacement } from './editor-interactions.js';
 import { DEMO_LAYOUTS, demoLayoutById } from './demo-layouts.js';
 import {
+  createComparisonOption,
+  geometrySnapshot,
+  normalizeConsultation,
+  preparePersistedLayout,
+  switchConsultationOption,
+} from './consultation.js';
+import { createLocalDraftStore } from './local-draft.js';
+import {
+  renderComparisonDialog,
+  renderConsultationDialog,
+  renderConsultationToolbar,
+} from './consultation-ui.js';
+import {
   alignDoorToWall,
   GRID_CM,
   RESIZE_DIRECTIONS,
@@ -50,7 +63,6 @@ import {
   zonesOverlap,
 } from './geometry.js';
 
-const STORAGE_KEY = 'room-studio-layout-v2';
 const ACTIVE_PROJECT_KEY_PREFIX = 'room-studio-active-project-v1';
 const ANONYMOUS_LAYOUT_KEY = 'room-studio-anonymous-layout-v1';
 const ANONYMOUS_OWNER_KEY = 'room-studio-anonymous-owner-v1';
@@ -258,108 +270,123 @@ function defaultState(zones = apartmentZones()) {
   };
 }
 
-function loadState() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (Array.isArray(saved?.zones) && Array.isArray(saved?.items)) {
-      const wallHeight = numberValue(saved.wallHeight, 240, 100, 600);
-      const zoneIds = new Set();
-      const itemIds = new Set();
-      const dimensionIds = new Set();
-      const generatedSpaceIds = new Map();
-      const zones = saved.zones.map((source) => {
-        const zone = source && typeof source === 'object' ? source : {};
-        const id = uniqueEntityId(zone.id, 'zone', zoneIds);
-        const rawSpaceId = zone.spaceId ?? zone.id ?? id;
-        let spaceId = typeof rawSpaceId === 'string' && /^[\w-]+$/.test(rawSpaceId) ? rawSpaceId : null;
-        if (!spaceId) {
-          const key = String(rawSpaceId);
-          if (!generatedSpaceIds.has(key)) generatedSpaceIds.set(key, uid('space'));
-          spaceId = generatedSpaceIds.get(key);
-        }
-        return {
-          id,
-          spaceId,
-          name: typeof zone.name === 'string' ? zone.name.slice(0, 80) : '공간',
-          type: SPACE_TYPES.includes(zone.type) ? zone.type : '기타',
-          x: numberValue(zone.x, 0, -5000, 5000),
-          y: numberValue(zone.y, 0, -5000, 5000),
-          width: numberValue(zone.width, 300, 100, 1200),
-          depth: numberValue(zone.depth, 300, 100, 1200),
-          height: numberValue(zone.height, wallHeight, 100, 600),
-          color: normalizeHexColor(zone.color, DEFAULT_ZONE_COLOR),
-          locked: Boolean(zone.locked),
-          walkthroughStart: Boolean(zone.walkthroughStart),
-        };
-      });
-      const items = saved.items.map((source) => {
-        const item = source && typeof source === 'object' ? source : {};
-        const rotation = Number.isFinite(Number(item.rotation)) ? ((Number(item.rotation) % 360) + 360) % 360 : 0;
-        return {
-          id: uniqueEntityId(item.id, 'item', itemIds),
-          type: typeof item.type === 'string' && /^[\w-]+$/.test(item.type) ? item.type : 'custom',
-          name: typeof item.name === 'string' ? item.name.slice(0, 80) : '가구',
-          shape: SHAPES[item.shape] ? item.shape : 'rect',
-          x: numberValue(item.x, 0, -5000, 5000),
-          y: numberValue(item.y, 0, -5000, 5000),
-          width: numberValue(item.width, 100, 20, 600),
-          depth: numberValue(item.depth, 70, 20, 600),
-          height: numberValue(item.height, 80, 1, 400),
-          elevation: numberValue(item.elevation, 0, 0, 400),
-          rotation,
-          color: normalizeHexColor(item.color, DEFAULT_ITEM_COLOR),
-          locked: Boolean(item.locked),
-        };
-      });
-      const normalizedStructures = (Array.isArray(saved.structures) ? saved.structures : [])
-        .map((structure) => normalizeStructure(structure, wallHeight))
-        .filter(Boolean);
-      const attachedWallIds = new Set(normalizedStructures
-        .filter((structure) => structure.type !== 'wall' && structure.wallId)
-        .map((opening) => opening.wallId));
-      const sizedStructures = normalizedStructures.map((structure) => (
-        structure.type === 'wall' && attachedWallIds.has(structure.id) && structure.length < 50
-          ? { ...structure, length: 50 }
-          : structure
-      ));
-      const walls = new Map(sizedStructures.filter((structure) => structure.type === 'wall').map((wall) => [wall.id, wall]));
-      const structures = sizedStructures.map((structure) => {
-        if (structure.type === 'wall') return structure;
-        const wall = walls.get(structure.wallId);
-        if (!wall) return { ...structure, wallId: null };
-        const aligned = alignDoorToWall({ ...structure, width: Math.min(structure.width, wall.length) }, wall);
-        if (aligned.type !== 'window') return aligned;
-        const sillHeight = Math.min(aligned.sillHeight, Math.max(0, wall.height - 50));
-        return { ...aligned, sillHeight, height: Math.min(aligned.height, Math.max(50, wall.height - sillHeight)) };
-      });
-      const dimensions = (Array.isArray(saved.dimensions) ? saved.dimensions : [])
-        .map((dimension) => normalizeDimension(dimension, dimensionIds))
-        .filter(Boolean);
-      const backgroundPlan = normalizeBackgroundPlan(saved.backgroundPlan);
+function normalizeDrawing(saved) {
+  if (Array.isArray(saved?.zones) && Array.isArray(saved?.items)) {
+    const wallHeight = numberValue(saved.wallHeight, 240, 100, 600);
+    const zoneIds = new Set();
+    const itemIds = new Set();
+    const dimensionIds = new Set();
+    const generatedSpaceIds = new Map();
+    const zones = saved.zones.map((source) => {
+      const zone = source && typeof source === 'object' ? source : {};
+      const id = uniqueEntityId(zone.id, 'zone', zoneIds);
+      const rawSpaceId = zone.spaceId ?? zone.id ?? id;
+      let spaceId = typeof rawSpaceId === 'string' && /^[\w-]+$/.test(rawSpaceId) ? rawSpaceId : null;
+      if (!spaceId) {
+        const key = String(rawSpaceId);
+        if (!generatedSpaceIds.has(key)) generatedSpaceIds.set(key, uid('space'));
+        spaceId = generatedSpaceIds.get(key);
+      }
       return {
-        ...defaultState(zones),
-        ...saved,
-        zones,
-        items,
-        structures,
-        dimensions,
-        backgroundPlan,
-        wallHeight,
-        selection: null,
+        id,
+        spaceId,
+        name: typeof zone.name === 'string' ? zone.name.slice(0, 80) : '공간',
+        type: SPACE_TYPES.includes(zone.type) ? zone.type : '기타',
+        x: numberValue(zone.x, 0, -5000, 5000),
+        y: numberValue(zone.y, 0, -5000, 5000),
+        width: numberValue(zone.width, 300, 100, 1200),
+        depth: numberValue(zone.depth, 300, 100, 1200),
+        height: numberValue(zone.height, wallHeight, 100, 600),
+        color: normalizeHexColor(zone.color, DEFAULT_ZONE_COLOR),
+        locked: Boolean(zone.locked),
+        walkthroughStart: Boolean(zone.walkthroughStart),
       };
-    }
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
+    });
+    const items = saved.items.map((source) => {
+      const item = source && typeof source === 'object' ? source : {};
+      const rotation = Number.isFinite(Number(item.rotation)) ? ((Number(item.rotation) % 360) + 360) % 360 : 0;
+      return {
+        id: uniqueEntityId(item.id, 'item', itemIds),
+        type: typeof item.type === 'string' && /^[\w-]+$/.test(item.type) ? item.type : 'custom',
+        name: typeof item.name === 'string' ? item.name.slice(0, 80) : '가구',
+        shape: SHAPES[item.shape] ? item.shape : 'rect',
+        x: numberValue(item.x, 0, -5000, 5000),
+        y: numberValue(item.y, 0, -5000, 5000),
+        width: numberValue(item.width, 100, 20, 600),
+        depth: numberValue(item.depth, 70, 20, 600),
+        height: numberValue(item.height, 80, 1, 400),
+        elevation: numberValue(item.elevation, 0, 0, 400),
+        rotation,
+        color: normalizeHexColor(item.color, DEFAULT_ITEM_COLOR),
+        locked: Boolean(item.locked),
+      };
+    });
+    const normalizedStructures = (Array.isArray(saved.structures) ? saved.structures : [])
+      .map((structure) => normalizeStructure(structure, wallHeight))
+      .filter(Boolean);
+    const attachedWallIds = new Set(normalizedStructures
+      .filter((structure) => structure.type !== 'wall' && structure.wallId)
+      .map((opening) => opening.wallId));
+    const sizedStructures = normalizedStructures.map((structure) => (
+      structure.type === 'wall' && attachedWallIds.has(structure.id) && structure.length < 50
+        ? { ...structure, length: 50 }
+        : structure
+    ));
+    const walls = new Map(sizedStructures.filter((structure) => structure.type === 'wall').map((wall) => [wall.id, wall]));
+    const structures = sizedStructures.map((structure) => {
+      if (structure.type === 'wall') return structure;
+      const wall = walls.get(structure.wallId);
+      if (!wall) return { ...structure, wallId: null };
+      const aligned = alignDoorToWall({ ...structure, width: Math.min(structure.width, wall.length) }, wall);
+      if (aligned.type !== 'window') return aligned;
+      const sillHeight = Math.min(aligned.sillHeight, Math.max(0, wall.height - 50));
+      return { ...aligned, sillHeight, height: Math.min(aligned.height, Math.max(50, wall.height - sillHeight)) };
+    });
+    const dimensions = (Array.isArray(saved.dimensions) ? saved.dimensions : [])
+      .map((dimension) => normalizeDimension(dimension, dimensionIds))
+      .filter(Boolean);
+    const backgroundPlan = normalizeBackgroundPlan(saved.backgroundPlan);
+    return {
+      ...defaultState(zones),
+      zones,
+      items,
+      structures,
+      dimensions,
+      backgroundPlan,
+      wallHeight,
+      selection: null,
+    };
   }
   return defaultState();
 }
 
-const startsWithoutStoredLayout = localStorage.getItem(STORAGE_KEY) === null;
-let state = loadState();
+function normalizeLayout(saved) {
+  const layout = normalizeDrawing(saved);
+  if (saved?.consultation) {
+    layout.consultation = normalizeConsultation(saved.consultation);
+    if (layout.consultation.inactiveGeometry) {
+      layout.consultation.inactiveGeometry = geometrySnapshot(normalizeDrawing(layout.consultation.inactiveGeometry));
+    }
+  }
+  return layout;
+}
+
+const draftStore = createLocalDraftStore(() => window.localStorage);
+const startupDraft = draftStore.read();
+let deferredOwnerDraft = startupDraft.ok && startupDraft.draft?.ownerId ? startupDraft.draft : null;
+const initialAnonymousDraft = startupDraft.ok && !startupDraft.draft?.ownerId ? startupDraft.draft : null;
+const startsWithoutStoredLayout = startupDraft.ok && !startupDraft.draft;
+let state = initialAnonymousDraft ? normalizeLayout(initialAnonymousDraft.layout) : deferredOwnerDraft ? normalizeDrawing({ zones: [], items: [] }) : defaultState();
+let draftStorageError = startupDraft.ok ? '' : '브라우저 저장소를 읽지 못했습니다. 현재 작업은 파일로 보관해주세요.';
+let recoveryDraft = draftStore.readRecovery();
+let unreadDraftRaw = startupDraft.ok ? null : startupDraft.raw;
 let placementSession = null;
 let overlapPicker = null;
 let overlapSelectionBypass = null;
 let numericEdit = null;
+let deferInputRender = false;
+let inputRenderPending = false;
+let pointerFocusTransfer = false;
 let drag = null;
 let resize = null;
 let rotateGesture = null;
@@ -401,18 +428,19 @@ let cloudStore = null;
 let cloudSession = null;
 let cloudProjects = [];
 let activeProjectId = null;
-let activeProjectName = '내 집 도면';
+let activeProjectName = initialAnonymousDraft?.projectName ?? '새 상담 프로젝트';
 let activeProjectRevision = null;
 let cloudDialogOpen = false;
 let cloudLoadBusy = false;
 let cloudPendingSave = null;
 let cloudSaveLoop = null;
 let cloudSaveTimer = null;
-let suppressCloudSave = false;
-let cloudDirty = false;
+let cloudDirty = initialAnonymousDraft?.dirty ?? false;
 let layoutChangeVersion = 0;
+let documentGeneration = 0;
+let renderedDocumentGeneration = -1;
 let cloudGeneration = 0;
-let cloudFeedback = cloudConfigured ? '로그인 기능을 준비하는 중…' : '클라우드 연결 설정이 필요합니다.';
+let cloudFeedback = cloudConfigured ? '로그인 기능을 준비하는 중…' : '로그인 없이 로컬 작업';
 let cloudFeedbackTone = '';
 let starterDialogOpen = startsWithoutStoredLayout;
 let demoGalleryOpen = false;
@@ -420,6 +448,9 @@ let pendingDemoId = null;
 let projectDialogOpen = false;
 let projectFileFeedback = '';
 let projectFileFeedbackTone = '';
+let consultationDialogOpen = false;
+let comparisonDialogOpen = false;
+let cloudConflict = false;
 
 const selectionKey = (kind, id) => `${kind}:${id}`;
 const isMobileLayout = () => mobileLayoutQuery.matches;
@@ -431,12 +462,8 @@ const mobileTabs = [
   ['inspector', '⌁', '상세'],
 ];
 const layoutSnapshot = () => ({
-  zones: state.zones.map((zone) => ({ ...zone })),
-  items: state.items.map((item) => ({ ...item })),
-  structures: state.structures.map((structure) => ({ ...structure })),
-  dimensions: state.dimensions.map((dimension) => ({ ...dimension })),
-  backgroundPlan: state.backgroundPlan ? { ...state.backgroundPlan } : null,
-  wallHeight: state.wallHeight,
+  ...geometrySnapshot(state),
+  ...(state.consultation ? { consultation: normalizeConsultation(state.consultation) } : {}),
 });
 const snapshotsMatch = (first, second) => JSON.stringify(first) === JSON.stringify(second);
 const blankLayout = () => ({
@@ -447,6 +474,169 @@ const blankLayout = () => ({
   backgroundPlan: null,
   wallHeight: 240,
 });
+
+function currentDraftDocument() {
+  return {
+    projectName: activeProjectName,
+    layout: layoutSnapshot(),
+    ownerId: currentCloudUserId(),
+    projectId: activeProjectId,
+    baseRevision: activeProjectRevision,
+    dirty: cloudDirty,
+  };
+}
+
+function availableRecovery() {
+  const draft = recoveryDraft.ok ? recoveryDraft.draft : null;
+  return draft && (!draft.ownerId || draft.ownerId === currentCloudUserId()) ? draft : null;
+}
+
+function updateDraftStatus() {
+  const status = document.querySelector('[data-draft-status]');
+  if (!status) return;
+  const recovery = availableRecovery();
+  status.hidden = !draftStorageError && !recovery;
+  status.dataset.tone = draftStorageError ? 'error' : '';
+  status.setAttribute('role', draftStorageError ? 'alert' : 'status');
+  status.querySelector('[data-draft-message]').textContent = draftStorageError
+    || `교체 전 상담 “${recovery?.projectName ?? ''}”의 복구본이 있습니다.`;
+  status.querySelector('[data-draft-retry]').hidden = !draftStorageError;
+  status.querySelector('[data-draft-export]').hidden = !draftStorageError;
+  status.querySelector('[data-draft-export]').textContent = unreadDraftRaw ? '저장된 원본 받기' : '도면 파일로 보관';
+  status.querySelector('[data-recovery-restore]').hidden = !recovery;
+}
+
+function persistCurrentDraft({ replaceUnread = false } = {}) {
+  if ((unreadDraftRaw && !replaceUnread) || (deferredOwnerDraft && !cloudSession)) {
+    draftStorageError = unreadDraftRaw
+      ? '저장된 원본을 읽지 못해 덮어쓰지 않았습니다. 원본을 받은 뒤 다시 저장해주세요.'
+      : '기존 상담은 로그인 후 복구할 수 있습니다. 현재 작업은 도면 파일로 보관해주세요.';
+    updateDraftStatus();
+    return false;
+  }
+  const result = draftStore.write(currentDraftDocument());
+  draftStorageError = result.ok
+    ? ''
+    : '이 브라우저에 저장하지 못했습니다. 창을 닫기 전에 도면 파일로 보관해주세요.';
+  if (result.ok) unreadDraftRaw = null;
+  updateDraftStatus();
+  return result.ok;
+}
+
+function protectCurrentDraft() {
+  const result = draftStore.protect(currentDraftDocument());
+  if (!result.ok) {
+    draftStorageError = '복구본을 저장하지 못해 현재 상담을 유지했습니다. 도면 파일로 보관한 뒤 다시 시도해주세요.';
+    setCloudFeedback(draftStorageError, 'error');
+    setProjectFileFeedback(draftStorageError, 'error');
+    updateDraftStatus();
+    return false;
+  }
+  recoveryDraft = draftStore.readRecovery();
+  return true;
+}
+
+function canReplaceCurrentDraft() {
+  if ((!layoutChangeVersion && !initialAnonymousDraft) || protectCurrentDraft()) return true;
+  starterDialogOpen = false;
+  projectDialogOpen = false;
+  demoGalleryOpen = false;
+  pendingDemoId = null;
+  render();
+  document.querySelector('[data-draft-export]')?.focus();
+  return false;
+}
+
+function applyProjectDocument({
+  projectName,
+  layout,
+  ownerId = currentCloudUserId(),
+  projectId = null,
+  baseRevision = null,
+  dirty = false,
+}) {
+  if (ownerId && ownerId !== currentCloudUserId()) return false;
+  clearTimeout(cloudSaveTimer);
+  cloudPendingSave = null;
+  documentGeneration += 1;
+  cancelEntityPress();
+  activePointers.clear();
+  state = normalizeLayout(layout);
+  activeProjectName = normalizeProjectName(projectName);
+  activeProjectId = projectId;
+  activeProjectRevision = baseRevision;
+  cloudDirty = dirty;
+  cloudConflict = false;
+  selectionKeys = new Set();
+  historyPast.length = 0;
+  historyFuture.length = 0;
+  drag = resize = rotateGesture = marquee = backgroundDrag = pan = pinch = null;
+  placementSession = overlapPicker = numericEdit = mobileContextMenu = null;
+  precisionTool = null;
+  gestureMode = 'idle';
+  mobileMoveArmed = false;
+  canvasZoom = 1;
+  canvasCenter = null;
+  layoutChangeVersion += 1;
+  persistCurrentDraft();
+  return true;
+}
+
+function closeConsultationDialog() {
+  consultationDialogOpen = false;
+  render();
+  document.querySelector('[data-consultation-open]')?.focus();
+}
+
+function commitInputBlur(event, commit) {
+  deferInputRender = event.isTrusted && (pointerFocusTransfer || Boolean(event.relatedTarget));
+  try {
+    commit();
+  } finally {
+    deferInputRender = false;
+  }
+}
+
+function finishInputRender(target = document.activeElement) {
+  if (!inputRenderPending) return;
+  const attribute = target.id ? 'id' : target.getAttributeNames().find((name) => name.startsWith('data-'));
+  const selector = attribute ? `[${attribute}="${CSS.escape(target.getAttribute(attribute))}"]` : null;
+  const start = target.selectionStart;
+  const end = target.selectionEnd;
+  render();
+  const replacement = selector ? document.querySelector(selector) : null;
+  replacement?.focus();
+  if (typeof start === 'number' && replacement?.setSelectionRange) replacement.setSelectionRange(start, end);
+  else if (replacement instanceof HTMLInputElement && replacement.type === 'number') replacement.select();
+}
+
+function closeComparisonDialog() {
+  comparisonDialogOpen = false;
+  render();
+  document.querySelector('[data-options-compare]')?.focus();
+}
+
+function selectConsultationOption(option) {
+  if (state.consultation?.activeOption === option) {
+    if (comparisonDialogOpen) closeComparisonDialog();
+    return;
+  }
+  state = { ...normalizeLayout(switchConsultationOption(layoutSnapshot(), option)), selection: null };
+  cancelEntityPress();
+  activePointers.clear();
+  selectionKeys = new Set();
+  historyPast.length = 0;
+  historyFuture.length = 0;
+  drag = resize = rotateGesture = marquee = backgroundDrag = pan = pinch = null;
+  placementSession = overlapPicker = numericEdit = mobileContextMenu = null;
+  precisionTool = null;
+  gestureMode = 'idle';
+  comparisonDialogOpen = false;
+  mobilePanel = 'canvas';
+  saveState();
+  render();
+  document.querySelector(`[data-option-select="${option}"]`)?.focus();
+}
 
 function setProjectFileFeedback(message, tone = '') {
   projectFileFeedback = message;
@@ -481,23 +671,9 @@ function exportPortableProject() {
 
 function exportDecisionReport() {
   try {
-    const collisions = findCollisions(state.items);
-    const outOfBounds = findOutOfBounds(state.items, state.zones);
-    const heightViolations = findHeightViolations(state.items, state.zones, state.wallHeight);
-    const zoneOverlaps = findZoneOverlaps(state.zones);
     const report = createDecisionReport({
       projectName: activeProjectName,
       layout: layoutSnapshot(),
-      metrics: {
-        areaSquareMeters: calculateUnionArea(state.zones) / 10000,
-        coveragePercent: calculateCoverage(state.items, state.zones),
-        warningCounts: {
-          collisions: collisions.size,
-          outOfBounds: outOfBounds.size,
-          height: heightViolations.size,
-          zoneOverlaps: zoneOverlaps.size,
-        },
-      },
     });
     const url = URL.createObjectURL(new Blob([report], { type: 'text/html;charset=utf-8' }));
     const anchor = document.createElement('a');
@@ -516,13 +692,8 @@ function exportDecisionReport() {
 
 async function importPortableProject(file) {
   const parsed = parseProjectFile(await file.text());
-  replaceLocalLayout(JSON.stringify(parsed.layout));
-  const userId = currentCloudUserId();
-  if (userId) localStorage.removeItem(activeProjectStorageKey(userId));
-  activeProjectId = null;
-  activeProjectRevision = null;
-  activeProjectName = parsed.projectName;
-  cloudDirty = false;
+  if (!canReplaceCurrentDraft()) return;
+  applyProjectDocument({ projectName: parsed.projectName, layout: parsed.layout });
   starterDialogOpen = false;
   projectDialogOpen = false;
   editorNotice = cloudSession
@@ -533,11 +704,7 @@ async function importPortableProject(file) {
 }
 
 function replaceWithBlankDraft() {
-  replaceLocalLayout(JSON.stringify(blankLayout()));
-  activeProjectId = null;
-  activeProjectRevision = null;
-  activeProjectName = '새 도면';
-  cloudDirty = false;
+  applyProjectDocument({ projectName: '새 상담 프로젝트', layout: blankLayout() });
 }
 
 async function deleteCurrentProject() {
@@ -554,11 +721,13 @@ async function deleteCurrentProject() {
     if (cloudProjectId) {
       await cloudStore.deleteProject(cloudProjectId, { expectedUserId: userId });
       await refreshCloudProjects(cloudGeneration, userId);
-      localStorage.removeItem(activeProjectStorageKey(userId));
+      draftStore.removeLegacy(activeProjectStorageKey(userId));
     } else {
-      localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
-      localStorage.removeItem(ANONYMOUS_OWNER_KEY);
+      draftStore.removeLegacy(ANONYMOUS_LAYOUT_KEY);
+      draftStore.removeLegacy(ANONYMOUS_OWNER_KEY);
     }
+    draftStore.clearRecovery();
+    recoveryDraft = draftStore.readRecovery();
     replaceWithBlankDraft();
     projectDialogOpen = false;
     editorNotice = `${projectLabel}을 삭제하고 빈 초안을 열었습니다.`;
@@ -591,9 +760,9 @@ async function deleteCurrentAccount() {
     } catch (error) {
       signOutWarning = error.message || '로컬 로그인 정보를 정리하지 못했습니다.';
     }
-    localStorage.removeItem(activeProjectStorageKey(userId));
-    localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
-    localStorage.removeItem(ANONYMOUS_OWNER_KEY);
+    draftStore.removeLegacy(activeProjectStorageKey(userId));
+    draftStore.removeLegacy(ANONYMOUS_LAYOUT_KEY);
+    draftStore.removeLegacy(ANONYMOUS_OWNER_KEY);
     await handleCloudSession(null);
     cloudDialogOpen = false;
     editorNotice = signOutWarning
@@ -618,6 +787,7 @@ function restoreSnapshot(snapshot, destination) {
   if (!snapshot) return;
   destination.push(layoutSnapshot());
   state = { ...state, ...snapshot, selection: null };
+  if (!snapshot.consultation) delete state.consultation;
   selectionKeys = new Set();
   drag = null;
   resize = null;
@@ -718,15 +888,10 @@ function selectedEntity() {
 }
 
 function saveState() {
-  const {
-    zones, items, structures, dimensions, backgroundPlan, wallHeight,
-  } = state;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    zones, items, structures, dimensions, backgroundPlan, wallHeight,
-  }));
   layoutChangeVersion += 1;
-  if (!suppressCloudSave && cloudSession) {
-    cloudDirty = true;
+  cloudDirty = true;
+  persistCurrentDraft();
+  if (cloudSession && !cloudConflict) {
     scheduleCloudSave();
   }
 }
@@ -737,19 +902,6 @@ const cloudOperationIsCurrent = (generation, userId) => (
   generation === cloudGeneration && userId && userId === currentCloudUserId()
 );
 const cloudIsBusy = () => cloudLoadBusy || Boolean(cloudSaveLoop);
-
-function replaceLocalLayout(serializedLayout = null) {
-  suppressCloudSave = true;
-  if (serializedLayout) localStorage.setItem(STORAGE_KEY, serializedLayout);
-  else localStorage.removeItem(STORAGE_KEY);
-  state = loadState();
-  suppressCloudSave = false;
-  selectionKeys = new Set(state.selection ? [selectionKey(state.selection.kind, state.selection.id)] : []);
-  historyPast.length = 0;
-  historyFuture.length = 0;
-  cloudDirty = false;
-  layoutChangeVersion += 1;
-}
 
 function hasMeaningfulLocalLayout() {
   return state.zones.length > 0 || state.items.length > 0 || state.structures.length > 0 || state.dimensions.length > 0;
@@ -784,12 +936,9 @@ function requestDemoLayout(id) {
 function applyDemoLayout(id) {
   const demo = demoLayoutById(id);
   if (!demo) return;
+  if (!canReplaceCurrentDraft()) return;
   const { source, typology, ...layout } = demo;
-  replaceLocalLayout(JSON.stringify(layout));
-  activeProjectId = null;
-  activeProjectRevision = null;
-  activeProjectName = demo.name;
-  cloudDirty = false;
+  applyProjectDocument({ projectName: demo.name, layout });
   demoGalleryOpen = false;
   pendingDemoId = null;
   editorNotice = `${demo.name}을 열었습니다. 배치와 3D 미리보기를 자유롭게 수정해 보세요.`;
@@ -811,7 +960,7 @@ function setCloudFeedback(message, tone = '') {
 
 function scheduleCloudSave() {
   clearTimeout(cloudSaveTimer);
-  if (!cloudStore || !cloudSession || !activeProjectId) return;
+  if (!cloudStore || !cloudSession || !activeProjectId || cloudConflict || cloudLoadBusy) return;
   setCloudFeedback('클라우드 저장 대기 중');
   cloudSaveTimer = setTimeout(() => saveCloudProject(false), 1200);
 }
@@ -826,6 +975,7 @@ async function refreshCloudProjects(generation = cloudGeneration, userId = curre
 
 async function performCloudSave(createVersion) {
   const generation = cloudGeneration;
+  const documentVersion = documentGeneration;
   const userId = currentCloudUserId();
   const targetProjectId = activeProjectId;
   const expectedRevision = activeProjectRevision;
@@ -843,23 +993,30 @@ async function performCloudSave(createVersion) {
       createVersion,
       expectedUserId: userId,
     });
-    if (!cloudOperationIsCurrent(generation, userId)) return null;
+    if (!cloudOperationIsCurrent(generation, userId) || documentVersion !== documentGeneration) return null;
     if (targetProjectId !== activeProjectId) return null;
     activeProjectId = project.id;
-    activeProjectName = project.name;
     activeProjectRevision = Number(project.revision);
-    localStorage.setItem(activeProjectStorageKey(userId), project.id);
-    if (changeVersion === layoutChangeVersion) cloudDirty = false;
+    if (changeVersion === layoutChangeVersion) {
+      activeProjectName = project.name;
+      cloudDirty = false;
+    }
+    cloudConflict = false;
+    persistCurrentDraft();
     await refreshCloudProjects(generation, userId);
-    setCloudFeedback(createVersion ? '새 버전을 저장했습니다.' : '클라우드에 저장했습니다.', 'success');
+    if (!cloudOperationIsCurrent(generation, userId) || documentVersion !== documentGeneration) return null;
+    setCloudFeedback(cloudDirty ? '클라우드 저장 대기 중' : createVersion ? '새 버전을 저장했습니다.' : '클라우드에 저장했습니다.', cloudDirty ? '' : 'success');
     return project;
   } catch (error) {
-    if (!cloudOperationIsCurrent(generation, userId)) return null;
+    if (!cloudOperationIsCurrent(generation, userId) || documentVersion !== documentGeneration) return null;
     const conflict = error.code === '40001' || String(error.message).includes('PROJECT_CONFLICT');
+    cloudConflict = conflict;
     setCloudFeedback(
-      conflict ? '다른 기기에서 도면이 수정되었습니다. 저장된 도면을 다시 열어 확인해주세요.' : error.message || '클라우드 저장에 실패했습니다.',
+      conflict ? '다른 기기의 수정본이 있습니다. 현재 상담을 새 프로젝트로 저장하거나 복구본을 남기고 서버 도면을 열어주세요.' : error.message || '클라우드 저장에 실패했습니다.',
       'error',
     );
+    const recovery = document.querySelector('[data-cloud-recovery]');
+    if (recovery) recovery.hidden = !cloudConflict;
     return null;
   }
 }
@@ -881,6 +1038,7 @@ function saveCloudProject(createVersion = false) {
     render();
     return Promise.resolve(null);
   }
+  if (cloudConflict || cloudLoadBusy) return Promise.resolve(null);
   clearTimeout(cloudSaveTimer);
   cloudPendingSave = {
     createVersion: Boolean(createVersion || cloudPendingSave?.createVersion),
@@ -906,51 +1064,89 @@ async function flushCloudSave() {
   return Boolean(project && !cloudDirty);
 }
 
-async function openCloudProject(id, { skipFlush = false } = {}) {
+async function openCloudProject(id, { skipFlush = false, preserveLocal = false } = {}) {
   if (!cloudStore || !cloudSession || !id || cloudLoadBusy) return;
-  if (!skipFlush && !(await flushCloudSave())) return;
+  const unlinkedLocalDraft = !activeProjectId;
+  if ((preserveLocal || unlinkedLocalDraft) && !protectCurrentDraft()) return;
+  if (!skipFlush && !unlinkedLocalDraft && !(await flushCloudSave())) return;
   const generation = cloudGeneration;
+  const documentVersion = documentGeneration;
   const userId = currentCloudUserId();
+  clearTimeout(cloudSaveTimer);
+  cloudPendingSave = null;
   cloudLoadBusy = true;
   setCloudFeedback('도면을 불러오는 중…');
+  render();
   try {
+    if (cloudSaveLoop) await cloudSaveLoop;
+    if (!cloudOperationIsCurrent(generation, userId) || documentVersion !== documentGeneration) return;
     const project = await cloudStore.loadProject(id);
-    if (!cloudOperationIsCurrent(generation, userId)) return;
-    replaceLocalLayout(JSON.stringify(project.layout_json));
-    activeProjectId = project.id;
-    activeProjectName = project.name;
-    activeProjectRevision = Number(project.revision);
-    localStorage.setItem(activeProjectStorageKey(userId), project.id);
+    if (!cloudOperationIsCurrent(generation, userId) || documentVersion !== documentGeneration) return;
+    applyProjectDocument({
+      projectName: project.name,
+      layout: project.layout_json,
+      ownerId: userId,
+      projectId: project.id,
+      baseRevision: Number(project.revision),
+    });
     cloudDialogOpen = false;
     setCloudFeedback(`${project.name} 도면을 불러왔습니다.`, 'success');
-    render();
-    document.querySelector('#plan-canvas')?.focus();
   } catch (error) {
     if (cloudOperationIsCurrent(generation, userId)) setCloudFeedback(error.message || '도면을 불러오지 못했습니다.', 'error');
   } finally {
-    if (cloudOperationIsCurrent(generation, userId)) cloudLoadBusy = false;
+    if (cloudOperationIsCurrent(generation, userId)) {
+      cloudLoadBusy = false;
+      render();
+      document.querySelector(cloudDialogOpen ? '[data-cloud-reload]' : '#plan-canvas')?.focus();
+    }
   }
 }
 
 async function createCloudCopy() {
   if (!cloudStore || !cloudSession || cloudLoadBusy) return;
-  if (!(await flushCloudSave())) return;
-  const originalId = activeProjectId;
-  const originalName = activeProjectName;
-  const originalRevision = activeProjectRevision;
-  activeProjectId = null;
-  activeProjectRevision = null;
-  activeProjectName = normalizeProjectName(`${originalName} 복사본`);
-  const project = await saveCloudProject(true);
-  if (!project) {
-    activeProjectId = originalId;
-    activeProjectName = originalName;
-    activeProjectRevision = originalRevision;
-    return;
-  }
-  cloudDialogOpen = false;
+  const captured = currentDraftDocument();
+  if (!protectCurrentDraft()) return;
+  const generation = cloudGeneration;
+  const documentVersion = documentGeneration;
+  const userId = currentCloudUserId();
+  clearTimeout(cloudSaveTimer);
+  cloudPendingSave = null;
+  cloudLoadBusy = true;
+  setCloudFeedback('현재 상담을 새 프로젝트로 저장하는 중…');
   render();
-  document.querySelector('[data-cloud-open]')?.focus();
+  try {
+    if (cloudSaveLoop) await cloudSaveLoop;
+    if (!cloudOperationIsCurrent(generation, userId) || documentVersion !== documentGeneration) return;
+    const project = await cloudStore.saveProject({
+      id: null,
+      name: normalizeProjectName(`${captured.projectName} 복사본`),
+      layout: captured.layout,
+      expectedRevision: null,
+      createVersion: true,
+      expectedUserId: userId,
+    });
+    if (!cloudOperationIsCurrent(generation, userId) || documentVersion !== documentGeneration) return;
+    applyProjectDocument({
+      projectName: project.name,
+      layout: captured.layout,
+      ownerId: userId,
+      projectId: project.id,
+      baseRevision: Number(project.revision),
+    });
+    const appliedDocumentVersion = documentGeneration;
+    await refreshCloudProjects(generation, userId);
+    if (!cloudOperationIsCurrent(generation, userId) || appliedDocumentVersion !== documentGeneration) return;
+    cloudDialogOpen = false;
+    setCloudFeedback('현재 상담을 별도의 프로젝트로 저장했습니다.', 'success');
+  } catch (error) {
+    if (cloudOperationIsCurrent(generation, userId)) setCloudFeedback(error.message || '복사본을 저장하지 못했습니다.', 'error');
+  } finally {
+    if (cloudOperationIsCurrent(generation, userId)) {
+      cloudLoadBusy = false;
+      render();
+      document.querySelector(cloudDialogOpen ? '[data-cloud-copy]' : '[data-cloud-open]')?.focus();
+    }
+  }
 }
 
 async function handleCloudSession(session) {
@@ -960,67 +1156,102 @@ async function handleCloudSession(session) {
   const generation = cloudGeneration;
   clearTimeout(cloudSaveTimer);
   cloudPendingSave = null;
-  const staleSaveLoop = cloudSaveLoop;
-  if (staleSaveLoop) await staleSaveLoop;
   cloudSaveLoop = null;
   cloudLoadBusy = false;
   cloudSession = session;
+  cloudConflict = false;
+  if (previousUserId && previousUserId !== nextUserId) {
+    cloudProjects = [];
+    consultationDialogOpen = false;
+    comparisonDialogOpen = false;
+    draftStore.clear();
+    draftStore.clearRecovery();
+    draftStore.removeLegacy(activeProjectStorageKey(previousUserId));
+    draftStore.removeLegacy(ANONYMOUS_LAYOUT_KEY);
+    draftStore.removeLegacy(ANONYMOUS_OWNER_KEY);
+    recoveryDraft = draftStore.readRecovery();
+    deferredOwnerDraft = null;
+    replaceWithBlankDraft();
+    render();
+  }
   if (!session) {
     cloudProjects = [];
     activeProjectId = null;
     activeProjectRevision = null;
-    if (previousUserId) {
-      localStorage.removeItem(activeProjectStorageKey(previousUserId));
-      localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
-      localStorage.removeItem(ANONYMOUS_OWNER_KEY);
-      replaceWithBlankDraft();
-    }
-    setCloudFeedback(cloudStore ? '로그인하면 여러 기기에서 동기화됩니다.' : '클라우드 연결 설정이 필요합니다.');
+    setCloudFeedback(deferredOwnerDraft
+      ? '기존 상담을 복구하려면 같은 계정으로 로그인해주세요.'
+      : cloudStore ? '로컬 작업 · 로그인하면 여러 기기에서 동기화됩니다.' : '로그인 없이 로컬 작업');
     render();
     if (cloudDialogOpen) document.querySelector('.cloud-dialog button, .cloud-dialog input')?.focus();
     return;
   }
-  if (previousUserId && previousUserId !== nextUserId) replaceWithBlankDraft();
-  activeProjectId = localStorage.getItem(activeProjectStorageKey(nextUserId));
-  activeProjectRevision = null;
-  const anonymousOwner = localStorage.getItem(ANONYMOUS_OWNER_KEY);
-  if (!activeProjectId && !previousUserId && localStorage.getItem(STORAGE_KEY) && !localStorage.getItem(ANONYMOUS_LAYOUT_KEY)) {
-    localStorage.setItem(ANONYMOUS_LAYOUT_KEY, localStorage.getItem(STORAGE_KEY));
+  const stored = draftStore.read();
+  const cached = deferredOwnerDraft?.ownerId === nextUserId
+    ? deferredOwnerDraft
+    : stored.ok && stored.draft?.ownerId === nextUserId ? stored.draft : null;
+  const anonymous = !deferredOwnerDraft && stored.ok && stored.draft && !stored.draft.ownerId;
+  if (deferredOwnerDraft && deferredOwnerDraft.ownerId !== nextUserId) {
+    draftStore.clear();
+    draftStore.clearRecovery();
+    recoveryDraft = draftStore.readRecovery();
   }
+  deferredOwnerDraft = null;
   setCloudFeedback('내 도면을 확인하는 중…');
+  let restorationDocumentVersion = documentGeneration;
+  let restorationChangeVersion = layoutChangeVersion;
   try {
+    if (cached) applyProjectDocument(cached);
+    restorationDocumentVersion = documentGeneration;
+    restorationChangeVersion = layoutChangeVersion;
     const projects = await refreshCloudProjects(generation, nextUserId);
     if (!projects) return;
-    const preferred = cloudProjects.find((project) => project.id === activeProjectId);
-    if (preferred) {
-      activeProjectRevision = Number(preferred.revision);
-      await openCloudProject(preferred.id, { skipFlush: true });
+    if (
+      restorationDocumentVersion !== documentGeneration
+      || restorationChangeVersion !== layoutChangeVersion
+      || consultationDialogOpen
+      || numericEdit
+      || gestureMode !== 'idle'
+    ) {
+      persistCurrentDraft();
+      setCloudFeedback('로그인 중 변경한 현재 상담을 유지했습니다.');
       return;
     }
-    const anonymousLayout = localStorage.getItem(ANONYMOUS_LAYOUT_KEY);
-    if (anonymousLayout && (!anonymousOwner || anonymousOwner === nextUserId)) {
-      replaceLocalLayout(anonymousLayout);
-      activeProjectId = null;
-      activeProjectRevision = null;
-      activeProjectName = cloudProjects.length ? '가져온 로컬 도면' : '내 집 도면';
-      const imported = await saveCloudProject(true);
-      if (!imported) return;
-      localStorage.removeItem(ANONYMOUS_LAYOUT_KEY);
-      localStorage.removeItem(ANONYMOUS_OWNER_KEY);
+    if (cached) {
+      const preferred = projects.find((project) => project.id === cached.projectId);
+      if (cached.projectId && cached.dirty) {
+        cloudConflict = !preferred || Number(preferred.revision) !== cached.baseRevision;
+        setCloudFeedback(cloudConflict
+          ? '저장되지 않은 상담을 복구했습니다. 서버 수정본과 충돌하여 현재 작업을 유지합니다.'
+          : '저장되지 않은 상담을 복구했습니다.', cloudConflict ? 'error' : 'success');
+        if (!cloudConflict) scheduleCloudSave();
+      } else if (preferred) {
+        await openCloudProject(preferred.id, { skipFlush: true });
+        return;
+      } else {
+        setCloudFeedback('상담 초안을 복구했습니다. 지금 저장하면 클라우드 프로젝트가 됩니다.', 'success');
+      }
+      render();
+      return;
+    }
+    if (anonymous) {
+      persistCurrentDraft();
+      setCloudFeedback('로컬 상담을 유지했습니다. 지금 저장을 누르면 클라우드에 새 프로젝트로 보관됩니다.');
     } else if (cloudProjects[0]) {
       await openCloudProject(cloudProjects[0].id, { skipFlush: true });
       return;
     } else {
-      replaceLocalLayout();
-      activeProjectName = '내 집 도면';
-      const created = await saveCloudProject(true);
-      if (!created) return;
+      replaceWithBlankDraft();
+      setCloudFeedback('새 상담을 시작하세요. 지금 저장하면 클라우드에 보관됩니다.');
     }
     if (!cloudOperationIsCurrent(generation, nextUserId)) return;
     cloudDialogOpen = false;
     render();
   } catch (error) {
-    if (cloudOperationIsCurrent(generation, nextUserId)) {
+    if (
+      cloudOperationIsCurrent(generation, nextUserId)
+      && restorationDocumentVersion === documentGeneration
+      && restorationChangeVersion === layoutChangeVersion
+    ) {
       setCloudFeedback(error.message || '클라우드 도면을 확인하지 못했습니다.', 'error');
       render();
     }
@@ -2273,7 +2504,7 @@ function transformHudContent(mode = 'selected') {
 }
 
 function renderTransformHud() {
-  if (placementSession) return '';
+  if (placementSession || (isMobileLayout() && mobileContextMenu)) return '';
   const content = transformHudContent();
   if (!content) return '';
   const entity = selectionKeys.size === 1 ? selectedEntity() : null;
@@ -3733,7 +3964,7 @@ function renderCloudDialog() {
         ${closeButton}
         <span class="eyebrow">ROOM STUDIO ACCOUNT</span>
         <h2 id="cloud-dialog-title">로그인하고 도면 저장</h2>
-        <p>Google 계정으로 로그인하거나 이메일로 일회용 로그인 링크를 받아보세요. 현재 로컬 도면은 로그인 후 자동으로 계정에 저장됩니다.</p>
+        <p>Google 계정이나 이메일 링크로 로그인할 수 있습니다. 현재 로컬 상담은 유지되며, 지금 저장을 누르면 계정에 보관됩니다.</p>
         <button class="cloud-google-button" data-cloud-google type="button">Google로 계속하기</button>
         <div class="cloud-divider"><span>또는</span></div>
         <form class="cloud-email-form" data-cloud-email-form>
@@ -3754,6 +3985,7 @@ function renderCloudDialog() {
       <p class="cloud-account-email">${escapeHtml(accountLabel)}</p>
       <label>저장된 도면
         <select data-cloud-project ${dialogBusy ? 'disabled' : ''}>
+          ${cloudProjects.length && !cloudProjects.some((project) => project.id === activeProjectId) ? '<option value="" selected>불러올 도면 선택</option>' : ''}
           ${cloudProjects.length ? cloudProjects.map((project) => `<option value="${project.id}" ${project.id === activeProjectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('') : '<option value="">저장된 도면 없음</option>'}
         </select>
       </label>
@@ -3761,6 +3993,10 @@ function renderCloudDialog() {
       <div class="cloud-project-actions">
         <button data-cloud-save type="button" ${dialogBusy ? 'disabled' : ''}>지금 저장</button>
         <button data-cloud-copy type="button" ${dialogBusy ? 'disabled' : ''}>현재 도면 복사 저장</button>
+      </div>
+      <div class="cloud-project-actions" data-cloud-recovery ${cloudConflict ? '' : 'hidden'}>
+        <button data-cloud-reload type="button" ${dialogBusy ? 'disabled' : ''}>복구본 남기고 서버 도면 열기</button>
+        <button data-cloud-recovery-export type="button">현재 상담 파일 받기</button>
       </div>
       <p class="cloud-feedback" data-cloud-feedback data-tone="${cloudFeedbackTone}" role="status">${escapeHtml(cloudFeedback)}</p>
       <button class="cloud-signout" data-cloud-signout type="button">로그아웃</button>
@@ -3807,7 +4043,18 @@ function placementControlArmed(value) {
 }
 
 function render() {
+  if (deferInputRender) {
+    inputRenderPending = true;
+    return;
+  }
+  inputRenderPending = false;
   const focusedMobileLayout = isMobileLayout();
+  const panelScroll = !focusedMobileLayout && renderedDocumentGeneration === documentGeneration
+    ? ['.left-panel', '.right-panel', '.canvas-column'].map((selector) => {
+      const panel = document.querySelector(selector);
+      return { selector, top: panel?.scrollTop ?? 0, left: panel?.scrollLeft ?? 0 };
+    })
+    : [];
   const mobilePanelAttributes = (panel) => {
     const inactive = focusedMobileLayout && mobilePanel !== panel;
     return `role="tabpanel" aria-labelledby="mobile-tab-${panel}" aria-hidden="${inactive}"${inactive ? ' inert' : ''}`;
@@ -3823,7 +4070,7 @@ function render() {
   const maxHeight = state.items.length ? Math.max(...state.items.map((item) => item.height + (item.elevation ?? 0))) : 0;
   const warningCount = new Set([...collisions, ...outOfBounds, ...heightViolations]).size + zoneOverlaps.size;
   const mobileStatus = `${mobileMultiSelect ? '그룹 선택 켜짐' : '그룹 선택 꺼짐'} · 선택 ${selectionKeys.size}개${mobileMoveArmed ? ' · 이동 준비됨' : ''}`;
-  const cloudBackgroundAttributes = cloudDialogOpen || projectDialogOpen || starterDialogOpen || demoGalleryOpen || mobileContextMenu ? 'inert aria-hidden="true"' : '';
+  const cloudBackgroundAttributes = cloudDialogOpen || projectDialogOpen || starterDialogOpen || demoGalleryOpen || mobileContextMenu || consultationDialogOpen || comparisonDialogOpen || cloudLoadBusy ? 'inert aria-hidden="true"' : '';
   const cloudState = cloudFeedbackTone === 'error' ? 'error' : !cloudConfigured ? 'setup' : cloudSession ? 'synced' : 'idle';
 
   const accountName = cloudSession?.user?.user_metadata?.full_name || cloudSession?.user?.email?.split('@')[0];
@@ -3870,16 +4117,28 @@ function render() {
     </aside>
 
     <section class="canvas-column" id="mobile-panel-canvas" ${mobilePanelAttributes('canvas')}>
-      <div class="canvas-toolbar"><div><span class="eyebrow">HOME COMPOSER</span><h1>나의 집 도면</h1><p class="planning-scope" data-planning-scope><strong>기획·배치 확인용</strong><span>건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다.</span></p></div>
+      <div class="canvas-toolbar"><div><span class="eyebrow">배치 상담</span><h1 title="${escapeHtml(activeProjectName)}">${escapeHtml(activeProjectName)}</h1><p class="planning-scope" data-planning-scope><strong>기획·배치 확인용</strong><span class="desktop-only">건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다.</span><span class="mobile-only">시공 판단은 전문가 검토</span></p></div>
         <div class="view-tabs"><button class="active" type="button">2D 편집</button><button id="open-walkthrough" type="button">3D 미리보기</button></div>
+      </div>
+      ${renderConsultationToolbar({ projectName: activeProjectName, consultation: state.consultation })}
+      <div class="draft-status" data-draft-status hidden>
+        <p data-draft-message></p>
+        <div><button data-draft-retry type="button">다시 저장</button><button data-draft-export type="button">도면 파일로 보관</button><button data-recovery-restore type="button">이전 상담 복구</button></div>
       </div>
       <div class="canvas-actions">
         <span>방향키 1cm · Shift+방향키 40cm · ⌘/Ctrl+C·V · Shift 클릭 다중 선택</span>
         <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="add-dimension" class="${precisionTool?.type === 'dimension' ? 'is-active' : ''}" type="button">↔ 거리 측정</button><details class="canvas-more-actions" ${isMobileLayout() ? '' : 'open'}><summary>더보기</summary><div role="group" aria-label="추가 도면 도구"><button id="duplicate-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>⧉ 복제</button><button id="copy-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>복사</button><button id="paste-selection" type="button" ${internalClipboard ? '' : 'disabled'}>붙여넣기</button><button id="clear-furniture" type="button">가구 비우기</button></div></details></div>
       </div>
       <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderPlacementHud()}${renderOverlapPicker()}${renderTransformHud()}${editorNotice || precisionTool ? `<div class="editor-notice ${precisionTool ? 'is-tool-active' : ''}" role="status"><span>${escapeHtml(editorNotice)}</span>${precisionTool ? '<button id="cancel-precision-tool" type="button">취소</button>' : ''}</div>` : ''}</div>
-      <div class="stats-bar"><div><span>집 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span>바닥 점유</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 확인</span><strong>${warningCount ? `${warningCount}개 확인` : '문제 없음'}</strong></div></div>
+      <div class="stats-bar"><div><span>공간 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span title="바닥에 놓인 가구의 외곽 사각형 기준이며 통행 여유를 뜻하지 않습니다.">바닥 점유 추정</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 확인</span><strong>${warningCount ? `${warningCount}개 확인` : '검사 경고 없음'}</strong></div></div>
       <div class="legend"><span><i class="collision-dot"></i>가구 3D 충돌</span><span><i class="height-dot"></i>공간 높이 초과</span><span><i class="outside-dot"></i>집 밖 배치</span><span><i class="zone-dot"></i>공간 중복</span></div>
+      <details class="placement-checks"><summary>${warningCount ? `확인할 대상 ${warningCount}개` : '검사 범위 확인'}</summary>
+        <p>가구 외곽 사각형의 겹침·공간 경계·높이와 공간 중복을 검사합니다. 벽·문 간섭과 통행 여유는 도면·3D에서 별도로 확인하세요.</p>
+        <ul>${state.items.map((item) => {
+          const reasons = [collisions.has(item.id) && '가구 겹침', outOfBounds.has(item.id) && '공간 밖 배치', heightViolations.has(item.id) && '높이 초과'].filter(Boolean);
+          return reasons.length ? `<li><button type="button" data-select-warning="item:${item.id}">${escapeHtml(item.name)} · ${reasons.join(' · ')}</button></li>` : '';
+        }).join('')}${state.zones.filter((zone) => zoneOverlaps.has(zone.id)).map((zone) => `<li><button type="button" data-select-warning="zone:${zone.id}">${escapeHtml(zone.name)} · 공간 중복</button></li>`).join('')}</ul>
+      </details>
     </section>
 
     <aside class="panel right-panel" id="mobile-panel-inspector" ${mobilePanelAttributes('inspector')}><div class="section-title"><span>05</span><h2>상세 조정</h2></div>${renderInspector(selected)}
@@ -3892,6 +4151,8 @@ function render() {
   ${renderDemoGallery()}
   ${renderProjectDialog()}
   ${renderCloudDialog()}
+  ${consultationDialogOpen ? renderConsultationDialog({ projectName: activeProjectName, consultation: state.consultation }) : ''}
+  ${comparisonDialogOpen ? renderComparisonDialog({ projectName: activeProjectName, layout: layoutSnapshot() }) : ''}
   <div id="mobile-status" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;">${mobileStatus}</div>
   <nav class="mobile-nav" role="tablist" aria-label="모바일 편집 메뉴" aria-describedby="mobile-status" ${cloudBackgroundAttributes}>
     ${mobileTabs.map(([panel, icon, label]) => {
@@ -3900,7 +4161,14 @@ function render() {
     }).join('')}
   </nav>
   <footer ${cloudBackgroundAttributes}>기획·배치 확인을 돕는 시각화 도구입니다. 실제 인허가·구조·접근성·시공은 전문가와 확인하세요. <strong>Room Studio</strong></footer>`;
+  for (const { selector, top, left } of panelScroll) {
+    const panel = document.querySelector(selector);
+    panel.scrollTop = top;
+    panel.scrollLeft = left;
+  }
+  renderedDocumentGeneration = documentGeneration;
   bindEvents();
+  updateDraftStatus();
 }
 
 function activateMobilePanel(panel, focusKind = 'mobile-tab') {
@@ -3931,7 +4199,7 @@ function focusPendingTarget() {
     'group-move': '[data-group-action="move"]',
     'group-rotate': '[data-group-action="rotate"]',
   }[focusRequest.kind] ?? `#mobile-tab-${focusRequest.panel}`;
-  document.querySelector(selector)?.focus();
+  document.querySelector(selector)?.focus({ preventScroll: focusRequest.kind === 'canvas' && !isMobileLayout() });
 }
 
 function moveMobileTabFocus(event, currentPanel) {
@@ -3948,6 +4216,113 @@ function moveMobileTabFocus(event, currentPanel) {
 }
 
 function bindEvents() {
+  document.querySelector('[data-consultation-open]')?.addEventListener('click', () => {
+    consultationDialogOpen = true;
+    mobileContextMenu = null;
+    render();
+    document.querySelector('[name="projectName"]')?.focus();
+  });
+  document.querySelectorAll('[data-consultation-close]').forEach((button) => button.addEventListener('click', closeConsultationDialog));
+  document.querySelector('[data-consultation-backdrop]')?.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeConsultationDialog();
+  });
+  document.querySelector('[data-consultation-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    const consultation = normalizeConsultation(state.consultation);
+    const previous = layoutSnapshot();
+    const active = consultation.activeOption;
+    const next = {
+      ...consultation,
+      businessName: fields.get('businessName').trim(),
+      clientName: fields.get('clientName').trim(),
+      requirements: fields.get('requirements').trim(),
+      recommendedOption: fields.get('recommendedOption') || null,
+      options: {
+        ...consultation.options,
+        [active]: {
+          label: fields.get('optionLabel').trim() || `${active}안`,
+          recommendation: fields.get('recommendation').trim(),
+          nextSteps: fields.get('nextSteps').trim(),
+        },
+      },
+    };
+    try {
+      preparePersistedLayout({ ...previous, consultation: next });
+      state.consultation = next;
+      activeProjectName = normalizeProjectName(fields.get('projectName'));
+      commitHistory(previous);
+      saveState();
+      closeConsultationDialog();
+    } catch (error) {
+      event.currentTarget.querySelector('[type="submit"]').insertAdjacentElement('beforebegin', Object.assign(document.createElement('p'), {
+        textContent: error.message,
+        role: 'alert',
+      }));
+    }
+  });
+  document.querySelector('[data-option-create]')?.addEventListener('click', () => {
+    try {
+      const previous = layoutSnapshot();
+      state = { ...state, ...createComparisonOption(previous) };
+      commitHistory(previous);
+      saveState();
+      editorNotice = '현재 배치를 B안으로 복사했습니다. B안을 선택해 다른 배치를 만들 수 있습니다.';
+    } catch (error) {
+      editorNotice = error.message;
+    }
+    render();
+  });
+  document.querySelectorAll('[data-option-select]').forEach((button) => button.addEventListener('click', () => selectConsultationOption(button.dataset.optionSelect)));
+  document.querySelector('[data-options-compare]')?.addEventListener('click', () => {
+    try {
+      preparePersistedLayout(state);
+      comparisonDialogOpen = true;
+      render();
+      document.querySelector('[data-comparison-close]')?.focus();
+    } catch (error) {
+      comparisonDialogOpen = false;
+      editorNotice = error.message;
+      render();
+    }
+  });
+  document.querySelector('[data-comparison-close]')?.addEventListener('click', closeComparisonDialog);
+  document.querySelector('[data-comparison-backdrop]')?.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeComparisonDialog();
+  });
+  document.querySelectorAll('[data-comparison-edit]').forEach((button) => button.addEventListener('click', () => selectConsultationOption(button.dataset.comparisonEdit)));
+  document.querySelector('[data-consultation-report]')?.addEventListener('click', exportDecisionReport);
+  document.querySelector('[data-draft-retry]')?.addEventListener('click', () => {
+    if (unreadDraftRaw && !window.confirm('저장된 원본을 현재 작업으로 바꿀까요? 원본이 필요하면 먼저 원본 받기를 선택하세요.')) return;
+    persistCurrentDraft({ replaceUnread: true });
+  });
+  document.querySelector('[data-draft-export]')?.addEventListener('click', () => {
+    if (!unreadDraftRaw) {
+      exportPortableProject();
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([unreadDraftRaw], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'room-studio-recovery-original.json';
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  });
+  document.querySelector('[data-recovery-restore]')?.addEventListener('click', () => {
+    const recovered = availableRecovery();
+    if (!recovered || !protectCurrentDraft()) return;
+    applyProjectDocument({ ...recovered, ownerId: currentCloudUserId(), dirty: true });
+    editorNotice = '교체 전 상담을 복구했습니다. 방금 편집하던 상담도 복구본으로 남겼습니다.';
+    render();
+    document.querySelector('#plan-canvas')?.focus();
+  });
+  document.querySelectorAll('[data-select-warning]').forEach((button) => button.addEventListener('click', () => {
+    const [kind, id] = button.dataset.selectWarning.split(':');
+    selectEntity(kind, id);
+    if (isMobileLayout()) mobilePanel = 'inspector';
+    pendingFocus = { kind: 'panel-heading', panel: 'inspector' };
+    render();
+  }));
   document.querySelector('[data-demo-open]')?.addEventListener('click', openDemoGallery);
   document.querySelector('[data-demo-close]')?.addEventListener('click', closeDemoGallery);
   document.querySelector('[data-demo-backdrop]')?.addEventListener('click', (event) => {
@@ -3981,17 +4356,15 @@ function bindEvents() {
     document.querySelector('[data-start-open]')?.focus();
   });
   document.querySelector('[data-start-sample]')?.addEventListener('click', () => {
-    replaceLocalLayout(JSON.stringify(defaultState()));
-    activeProjectId = null;
-    activeProjectRevision = null;
-    activeProjectName = '가구 배치 샘플';
-    cloudDirty = false;
+    if (!canReplaceCurrentDraft()) return;
+    applyProjectDocument({ projectName: '가구 배치 샘플', layout: defaultState() });
     starterDialogOpen = false;
     editorNotice = '가구가 있는 샘플을 열었습니다. 자유롭게 수정해 보세요.';
     pendingFocus = { kind: 'canvas' };
     render();
   });
   document.querySelector('[data-start-blank]')?.addEventListener('click', () => {
+    if (!canReplaceCurrentDraft()) return;
     replaceWithBlankDraft();
     starterDialogOpen = false;
     editorNotice = '빈 도면을 열었습니다. 공간 추가부터 시작하세요.';
@@ -4109,13 +4482,17 @@ function bindEvents() {
     }
   });
   document.querySelector('[data-cloud-delete-account]')?.addEventListener('click', deleteCurrentAccount);
+  document.querySelector('[data-cloud-reload]')?.addEventListener('click', () => {
+    openCloudProject(activeProjectId, { skipFlush: true, preserveLocal: true });
+  });
+  document.querySelector('[data-cloud-recovery-export]')?.addEventListener('click', exportPortableProject);
   document.querySelector('[data-cloud-project]')?.addEventListener('change', (event) => {
     if (event.target.value) openCloudProject(event.target.value);
   });
   document.querySelector('[data-cloud-project-name]')?.addEventListener('change', (event) => {
     activeProjectName = normalizeProjectName(event.target.value);
     event.target.value = activeProjectName;
-    scheduleCloudSave();
+    saveState();
   });
   document.querySelector('[data-cloud-save]')?.addEventListener('click', async () => {
     activeProjectName = normalizeProjectName(document.querySelector('[data-cloud-project-name]')?.value);
@@ -4275,7 +4652,7 @@ function bindEvents() {
   document.querySelectorAll('[data-layout]').forEach((button) => button.addEventListener('click', () => {
     const previous = layoutSnapshot();
     const zones = button.dataset.layout === 'lshape' ? lShapeZones() : apartmentZones();
-    state = defaultState(zones);
+    state = { ...state, ...defaultState(zones) };
     canvasZoom = 1;
     canvasCenter = null;
     selectionKeys = new Set(state.selection ? [selectionKey(state.selection.kind, state.selection.id)] : []);
@@ -4310,7 +4687,7 @@ function bindEvents() {
     button.textContent = '3D 준비 중…';
     try {
       const { openWalkthrough } = await import('./walkthrough3d.js');
-      openWalkthrough({
+      await openWalkthrough({
         zones: state.zones,
         items: state.items,
         structures: state.structures,
@@ -4319,16 +4696,19 @@ function bindEvents() {
         initialMode: 'dollhouse',
         onStructureChange: (id, updates) => updateStructure(id, updates),
       });
+    } catch {
+      editorNotice = '3D 화면을 열지 못했습니다. 도면은 유지됩니다. WebGL을 지원하는 브라우저에서 다시 시도해주세요.';
+      render();
     } finally {
       button.disabled = false;
       button.textContent = originalText;
     }
   });
 
-  document.querySelectorAll('[data-zone-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'zone', node.dataset.zoneId)));
-  document.querySelectorAll('[data-item-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'item', node.dataset.itemId)));
-  document.querySelectorAll('[data-structure-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'structure', node.dataset.structureId)));
-  document.querySelectorAll('[data-dimension-id]').forEach((node) => node.addEventListener('pointerdown', (event) => {
+  document.querySelectorAll('#plan-canvas [data-zone-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'zone', node.dataset.zoneId)));
+  document.querySelectorAll('#plan-canvas [data-item-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'item', node.dataset.itemId)));
+  document.querySelectorAll('#plan-canvas [data-structure-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'structure', node.dataset.structureId)));
+  document.querySelectorAll('#plan-canvas [data-dimension-id]').forEach((node) => node.addEventListener('pointerdown', (event) => {
     if (precisionTool) return;
     event.preventDefault();
     event.stopPropagation();
@@ -4409,9 +4789,9 @@ function bindEvents() {
         ));
         saveState();
       });
-      input.addEventListener('blur', () => updateZone(entityId, {
+      input.addEventListener('blur', (event) => commitInputBlur(event, () => updateZone(entityId, {
         [field]: input.type === 'number' ? Number(input.value) : input.value,
-      }, { historySnapshot }));
+      }, { historySnapshot })));
       return;
     }
     input.addEventListener('change', () => {
@@ -4428,9 +4808,9 @@ function bindEvents() {
         state.items = state.items.map((item) => item.id === entityId ? { ...item, [field]: value } : item);
         saveState();
       });
-      input.addEventListener('blur', () => updateItem(entityId, {
+      input.addEventListener('blur', (event) => commitInputBlur(event, () => updateItem(entityId, {
         [field]: input.type === 'number' ? Number(input.value) : input.value,
-      }, { historySnapshot }));
+      }, { historySnapshot })));
       return;
     }
     input.addEventListener('change', () => {
@@ -4446,9 +4826,9 @@ function bindEvents() {
         input.addEventListener('change', () => updateStructure(entityId, { [field]: Number(input.value) }));
         return;
       }
-      input.addEventListener('blur', () => updateStructure(entityId, {
+      input.addEventListener('blur', (event) => commitInputBlur(event, () => updateStructure(entityId, {
         [field]: input.type === 'number' ? Number(input.value) : input.value,
-      }, { historySnapshot }));
+      }, { historySnapshot })));
       return;
     }
     input.addEventListener('change', () => updateStructure(entityId, { [field]: input.value }));
@@ -4457,9 +4837,9 @@ function bindEvents() {
     const field = input.dataset.dimensionField;
     const entityId = state.selection.id;
     const historySnapshot = layoutSnapshot();
-    input.addEventListener('blur', () => updateDimension(entityId, {
+    input.addEventListener('blur', (event) => commitInputBlur(event, () => updateDimension(entityId, {
       [field]: input.type === 'number' ? Number(input.value) : input.value,
-    }, { historySnapshot }));
+    }, { historySnapshot })));
   });
   document.querySelectorAll('[data-quick-field]').forEach((input) => {
     input.addEventListener('pointerdown', (event) => event.stopPropagation());
@@ -4474,7 +4854,7 @@ function bindEvents() {
     input.addEventListener('blur', (event) => {
       if (!numericEdit) return;
       if (event.relatedTarget?.matches?.('[data-quick-field]')) return;
-      commitQuickNumericEdit();
+      commitInputBlur(event, () => commitQuickNumericEdit());
     });
   });
   document.querySelectorAll('[data-door-opening]').forEach((button) => button.addEventListener('click', () => {
@@ -4485,11 +4865,27 @@ function bindEvents() {
   focusPendingTarget();
 }
 
+// Commit a blur before its next action, but keep that action's DOM target alive.
+document.addEventListener('pointerdown', () => { pointerFocusTransfer = true; }, true);
+document.addEventListener('keydown', () => { pointerFocusTransfer = false; }, true);
+document.addEventListener('click', () => {
+  pointerFocusTransfer = false;
+  finishInputRender();
+});
+document.addEventListener('pointercancel', () => {
+  pointerFocusTransfer = false;
+  if (inputRenderPending) render();
+});
+document.addEventListener('focusin', (event) => {
+  if (!inputRenderPending || pointerFocusTransfer) return;
+  finishInputRender(event.target);
+});
+
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
   const activeModal = document.querySelector('[role="dialog"][aria-modal="true"]');
   if (activeModal && event.key === 'Tab') {
-    const focusable = [...activeModal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, [href], [tabindex]:not([tabindex="-1"])')]
+    const focusable = [...activeModal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [href], [tabindex]:not([tabindex="-1"])')]
       .filter((element) => element.getClientRects().length);
     if (!focusable.length) return;
     const currentIndex = focusable.indexOf(document.activeElement);
@@ -4498,6 +4894,16 @@ document.addEventListener('keydown', (event) => {
       : (currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
     event.preventDefault();
     focusable[nextIndex].focus();
+    return;
+  }
+  if (consultationDialogOpen && event.key === 'Escape') {
+    event.preventDefault();
+    closeConsultationDialog();
+    return;
+  }
+  if (comparisonDialogOpen && event.key === 'Escape') {
+    event.preventDefault();
+    closeComparisonDialog();
     return;
   }
   if (demoGalleryOpen && event.key === 'Escape') {
@@ -4558,6 +4964,7 @@ document.addEventListener('keydown', (event) => {
   const editingField = target?.closest('input, select, textarea, [contenteditable]:not([contenteditable="false"])') ?? null;
   const interactiveControl = target?.closest('button, a, input, select, textarea, [contenteditable]:not([contenteditable="false"])') ?? null;
   const commandKey = event.ctrlKey || event.metaKey;
+  if (cloudLoadBusy || activeModal) return;
   if (!editingField && commandKey && event.key.toLowerCase() === 'z') {
     event.preventDefault();
     if (event.shiftKey) redo();
