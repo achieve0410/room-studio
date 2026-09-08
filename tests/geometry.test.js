@@ -25,6 +25,7 @@ import {
   isPointBlockedByInteriorWall,
   isWalkablePoint,
   itemFitsZoneHeights,
+  itemInsideZones,
   itemsOverlap3d,
   resizeItemFromHandle,
   resizeStructureFromEndpoint,
@@ -243,6 +244,40 @@ test('findOutOfBounds validates the complete furniture footprint against the zon
   assert.deepEqual([...findOutOfBounds([item, outside], zones)], ['outside']);
 });
 
+test('itemInsideZones rejects a rectangle bridging disconnected zones', () => {
+  const parts = [
+    { x: 0, y: 0, width: 100, depth: 300 },
+    { x: 200, y: 0, width: 100, depth: 300 },
+  ];
+  const bridge = { ...item, x: 150, y: 100, width: 200, depth: 100 };
+  assert.equal(itemInsideZones(bridge, parts), false);
+  assert.deepEqual([...findOutOfBounds([bridge], parts)], [item.id]);
+});
+
+test('itemInsideZones rejects the empty notch of a connected U-shaped union', () => {
+  const parts = [
+    { x: 0, y: 0, width: 100, depth: 300 },
+    { x: 200, y: 0, width: 100, depth: 300 },
+    { x: 0, y: 200, width: 300, depth: 100 },
+  ];
+  assert.equal(itemInsideZones({ ...item, x: 150, y: 150, width: 200, depth: 200 }, parts), false);
+});
+
+test('itemInsideZones accepts full coverage across adjacent and overlapping parts', () => {
+  const spanning = { ...item, x: 100, y: 50, width: 200, depth: 100 };
+  for (const secondX of [100, 80]) {
+    const parts = [
+      { x: 0, y: 0, width: 100, depth: 100 },
+      { x: secondX, y: 0, width: 200 - secondX, depth: 100 },
+    ];
+    assert.equal(itemInsideZones(spanning, [...parts, parts[0]]), true);
+  }
+  assert.equal(itemInsideZones(spanning, []), false);
+  assert.equal(itemInsideZones({ ...spanning, rotation: 45 }, [
+    { x: 0, y: 0, width: 200, depth: 100 },
+  ]), false);
+});
+
 test('space height limits account for both furniture height and floor elevation', () => {
   const lowCeilingZones = zones.map((zone) => ({ ...zone, height: 100 }));
   assert.equal(itemFitsZoneHeights(item, lowCeilingZones), true);
@@ -253,6 +288,57 @@ test('space height limits account for both furniture height and floor elevation'
 
 test('calculateCoverage uses the composite home area', () => {
   assert.equal(calculateCoverage([item], zones), 7);
+});
+
+test('calculateCoverage unions overlapping and duplicate furniture bounds', () => {
+  const room = [{ x: 0, y: 0, width: 200, depth: 100 }];
+  const first = { ...item, x: 50, y: 50, width: 100, depth: 100 };
+  const second = { ...first, id: 'second', x: 100 };
+  assert.equal(calculateCoverage([first, second, { ...first, id: 'duplicate' }], room), 75);
+});
+
+test('calculateCoverage clips furniture to the zone union including empty gaps', () => {
+  const parts = [
+    { x: 0, y: 0, width: 100, depth: 100 },
+    { x: 200, y: 0, width: 100, depth: 100 },
+  ];
+  const bridge = { ...item, x: 150, y: 50, width: 200, depth: 100 };
+  assert.equal(calculateCoverage([bridge], parts), 50);
+  assert.equal(calculateCoverage([{ ...bridge, x: 400 }], parts), 0);
+  assert.equal(calculateCoverage([{ ...bridge, width: 1000, depth: 1000 }], parts), 100);
+});
+
+test('calculateCoverage counts only floor-level furniture', () => {
+  const room = [{ x: 0, y: 0, width: 200, depth: 100 }];
+  const floor = { ...item, x: 50, y: 50, width: 100, depth: 100, elevation: undefined };
+  const raised = { ...floor, x: 150, elevation: 0.1 };
+  assert.equal(calculateCoverage([floor, raised], room), 50);
+  assert.equal(calculateCoverage([raised], room), 0);
+});
+
+test('calculateCoverage uses conservative rotated bounding footprints', () => {
+  const room = [{ x: 0, y: 0, width: 200, depth: 200 }];
+  const square = { ...item, width: 100, depth: 100, rotation: 45 };
+  assert.equal(calculateCoverage([square], room), 50);
+});
+
+test('calculateCoverage unions adjacent and overlapping zone parts', () => {
+  const floor = { ...item, x: 100, y: 50, width: 200, depth: 50 };
+  for (const secondX of [100, 80]) {
+    const parts = [
+      { x: 0, y: 0, width: 100, depth: 100 },
+      { x: secondX, y: 0, width: 200 - secondX, depth: 100 },
+    ];
+    assert.equal(calculateCoverage([floor], [...parts, parts[0]]), 50);
+  }
+});
+
+test('calculateCoverage returns zero for empty or zero-area footprints and floors', () => {
+  assert.equal(calculateCoverage([], zones), 0);
+  assert.equal(calculateCoverage([item], []), 0);
+  assert.equal(calculateCoverage([item], [{ x: 0, y: 0, width: 0, depth: 100 }]), 0);
+  assert.equal(calculateCoverage([{ ...item, width: 0 }], zones), 0);
+  assert.equal(calculateCoverage([{ ...item, depth: 0 }], zones), 0);
 });
 
 test('getExteriorWallSegments follows the union outline without shared interior edges', () => {
