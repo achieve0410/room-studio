@@ -51,6 +51,7 @@ Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). 
 
 ## Highlights
 
+- Record the client brief, compare independent A/B layouts, and export a branded recommendation document without requiring cloud login.
 - Compose L-shaped and other orthogonal spaces from multiple rectangular parts.
 - Import a PNG or JPG floor plan, calibrate it from two known points, and control its opacity or movement lock.
 - Add persistent distance dimensions and enter exact wall lengths in centimeters.
@@ -61,6 +62,17 @@ Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). 
 - Switch between collision-aware first-person, dollhouse, and top-down 3D views; hide ceilings, focus the current selection, or save the current scene as PNG.
 - Work with mouse and keyboard or mobile touch, pinch zoom, resize handles, and a virtual joystick.
 - Keep drawings in local browser storage, or optionally sync user-owned projects through Supabase Auth and Postgres RLS.
+
+## Client consultation workflow
+
+1. Open a sample or import a drawing, then choose **상담 정보** to enter the project, business, client, and requirements.
+2. Edit A, choose **B안 만들기**, and switch to B to explore a different arrangement. Recommendations and next steps stay with each option.
+3. Use **비교** for side-by-side desktop or stacked mobile plans. Use 3D's lowered-wall overview to explain furniture placement; first-person mode retains full-height walls and collisions.
+4. Choose **제안서** for a self-contained HTML report with both options, measurements, opening symbols, and named warnings.
+
+Project names and consultation notes survive reload and portable export/import. A/B switching clears the active drawing's undo history so undo cannot modify the other option. Replacing a draft preserves one local recovery copy. Storage failures expose export/retry actions; cloud conflicts allow a separate copy or a protected remote reload.
+
+Portable schema 3 reads older schemas 1 and 2. Both options and their background images share a 1 MiB limit. Floor coverage is a clipped bounding-footprint estimate, not a circulation or installation clearance check.
 
 ## Requirements
 
@@ -82,6 +94,7 @@ The core editor works without any cloud configuration and stores the current dra
 ```bash
 npm run check
 npm run test:browser:mobile
+npm run test:browser:consultation
 ```
 
 `npm run check` performs syntax checks, unit tests, and a production build. The browser audit launches a local Vite preview and exercises the supported mobile and desktop flows in Chrome.

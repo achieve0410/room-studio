@@ -6,6 +6,14 @@ const allowedHosts = String(process.env.ROOM_STUDIO_ALLOWED_HOSTS ?? '')
   .filter(Boolean);
 
 export default defineConfig({
+  optimizeDeps: {
+    entries: ['index.html'],
+  },
+  server: {
+    watch: {
+      ignored: ['**/.omx/**'],
+    },
+  },
   build: {
     chunkSizeWarningLimit: 600,
   },
