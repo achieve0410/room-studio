@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDecisionReport, decisionReportFileName } from '../src/project-report.js';
+import { calculateCoverage } from '../src/geometry.js';
 
 const layout = {
   zones: [
@@ -74,10 +75,9 @@ test('decision report is self-contained, useful, and safe for hostile names', ()
   assert.match(report, /소파 &lt;img src=x onerror=alert/);
   assert.match(report, /<svg[^>]+viewBox=/);
   assert.match(report, /16\.0m²/);
-  assert.match(report, /12%/);
-  assert.match(report, /충돌 1/);
+  assert.match(report, new RegExp(`${calculateCoverage(layout.items, layout.zones)}%`));
+  assert.match(report, /data-warning-kind="outOfBounds" data-entity-id="item-1"/);
   assert.match(report, /210 × 90 × 85cm/);
-  assert.match(report, /건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다/);
   assert.doesNotMatch(report, /<script[\s>]/i);
   assert.doesNotMatch(report, /<img[\s>]/i);
   assert.doesNotMatch(report, /src=["']https?:/i);
@@ -117,4 +117,61 @@ test('decision report filename stays readable and filesystem-safe', () => {
     decisionReportFileName('  우리 집 / 최종:*?  '),
     'room-studio-우리-집-최종-decision-report.html',
   );
+});
+
+test('report preserves persistent dimensions and opening state', () => {
+  const report = createDecisionReport({ layout: {
+    ...layout,
+    dimensions: [{ id: 'measure-1', name: '통로', x1: -200, y1: -100, x2: -100, y2: -100 }],
+    structures: [{ id: 'door-1', name: '출입문', type: 'door', doorType: 'swing', x: 100, y: 0, width: 80, orientation: 'horizontal', hinge: 'start', openSide: 1, openAngle: 90 }],
+  }, metrics });
+  assert.match(report, /data-dimension-id="measure-1"/);
+  assert.match(report, /class="door-swing"/);
+  assert.match(report, /class="door-panel"/);
+});
+
+test('warnings are derived from layout and identify each affected object', () => {
+  const items = [
+    { ...layout.items[0], id: 'tall', name: '<높은 장>', x: 250, y: 150, rotation: 0, height: 300 },
+    { ...layout.items[0], id: 'other', name: '다른 장', x: 250, y: 150, rotation: 0 },
+    { ...layout.items[0], id: 'outside', name: '밖의 장', x: -500, y: -500, rotation: 0 },
+  ];
+  const report = createDecisionReport({ layout: { ...layout, items }, metrics: { warningCounts: {} } });
+  for (const [kind, id] of [['collisions', 'tall'], ['collisions', 'other'], ['height', 'tall'], ['outOfBounds', 'outside']]) {
+    assert.match(report, new RegExp(`data-warning-kind="${kind}" data-entity-id="${id}"`));
+  }
+  assert.match(report, /&lt;높은 장&gt;/);
+});
+
+test('consultation options keep geometry, warnings, metrics and escaped notes separate', () => {
+  const alternate = { ...layout, items: [], zones: [{ ...layout.zones[0], width: 100, depth: 100 }], structures: [] };
+  const report = createDecisionReport({ layout: { ...layout, consultation: {
+    version: 1, businessName: '<업체>', clientName: '<고객>', requirements: '<요청>', activeOption: 'B', recommendedOption: 'A',
+    options: { A: { label: '대안', recommendation: '<추천 A>', nextSteps: '<수정 A>' }, B: { label: '현재', recommendation: '<추천 B>', nextSteps: '<수정 B>' } },
+    inactiveGeometry: alternate,
+  } }, metrics: { areaSquareMeters: 999, coveragePercent: 999 } });
+  const sections = [...report.matchAll(/<article data-option="([AB])">([\s\S]*?)<\/article>/g)];
+  assert.equal(sections.length, 2);
+  const options = Object.fromEntries(sections.map(([, key, html]) => [key, html]));
+  assert.match(options.A, /data-metric="area">1\.0m²/);
+  assert.match(options.B, /data-metric="area">16\.0m²/);
+  assert.doesNotMatch(options.A, /data-warning-kind=/);
+  assert.match(options.B, /data-warning-kind="outOfBounds"/);
+  for (const value of ['업체', '고객', '요청', '추천 A', '추천 B', '수정 A', '수정 B']) assert.ok(report.includes(`&lt;${value}&gt;`));
+  assert.doesNotMatch(report, /999/);
+});
+
+test('legacy missing layouts stay empty and blank notes do not invent recommendations', () => {
+  for (const layout of [undefined, null, {}]) {
+    const report = createDecisionReport({ layout });
+    assert.equal([...report.matchAll(/<article data-option=/g)].length, 1);
+    assert.doesNotMatch(report, /data-field="recommendation"|data-field="nextSteps"/);
+    assert.match(report, /data-metric="items">0개/);
+  }
+});
+
+test('space overlap warnings identify both spaces, including duplicate names', () => {
+  const zones = [layout.zones[0], { ...layout.zones[0], id: 'zone-2', x: 100 }];
+  const report = createDecisionReport({ layout: { ...layout, zones, items: [] } });
+  for (const id of ['zone-1', 'zone-2']) assert.match(report, new RegExp(`data-warning-kind="zoneOverlaps" data-entity-id="${id}"`));
 });
