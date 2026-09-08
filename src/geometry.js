@@ -229,14 +229,10 @@ export function pointInZone(point, zone) {
 
 export function itemInsideZones(item, zones) {
   const bounds = itemBounds(item);
-  const corners = [
-    { x: bounds.left, y: bounds.top },
-    { x: bounds.right, y: bounds.top },
-    { x: bounds.right, y: bounds.bottom },
-    { x: bounds.left, y: bounds.bottom },
-  ];
-
-  return corners.every((corner) => zones.some((zone) => pointInZone(corner, zone)));
+  const area = (bounds.right - bounds.left) * (bounds.bottom - bounds.top);
+  const coveredArea = calculateUnionArea(clippedItemFootprints(item, zones));
+  // Allow only floating-point roundoff when the union partitions rotated bounds.
+  return area > 0 && Math.abs(area - coveredArea) <= Number.EPSILON * area * 8;
 }
 
 export function findOutOfBounds(items, zones) {
@@ -679,11 +675,26 @@ export function calculateUnionArea(zones) {
   return area;
 }
 
+function clippedItemFootprints(item, zones) {
+  const bounds = itemBounds(item);
+  return zones.flatMap((zone) => {
+    const x = Math.max(bounds.left, zone.x);
+    const y = Math.max(bounds.top, zone.y);
+    const width = Math.min(bounds.right, zone.x + zone.width) - x;
+    const depth = Math.min(bounds.bottom, zone.y + zone.depth) - y;
+    return width > 0 && depth > 0 ? [{ x, y, width, depth }] : [];
+  });
+}
+
+// Bounding-footprint estimate, not a measure of clear walking space.
 export function calculateCoverage(items, zones) {
   const homeArea = calculateUnionArea(zones);
   if (!homeArea) return 0;
-  const usedArea = items.reduce((total, item) => total + item.width * item.depth, 0);
-  return Math.round((usedArea / homeArea) * 100);
+  const footprints = items
+    .filter((item) => (item.elevation ?? 0) <= 0)
+    .flatMap((item) => clippedItemFootprints(item, zones));
+  const usedArea = calculateUnionArea(footprints);
+  return Math.min(100, Math.max(0, Math.round((usedArea / homeArea) * 100)));
 }
 
 export function meters(cm) {
