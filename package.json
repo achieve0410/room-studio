@@ -31,6 +31,7 @@
     "test": "node --test",
     "test:browser:mobile": "npm run build && node scripts/mobile-browser-audit.mjs",
     "test:browser:real-plans": "node scripts/real-plan-browser-audit.mjs",
+    "test:browser:regional": "node scripts/real-plan-browser-audit.mjs --regional",
     "test:browser:consultation": "node scripts/consultation-browser-audit.mjs && node scripts/consultation-cloud-audit.mjs && node scripts/consultation-cloud-audit.mjs --mobile",
     "check": "npm run lint && npm run test && npm run build"
   },

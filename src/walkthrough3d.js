@@ -1544,9 +1544,10 @@ export function openWalkthrough({
   };
 
   const announceRoom = (room) => {
-    if (!room || spaceIdOf(room) === currentRoomId) return;
+    if (!room) return;
+    if (currentRoom.textContent !== room.name) currentRoom.textContent = room.name;
+    if (spaceIdOf(room) === currentRoomId) return;
     currentRoomId = spaceIdOf(room);
-    currentRoom.textContent = room.name;
     roomToast.querySelector('strong').textContent = room.name;
     roomToast.classList.remove('is-visible');
     requestAnimationFrame(() => roomToast.classList.add('is-visible'));

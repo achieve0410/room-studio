@@ -17,7 +17,9 @@ const chrome = [
 if (!chrome) throw new Error('Chrome or Chromium is required');
 
 const root = resolve(import.meta.dirname, '..');
-const outputRoot = safeArtifactPath(process.argv[2], '.omx/artifacts/real-plan-navigation');
+const regional = process.argv.includes('--regional') || process.env.REGIONAL_PLANS === '1';
+const outputArgument = process.argv.slice(2).find((argument) => argument !== '--regional');
+const outputRoot = safeArtifactPath(outputArgument, regional ? '.omx/artifacts/regional-navigation' : '.omx/artifacts/real-plan-navigation');
 const auditTimeoutMs = Number(process.env.REAL_PLAN_AUDIT_TIMEOUT_MS ?? 25 * 60 * 1000);
 const profileParent = process.env.REAL_PLAN_AUDIT_PROFILE_PARENT ?? tmpdir();
 const profileRoot = await mkdtemp(join(profileParent, 'room-studio-real-plan-audit-'));
@@ -31,6 +33,7 @@ async function run(script, url, output) {
       env: {
         ...process.env,
         CHROME_BIN: chrome,
+        REGIONAL_PLANS: regional ? '1' : '0',
         REAL_PLAN_AUDIT_PROFILE_ROOT: profileRoot,
       },
       stdio: 'inherit',
