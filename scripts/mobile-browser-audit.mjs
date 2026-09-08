@@ -276,11 +276,24 @@ async function screenshot(name) {
 }
 
 async function centerOf(selector, index = 0) {
-  return evaluate(`(() => {
+  return evaluate(`(async () => {
     const node = document.querySelectorAll(${JSON.stringify(selector)})[${index}];
     if (!node) return null;
-    const rect = node.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
+    if (node instanceof HTMLElement) {
+      node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
+    const current = document.querySelectorAll(${JSON.stringify(selector)})[${index}];
+    if (!current) return null;
+    const rect = current.getBoundingClientRect();
+    const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
+    if (current.matches('.plan-item')) {
+      const points = [center, ...[0.25, 0.75].flatMap(x => [0.25, 0.75].map(y => ({ ...center, x: rect.left + rect.width * x, y: rect.top + rect.height * y })))];
+      const point = points.find(p => document.elementFromPoint(p.x, p.y)?.closest('[data-item-id]') === current);
+      if (!point) throw new Error('No exposed item hit point: ' + current.dataset.itemId);
+      return point;
+    }
+    return center;
   })()`);
 }
 
@@ -1817,9 +1830,7 @@ try {
       return { x: point.x, y: point.y };
     }));
     return candidates.find((point) => {
-      const firstInteractive = document.elementsFromPoint(point.x, point.y).find((node) => (
-        node.closest('[data-resize-handle], [data-structure-rotate], [data-structure-id]')
-      ));
+      const firstInteractive = document.elementFromPoint(point.x, point.y);
       return !firstInteractive?.closest('[data-resize-handle], [data-structure-rotate]')
         && firstInteractive?.closest('[data-structure-id]')?.dataset.structureId === wallId;
     }) ?? null;
@@ -2416,7 +2427,7 @@ try {
     'E 3D preview switches among dollhouse, top, and focused selection views with ceilings hidden',
     previewInitial.mode === 'dollhouse' && previewInitial.cutaway === 'true'
       && previewInitial.ceilingHidden === 'true' && !previewInitial.focusDisabled
-      && previewTop.mode === 'top' && previewTop.overview && previewTop.cutaway === 'false'
+      && previewTop.mode === 'top' && previewTop.overview && previewTop.cutaway === 'true'
       && previewFocus.mode === 'dollhouse' && previewFocus.cutaway === 'true'
       && previewFocus.status.includes('바로 보기'),
     { previewInitial, previewTop, previewFocus },
