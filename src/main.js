@@ -10,7 +10,7 @@ import {
 import { parseProjectFile, projectFileName, serializeProjectFile } from './project-file.js';
 import { createDecisionReport, decisionReportFileName } from './project-report.js';
 import { createNumericEditTransaction, rankHitCandidates, snapPendingPlacement } from './editor-interactions.js';
-import { DEMO_LAYOUTS, demoLayoutById } from './demo-layouts.js';
+import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS, demoLayoutById } from './demo-layouts.js';
 import {
   createComparisonOption,
   geometrySnapshot,
@@ -43,6 +43,7 @@ import {
   getPannedViewBox,
   getPinchViewBox,
   getLayoutBounds,
+  getDoorLeafSegments,
   getRolledBackSelection,
   getZoomViewBox,
   itemBounds,
@@ -939,6 +940,7 @@ function applyDemoLayout(id) {
   if (!canReplaceCurrentDraft()) return;
   const { source, typology, ...layout } = demo;
   applyProjectDocument({ projectName: demo.name, layout });
+  starterDialogOpen = false;
   demoGalleryOpen = false;
   pendingDemoId = null;
   editorNotice = `${demo.name}을 열었습니다. 배치와 3D 미리보기를 자유롭게 수정해 보세요.`;
@@ -2238,6 +2240,12 @@ function svgPointFromClient(point) {
 
 function editorContentBounds() {
   const bounds = [getLayoutBounds(state.zones)];
+  getDoorLeafSegments(state.structures.filter(({ type }) => type === 'door')).forEach(({ start, end }) => bounds.push({
+    left: Math.min(start.x, end.x),
+    right: Math.max(start.x, end.x),
+    top: Math.min(start.y, end.y),
+    bottom: Math.max(start.y, end.y),
+  }));
   if (state.backgroundPlan) {
     bounds.push({
       left: state.backgroundPlan.x,
@@ -3874,8 +3882,8 @@ function renderStarterDialog() {
       <p>샘플로 배치 감각을 익히거나, 빈 도면과 기존 파일에서 바로 시작할 수 있습니다.</p>
       <div class="starter-options">
         <button class="starter-option is-primary" data-start-sample type="button">
-          <b>가구가 있는 샘플</b>
-          <span>거실과 가구가 배치된 예제로 주요 기능을 바로 확인합니다.</span>
+          <b>실제 아파트 참고 샘플</b>
+          <span>${escapeHtml(REGIONAL_DEMO_LAYOUTS[0].name)}의 공개 평면을 참고한 재구성 도면입니다. 치수와 가구 배치는 추정입니다.</span>
         </button>
         <button class="starter-option" data-start-blank type="button">
           <b>빈 도면</b>
@@ -3894,35 +3902,48 @@ function renderStarterDialog() {
 
 function renderDemoGallery() {
   if (!demoGalleryOpen) return '';
-  const pendingDemo = pendingDemoId ? DEMO_LAYOUTS.find(({ id }) => id === pendingDemoId) : null;
+  const galleryLayouts = [...REGIONAL_DEMO_LAYOUTS, ...DEMO_LAYOUTS];
+  const pendingDemo = pendingDemoId ? galleryLayouts.find(({ id }) => id === pendingDemoId) : null;
   const previewDoorMarkup = (structure) => {
     const hingeEnd = structure.hinge === 'end';
-    return `<b data-demo-preview-door="${structure.exterior ? 'exterior' : 'interior'}" style="--x:${structure.x};--y:${structure.y};--w:${structure.width};--r:${structure.orientation === 'vertical' ? 90 : 0}deg;--s:${structure.openSide};--hx:${hingeEnd ? -1 : 1};--ox:${hingeEnd ? '100%' : '0'}"></b>`;
+    return `<b data-demo-preview-door="${structure.exterior ? 'exterior' : 'interior'}" data-door-kind="${structure.doorType === 'sliding' ? 'sliding' : 'swing'}" style="--x:${structure.x};--y:${structure.y};--w:${structure.width};--r:${structure.orientation === 'vertical' ? 90 : 0}deg;--s:${structure.openSide};--hx:${hingeEnd ? -1 : 1};--ox:${hingeEnd ? '100%' : '0'}"></b>`;
   };
   return `<div class="cloud-dialog-backdrop demo-gallery-backdrop" data-demo-backdrop>
     <section class="cloud-dialog demo-gallery" data-demo-gallery role="dialog" aria-modal="true" aria-labelledby="demo-gallery-title">
       <button class="cloud-dialog-close" data-demo-close type="button" aria-label="모델 홈 갤러리 닫기">×</button>
-      <span class="eyebrow">LH MODEL HOME GALLERY</span>
-      <h2 id="demo-gallery-title">실제 LH 아파트 평면으로 시작하세요</h2>
-      <p>공개된 실제 주택 평면 기록의 주요 치수와 방·문·창 위치를 축약 재구성했습니다. 모든 방은 열린 문으로 연결되어 3D에서 바로 이동할 수 있으며, 원본 이미지·주소·개인정보는 포함하지 않습니다.</p>
+      <span class="eyebrow">아파트 참고 샘플</span>
+      <h2 id="demo-gallery-title">우리 동네 아파트 평면으로 시작하세요</h2>
+      <p>대치동·압구정동·도곡동의 공개 평면 참고 샘플과 기존 LH 샘플입니다. 열린 거실·주방은 문 없이 연결하며, 치수와 가구 배치는 편집용 추정입니다. 출처 표기 면적은 편집기 구역 면적과 다릅니다.</p>
       <div class="demo-grid">
-        ${DEMO_LAYOUTS.map((demo) => {
+        ${galleryLayouts.map((demo) => {
+    // Include the full swing envelope, not just the floor footprint or door center.
+    const bounds = [...demo.zones.map(zoneBounds), ...demo.structures.filter(({ type }) => type === 'door').map((door) => {
+      const radius = door.width * 1.5;
+      return { left: door.x - radius, right: door.x + radius, top: door.y - radius, bottom: door.y + radius };
+    })];
+    const left = Math.min(...bounds.map((bound) => bound.left));
+    const top = Math.min(...bounds.map((bound) => bound.top));
+    const width = Math.max(...bounds.map((bound) => bound.right)) - left;
+    const height = Math.max(...bounds.map((bound) => bound.bottom)) - top;
+    const sourceUrl = demo.source.referenceUrl || demo.source.datasetUrl;
     return `<article class="demo-card" data-demo-card="${demo.id}">
-          <div class="demo-card-plan" aria-hidden="true">
+          <div class="demo-card-plan" style="--bounds-x:${left};--bounds-y:${top};--bounds-w:${width};--bounds-h:${height}" aria-hidden="true">
             ${demo.zones.map((zone) => `<i style="--x:${zone.x};--y:${zone.y};--w:${zone.width};--d:${zone.depth};--c:${zone.color}"></i>`).join('')}
             ${demo.structures.filter(({ type }) => type === 'door').map(previewDoorMarkup).join('')}
           </div>
-          <span class="demo-area" data-demo-area>${escapeHtml(demo.source.planType)}형</span>
+          <span class="demo-area" data-demo-area>${demo.region ? `${escapeHtml(demo.region)} · ` : ''}${escapeHtml(demo.source.planType)}</span>
+          ${demo.source.areaLabel ? `<p data-demo-area-label>출처 표기 면적: ${escapeHtml(demo.source.areaLabel)}</p>` : ''}
           <h3>${escapeHtml(demo.name)}</h3>
           <p data-demo-rooms>${demo.zones.map(({ name }, index) => `<span>${index ? '· ' : ''}${escapeHtml(name)}</span>`).join(' ')}</p>
-          <dl><div><dt>출처</dt><dd data-demo-source>${escapeHtml(demo.source.attribution)} · ${escapeHtml(demo.source.archiveEntry)}</dd></div></dl>
+          <dl><div><dt>출처</dt><dd data-demo-source><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(demo.source.attribution)}</a>${demo.source.archiveEntry ? ` · ${escapeHtml(demo.source.archiveEntry)}` : ''}</dd></div></dl>
           <p class="demo-geometry-basis" data-demo-geometry>${escapeHtml(demo.source.geometryBasis)}</p>
           <small data-demo-adaptation>${escapeHtml(demo.source.adaptationNotice)}</small>
+          <small data-demo-license>${escapeHtml(demo.source.license)}</small>
           <button data-demo-layout="${demo.id}" type="button">이 모델 홈 열기</button>
         </article>`;
   }).join('')}
       </div>
-      <p class="demo-license">공공데이터포털 <a href="${DEMO_LAYOUTS[0].source.datasetUrl}" target="_blank" rel="noreferrer">한국토지주택공사 주택 평면도 현황</a> · ${escapeHtml(DEMO_LAYOUTS[0].source.license)}</p>
+      <p class="demo-license">LH 샘플 3종에만 적용 · 공공데이터포털 <a href="${DEMO_LAYOUTS[0].source.datasetUrl}" target="_blank" rel="noreferrer">한국토지주택공사 주택 평면도 현황</a> · ${escapeHtml(DEMO_LAYOUTS[0].source.license)}</p>
       ${pendingDemo ? `<div class="demo-confirm" data-demo-confirm role="alertdialog" aria-modal="true" aria-labelledby="demo-confirm-title">
         <strong id="demo-confirm-title">현재 도면을 바꿀까요?</strong>
         <p>저장된 브라우저 도면 대신 <b>${escapeHtml(pendingDemo.name)}</b>을 엽니다. 필요한 경우 먼저 도면 파일을 내보내세요.</p>
@@ -4356,12 +4377,7 @@ function bindEvents() {
     document.querySelector('[data-start-open]')?.focus();
   });
   document.querySelector('[data-start-sample]')?.addEventListener('click', () => {
-    if (!canReplaceCurrentDraft()) return;
-    applyProjectDocument({ projectName: '가구 배치 샘플', layout: defaultState() });
-    starterDialogOpen = false;
-    editorNotice = '가구가 있는 샘플을 열었습니다. 자유롭게 수정해 보세요.';
-    pendingFocus = { kind: 'canvas' };
-    render();
+    applyDemoLayout(REGIONAL_DEMO_LAYOUTS[0].id);
   });
   document.querySelector('[data-start-blank]')?.addEventListener('click', () => {
     if (!canReplaceCurrentDraft()) return;

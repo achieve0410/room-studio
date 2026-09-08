@@ -255,6 +255,15 @@ async function completeStarterIfPresent() {
   if (result.present && (!result.closed || result.zones === 0 || result.items === 0)) {
     throw new Error(`Starter setup did not complete: ${JSON.stringify(result)}`);
   }
+  if (result.present) {
+    // The editing regression coordinates use the fixed legacy preset, not a gallery floor plan.
+    await evaluate(`document.querySelector('[data-layout="apartment"]').click()`);
+    const loaded = cdp.once('Page.loadEventFired');
+    await cdp.send('Page.reload');
+    await loaded;
+    await waitForExpression(`document.querySelector('#plan-canvas') !== null`, 'fresh legacy editing history');
+    await doubleRaf();
+  }
 }
 
 async function reloadViewport(url, width, height, touch = width <= 900) {

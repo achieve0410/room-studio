@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { safeArtifactPath } from './artifact-path.mjs';
-import { DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
+import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
 import {
   doorsForAutomaticWallSegment,
   getDoorLeafSegments,
@@ -287,7 +287,7 @@ async function moveTo(waypoint, demoId) {
     const dx = waypoint.x - current.x;
     const dy = waypoint.y - current.y;
     const distance = Math.hypot(dx, dy);
-    if (distance <= 20) return;
+    if (distance <= 2) return;
     const desired = { x: dx / distance, y: dy / distance };
   const angle = current.angle * Math.PI / 180;
   const forward = { x: Math.sin(angle), y: -Math.cos(angle) };
@@ -371,7 +371,7 @@ async function moveTo(waypoint, demoId) {
       || touchMove.pointerId !== touchStart.pointerId || touchMove.knob === 'translate(0px, 0px)') {
       throw new Error(`${demoId}: joystick rejected touch move ${JSON.stringify(touchMove)}`);
     }
-    const chunkDistance = Math.min(20, Math.max(5, distance - 20));
+    const chunkDistance = Math.min(20, Math.max(1, distance - 2));
     const movement = await evaluate(`(() => {
       const player = document.querySelector('[data-map-player]');
       for (let frame = 1; frame <= 90; frame += 1) {
@@ -379,7 +379,7 @@ async function moveTo(waypoint, demoId) {
         const next = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
         const remaining = Math.hypot(${waypoint.x} - Number(next[1]), ${waypoint.y} - Number(next[2]));
         const moved = Math.hypot(Number(next[1]) - ${current.x}, Number(next[2]) - ${current.y});
-        if (remaining <= 20 || moved >= ${chunkDistance}) return { frame, moved, remaining };
+        if (remaining <= 2 || moved >= ${chunkDistance}) return { frame, moved, remaining };
       }
       const next = player.getAttribute('transform').match(/translate\\(([-.0-9]+) ([-.0-9]+)\\)/);
       return {
@@ -389,7 +389,7 @@ async function moveTo(waypoint, demoId) {
       };
     })()`);
     if (!movement.frame) {
-      throw new Error(`${demoId}: camera advanced only ${movement.moved.toFixed(1)} cm; ${movement.remaining.toFixed(1)} cm remain`);
+      throw new Error(`${demoId}: camera advanced only ${movement.moved.toFixed(1)} cm; ${movement.remaining.toFixed(1)} cm remain; from ${JSON.stringify(current)} toward ${JSON.stringify(waypoint)}; stopped ${JSON.stringify(await telemetry())}`);
     }
   } finally {
     if (touchActive) {
@@ -493,7 +493,7 @@ try {
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 844, height: 844, deviceScaleFactor: 1, mobile: true });
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   const reports = [];
-  for (const demo of DEMO_LAYOUTS) {
+  for (const demo of process.env.REGIONAL_PLANS === '1' ? REGIONAL_DEMO_LAYOUTS : DEMO_LAYOUTS) {
     await navigate(url);
     await waitFor(`document.querySelector('[data-demo-open]')`, `${demo.id} app shell`);
     await evaluate(`localStorage.clear()`);
@@ -511,6 +511,8 @@ try {
       await clickSelector('[data-demo-confirm-accept]');
     }
     await waitFor(`document.querySelectorAll('.plan-door').length === ${demo.structures.filter(({ type }) => type === 'door').length}`, `${demo.id} 2D doors`);
+    const loadedLayout = await evaluate(`JSON.parse(localStorage.getItem('room-studio-layout-v2'))`);
+    await writeFile(join(outputDir, `${demo.id}-loaded.json`), JSON.stringify(loadedLayout, null, 2));
     const loadedStartCount = await evaluate(`JSON.parse(localStorage.getItem('room-studio-layout-v2')).zones
       .filter((zone) => zone.walkthroughStart).length`);
     if (loadedStartCount !== 1) throw new Error(`${demo.id}: entrance walkthrough marker was not preserved`);

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { safeArtifactPath } from './artifact-path.mjs';
+import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
 
 const chrome = [
   process.env.CHROME_BIN,
@@ -111,7 +112,7 @@ try {
   await send('Runtime.enable');
   await waitFor(`document.querySelector('[data-demo-open]')`, 'application shell');
   await evaluate(`localStorage.clear(); document.querySelector('[data-demo-open]').click()`);
-  await waitFor(`document.querySelectorAll('[data-demo-card]').length === 3`, 'three model-home cards');
+  await waitFor(`document.querySelectorAll('[data-demo-card]').length === ${DEMO_LAYOUTS.length + REGIONAL_DEMO_LAYOUTS.length}`, 'all model-home cards');
 
   const viewports = [
     { name: 'portrait-390x844', width: 390, height: 844 },

@@ -6,7 +6,7 @@ import {
   launchChrome,
   setViewport,
 } from '../room-studio-improvements/browser-qa-lib.mjs';
-import { DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
+import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
 import { safeArtifactPath } from './artifact-path.mjs';
 
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -49,11 +49,11 @@ try {
   await evaluate(browser.cdp, `localStorage.clear();
     document.querySelector('[data-start-close]')?.click();
     document.querySelector('[data-demo-open]').click();`);
-  await waitFor(`document.querySelectorAll('[data-demo-card]').length === ${DEMO_LAYOUTS.length}`, 'demo gallery');
+  await waitFor(`document.querySelectorAll('[data-demo-card]').length === ${DEMO_LAYOUTS.length + REGIONAL_DEMO_LAYOUTS.length}`, 'demo gallery');
 
   const reports = [];
-  for (const demo of DEMO_LAYOUTS) {
-    const expectedInteriorDoors = demo.source.roomAdjacency.length;
+  for (const demo of process.env.REGIONAL_PLANS === '1' ? REGIONAL_DEMO_LAYOUTS : DEMO_LAYOUTS) {
+    const expectedInteriorDoors = demo.structures.filter(({ type, exterior }) => type === 'door' && !exterior).length;
     const previewDoors = await evaluate(browser.cdp,
       `(() => {
         const card = document.querySelector('[data-demo-card="${demo.id}"]');
@@ -91,6 +91,7 @@ try {
       const panel = door.querySelector('.door-panel');
       const style = getComputedStyle(panel);
       const viewport = { width: innerWidth, height: innerHeight };
+      const canvas = document.querySelector('#plan-canvas').getBoundingClientRect();
       return {
         id: door.dataset.structureId,
         width: rect.width,
@@ -98,7 +99,8 @@ try {
         stroke: style.stroke,
         strokeWidth: Number.parseFloat(style.strokeWidth),
         opacity: Number.parseFloat(style.opacity),
-        inViewport: rect.right > 0 && rect.bottom > 0 && rect.left < viewport.width && rect.top < viewport.height,
+        inViewport: rect.left >= Math.max(0, canvas.left) && rect.top >= Math.max(0, canvas.top)
+          && rect.right <= Math.min(viewport.width, canvas.right) && rect.bottom <= Math.min(viewport.height, canvas.bottom),
       };
     }))`);
     await capture(browser.cdp, `${outputDir}/${demo.id}-plan.png`);
