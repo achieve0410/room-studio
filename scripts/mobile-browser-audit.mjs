@@ -2052,37 +2052,45 @@ try {
   })()`);
   await openWalkthrough();
   const windowWalkthroughCanvas = await centerOf('[data-walkthrough-canvas]');
-  let targetedWindowId = await evaluate(`document.querySelector('[data-walkthrough]')?.dataset.targetWindowId ?? null`);
-  for (let step = 0; !targetedWindowId && step < 32; step += 1) {
-    await mouseDrag(
-      { x: windowWalkthroughCanvas.x - 45, y: windowWalkthroughCanvas.y },
-      { x: windowWalkthroughCanvas.x + 35, y: windowWalkthroughCanvas.y },
-    );
+  let targetedWindowId = null;
+  for (let step = 0; !targetedWindowId && step < 33; step += 1) {
+    if (step > 0) {
+      await mouseDrag(
+        { x: windowWalkthroughCanvas.x - 45, y: windowWalkthroughCanvas.y },
+        { x: windowWalkthroughCanvas.x + 35, y: windowWalkthroughCanvas.y },
+      );
+    }
     targetedWindowId = await evaluate(`new Promise((resolve) => {
       const overlay = document.querySelector('[data-walkthrough]');
       const expected = ${JSON.stringify(windowId)};
       let stableFrames = 0;
+      let previousAngle = null;
+      let frame;
       let finished = false;
       const finish = (value) => {
         if (finished) return;
         finished = true;
-        observer.disconnect();
+        cancelAnimationFrame(frame);
         clearTimeout(timeout);
         resolve(value);
       };
       const check = () => {
+        if (finished) return;
+        const transform = overlay.querySelector('[data-map-player]')?.getAttribute('transform') ?? '';
+        const match = transform.match(/rotate\\(([^)]+)\\)/);
+        const angle = match ? Number(match[1]) : NaN;
         const target = overlay?.dataset.targetWindowId ?? null;
-        stableFrames = target === expected ? stableFrames + 1 : 0;
+        stableFrames = previousAngle !== null && Number.isFinite(angle)
+          && Math.abs(angle - previousAngle) < 0.01 ? stableFrames + 1 : 0;
+        previousAngle = angle;
         if (stableFrames >= 3) {
-          finish(target);
+          finish(target === expected ? target : null);
           return;
         }
-        if (!finished) requestAnimationFrame(check);
+        frame = requestAnimationFrame(check);
       };
-      const observer = new MutationObserver(check);
-      observer.observe(overlay, { attributes: true, attributeFilter: ['data-target-window-id'] });
-      const timeout = setTimeout(() => finish(null), 500);
-      requestAnimationFrame(check);
+      const timeout = setTimeout(() => finish(null), 5000);
+      frame = requestAnimationFrame(check);
     })`);
   }
   const windowBefore3dClick = targetedWindowId
@@ -2123,13 +2131,22 @@ try {
   const windowAfter3dClick = targetedWindowId
     ? await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ id }) => id === ${JSON.stringify(windowId)})`)
     : null;
-  report.interactionAssertions.push(assertion(
+  const windowClickAssertion = assertion(
     'D 3D center crosshair finds a sash window and canvas click persists open or closed state',
     targetedWindowId === windowId && windowBefore3dClick?.openRatio !== windowAfter3dClick?.openRatio
       && windowAction?.startsWith(`${windowId}:`),
     { targetedWindowId, windowBefore3dClick, windowAfter3dClick, windowAction },
     'the visible window is targeted and direct canvas click toggles persisted openRatio',
-  ));
+  );
+  report.interactionAssertions.push(windowClickAssertion);
+  if (!windowClickAssertion.pass) {
+    report.windowInputState = await evaluate(`({
+      pointerLocked: Boolean(document.pointerLockElement),
+      targetWindowId: document.querySelector('[data-walkthrough]')?.dataset.targetWindowId ?? null,
+      aim: document.querySelector('[data-map-player]')?.getAttribute('transform') ?? null
+    })`);
+    throw new Error('Window click did not persist opening state');
+  }
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', repeat: true, bubbles: true }))`);
   const windowAfterRepeatedKey = await evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).structures.find(({ id }) => id === ${JSON.stringify(windowId)})`);
   report.interactionAssertions.push(assertion(
