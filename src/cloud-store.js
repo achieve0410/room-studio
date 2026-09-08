@@ -1,3 +1,5 @@
+import { CURRENT_SCHEMA_VERSION, preparePersistedLayout } from './consultation.js';
+
 const DEFAULT_PROJECT_NAME = '내 집 도면';
 const runtimeEnv = import.meta.env ?? {};
 
@@ -10,17 +12,7 @@ export function normalizeProjectName(value) {
 }
 
 export function prepareLayoutSnapshot(layout) {
-  if (!Array.isArray(layout?.zones) || !Array.isArray(layout?.items) || !Array.isArray(layout?.structures)) {
-    throw new TypeError('유효한 도면 데이터가 아닙니다.');
-  }
-  return JSON.parse(JSON.stringify({
-    zones: layout.zones,
-    items: layout.items,
-    structures: layout.structures,
-    dimensions: Array.isArray(layout.dimensions) ? layout.dimensions : [],
-    backgroundPlan: layout.backgroundPlan ?? null,
-    wallHeight: Number(layout.wallHeight) || 240,
-  }));
+  return preparePersistedLayout(layout);
 }
 
 function throwIfError(result) {
@@ -88,6 +80,11 @@ export function createCloudStore({ client } = {}) {
         .select('id,name,layout_json,schema_version,revision,updated_at')
         .eq('id', id)
         .single());
+      if (![1, 2, CURRENT_SCHEMA_VERSION].includes(project.schema_version)) {
+        const error = new Error('지원하지 않는 도면 스키마입니다.');
+        error.code = 'UNSUPPORTED_SCHEMA';
+        throw error;
+      }
       return { ...project, layout_json: prepareLayoutSnapshot(project.layout_json) };
     },
 
@@ -105,7 +102,7 @@ export function createCloudStore({ client } = {}) {
         p_project_id: id,
         p_name: normalizeProjectName(name),
         p_layout_json: snapshot,
-        p_schema_version: 2,
+        p_schema_version: CURRENT_SCHEMA_VERSION,
         p_expected_revision: expectedRevision,
         p_create_version: createVersion,
       }));

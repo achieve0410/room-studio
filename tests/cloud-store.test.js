@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createComparisonOption, normalizeConsultation } from '../src/consultation.js';
 import {
   createCloudStore,
   createConfiguredCloudStore,
@@ -128,7 +129,7 @@ test('manual cloud saves persist an owned project and an immutable version snaps
       p_project_id: 'project-1',
       p_name: '우리 집',
       p_layout_json: { zones: [], items: [], structures: [], dimensions: [], backgroundPlan: null, wallHeight: 250 },
-      p_schema_version: 2,
+    p_schema_version: 3,
       p_expected_revision: 3,
       p_create_version: true,
     },
@@ -209,4 +210,52 @@ test('stale expected user blocks a project save before RPC', async () => {
 
   // Then no project write reaches Supabase
   assert.equal(rpcCalls, 0);
+});
+
+test('cloud saves and loads the full v3 contract while preserving owner and revision arguments', async () => {
+  const layout = createComparisonOption({ zones: [], items: [], structures: [], wallHeight: 240 });
+  layout.consultation.clientName = 'Client';
+  let row;
+  const query = {
+    select() { return this; }, eq() { return this; },
+    async single() { return { data: row, error: null }; },
+  };
+  const store = createCloudStore({ client: {
+    auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
+    from() { return query; },
+    async rpc(name, params) {
+      assert.equal(name, 'save_project');
+      assert.equal(params.p_expected_revision, 4);
+      assert.equal(params.p_schema_version, 3);
+      row = { id: params.p_project_id, schema_version: params.p_schema_version, layout_json: params.p_layout_json };
+      return { data: row, error: null };
+    },
+  } });
+  await store.saveProject({ id: 'project', layout, expectedRevision: 4, expectedUserId: 'owner' });
+  assert.deepEqual((await store.loadProject('project')).layout_json, layout);
+  for (const schema of [1, 2, 3]) {
+    row.schema_version = schema;
+    assert.deepEqual((await store.loadProject('project')).layout_json, layout);
+  }
+  for (const schema of [undefined, null, 0, 4, '3']) {
+    row.schema_version = schema;
+    await assert.rejects(store.loadProject('project'), (error) => error.code === 'UNSUPPORTED_SCHEMA');
+  }
+  row.schema_version = 3;
+  row.layout_json.consultation = { ...normalizeConsultation(), activeOption: 'B' };
+  await assert.rejects(store.loadProject('project'));
+});
+
+test('cloud rejects invalid and oversized consultation before issuing RPC', async () => {
+  let calls = 0;
+  const store = createCloudStore({ client: {
+    auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
+    async rpc() { calls += 1; return { data: {}, error: null }; },
+  } });
+  const layout = { zones: [], items: [], structures: [], wallHeight: 240, consultation: null };
+  await assert.rejects(store.saveProject({ layout }));
+  layout.consultation = normalizeConsultation();
+  layout.backgroundPlan = { dataUrl: 'x'.repeat(1_048_576) };
+  await assert.rejects(store.saveProject({ layout }), (error) => error.code === 'FILE_TOO_LARGE');
+  assert.equal(calls, 0);
 });
