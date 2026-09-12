@@ -29,6 +29,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
+      - name: Install Korean browser fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: Run syntax, unit, and build checks
         run: npm run check
       - name: Run browser interaction audit
