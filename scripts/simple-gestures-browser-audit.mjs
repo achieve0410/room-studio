@@ -189,7 +189,7 @@ try {
   const down = (p) => touch('touchStart', [[1, p]], 'pointerdown');
   const move = (p) => touch('touchMove', [[1, p]], 'pointermove');
   const up = () => touch('touchEnd', [], 'pointerup');
-  const tap = async (selector) => {
+  const tap = async (selector, jitter = null) => {
     const isControl = await page(`document.querySelector(${JSON.stringify(selector)}).matches('button, summary, [role="button"], [role="tab"]')`);
     if (!isControl) {
       await down(await point(selector));
@@ -198,20 +198,23 @@ try {
     const target = await point(selector);
     await page(`window.__controlClick = new Promise(resolve => {
       const finish = trusted => {
-        document.removeEventListener('click', onClick);
+        document.removeEventListener('click', onClick, true);
         resolve(trusted);
       };
       const onClick = event => {
         if (event.composedPath().some(node => node instanceof Element && node.matches(${JSON.stringify(selector)}))) finish(event.isTrusted);
       };
       window.__cancelControlClick = () => finish(false);
-      document.addEventListener('click', onClick);
+      document.addEventListener('click', onClick, true);
     }); true`);
     const clicked = bounded(evaluate(cdp, 'window.__controlClick'), `Native click ${selector}`);
     // Native touch clicks can arrive after pointerup; await the actual activation.
     try {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...target }] });
       liveContacts = 1;
+      if (jitter) await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove', touchPoints: [{ id: 1, x: target.x + jitter.x, y: target.y + jitter.y }],
+      });
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       liveContacts = 0;
       assert.equal(await clicked, true, 'controls complete a real browser-generated click');
@@ -473,6 +476,24 @@ try {
     assert.equal(committed.history, 1);
     assert.notDeepEqual(committed.layout.items[0], before.layout.items[0]);
     return { before, pressed, held, committed };
+  });
+
+  await scenario('simple-touch-structure-rotation-and-undo', async () => {
+    const before = await reset();
+    await tap('[data-structure-id="wall"]');
+    await tap('[data-simple-action="size"]');
+    const rotated = await tap('[data-structure-rotate="wall"]');
+    assert.equal(rotated.layout.structures[0].orientation, 'vertical');
+    assert.equal(rotated.history, 1);
+    const jittered = await tap('[data-structure-rotate="wall"]', { x: 3, y: 2 });
+    assert.equal(jittered.layout.structures[0].orientation, 'horizontal', 'small finger jitter remains a button tap');
+    assert.equal(jittered.history, 2);
+    const firstUndo = await tap('#undo-action');
+    assert.deepEqual(firstUndo.layout, rotated.layout);
+    const undone = await tap('#undo-action');
+    assert.deepEqual(undone.layout, before.layout);
+    assert.equal(undone.history, 0);
+    return { before, rotated, jittered, firstUndo, undone };
   });
 
   await scenario('simple-small-selected-furniture-remains-draggable', async () => {

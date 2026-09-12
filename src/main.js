@@ -4914,6 +4914,7 @@ function bindEvents() {
   const planCanvas = document.querySelector('#plan-canvas');
   // Prevent native flings from consuming the next toolbar tap.
   planCanvas.addEventListener('touchstart', (event) => {
+    if (event.target.closest('[data-structure-rotate]')) return;
     if (event.cancelable) event.preventDefault();
   }, { passive: false });
   planCanvas.addEventListener('pointermove', updatePlacementPreview, true);
