@@ -44,7 +44,21 @@ try {
       name: 'simple-gesture-audit-state',
       transform(source, id) {
         if (id.split('?')[0] !== resolve('src/main.js')) return;
-        return `${source}\nwindow.__simpleGestureAudit = {
+        return `${source}
+        const auditLongPressTimers = new Map();
+        const auditNativeSetTimeout = window.setTimeout.bind(window);
+        const auditNativeClearTimeout = window.clearTimeout.bind(window);
+        let auditTimerId = -1;
+        window.setTimeout = (callback, delay, ...args) => {
+          if (callback !== beginLongPressDrag) return auditNativeSetTimeout(callback, delay, ...args);
+          const id = auditTimerId--;
+          auditLongPressTimers.set(id, () => callback(...args));
+          return id;
+        };
+        window.clearTimeout = (id) => {
+          if (!auditLongPressTimers.delete(id)) auditNativeClearTimeout(id);
+        };
+        window.__simpleGestureAudit = {
           reset(layout) {
             if (!applyProjectDocument({ projectName: 'Touch gesture audit', layout })) throw new Error('Fixture load rejected');
             starterDialogOpen = false;
@@ -54,6 +68,11 @@ try {
             window.__simpleGestureEvents = [];
             render();
           },
+          advanceLongPress() {
+            const [id, callback] = auditLongPressTimers.entries().next().value;
+            auditLongPressTimers.delete(id);
+            callback();
+          },
           snapshot() {
             return {
               mode: workspaceMode, renderedMode: document.querySelector('.workspace')?.dataset.mode,
@@ -61,6 +80,7 @@ try {
               layout: layoutSnapshot(), selection: state.selection,
               keys: [...selectionKeys], history: historyPast.length, redo: historyFuture.length,
               gesture: gestureMode, contacts: activePointers.size, pressing: Boolean(entityPress),
+              pendingLongPress: auditLongPressTimers.size,
               dragging: Boolean(drag), moved: Boolean(drag?.hasMoved), moveArmed: mobileMoveArmed,
               menu: mobileContextMenu, menuVisible: Boolean(document.querySelector('.mobile-context-menu')),
               focusedAction: document.activeElement?.dataset?.contextAction ?? null,
@@ -70,10 +90,11 @@ try {
           },
         };
         window.__simpleGestureEvents = [];
-        for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend']) {
+        for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup', 'click']) {
           document.addEventListener(type, event => window.__simpleGestureEvents.push({
             type, pointerId: event.pointerId, touches: event.touches?.length,
-            clientX: event.clientX, clientY: event.clientY,
+            clientX: event.clientX, clientY: event.clientY, timeStamp: event.timeStamp,
+            target: event.target.id || event.target.tagName, trusted: event.isTrusted,
           }), { capture: true, passive: true });
         }`;
       },
@@ -93,28 +114,23 @@ try {
   await setViewport(cdp, 390, 844);
   await bounded(browser.navigate(receipt.url), 'Application navigation');
   assert.equal(await page('window.__simpleGestureAudit.snapshot().mode'), 'simple', 'simple is the default workspace');
-  // Freeze timer time, not pointer delivery: a delayed CDP command cannot accidentally become a long press.
-  await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
-  receipt.clock = 'CDP virtual time paused while deciding press versus drag; frames resume only without an entity press';
+  receipt.clock = 'Only application long-press callbacks are controlled; native Chrome input and compositor clocks remain real';
   const snapshot = () => page('window.__simpleGestureAudit.snapshot()');
   const frame = () => page('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   const reset = async (mode = 'simple', layout = fixture) => {
-    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'advance' });
     await page(`window.__simpleGestureAudit.reset(${JSON.stringify(layout)})`);
     await frame();
-    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
     if ((await snapshot()).mode !== mode) await tap('[data-workspace-mode]');
     const result = await snapshot();
     assert.equal(result.mode, mode);
     assert.equal(result.renderedMode, mode);
+    assert.equal(result.pendingLongPress, 0, 'reset cancels every pending long press');
     return result;
   };
   const screenshot = async (name) => {
     const path = join(outputDirectory, `${name}.png`);
-    assert.equal((await snapshot()).contacts, 0, 'screenshots only resume timer time after all contacts end');
-    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'advance' });
+    assert.equal((await snapshot()).contacts, 0, 'screenshots require all contacts to be released');
     await bounded(capture(cdp, path), 'Screenshot');
-    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
     receipt.screenshots.push(path);
   };
   const point = (selector) => page(`(() => {
@@ -156,12 +172,7 @@ try {
         assert.equal(event.trusted, true, 'regression must use browser-generated pointers');
       }),
     ]);
-    // Flush input/compositor frames after the press decision; never let a queued hold timer decide the test.
-    if (!liveContacts || !(await snapshot()).pressing) {
-      await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'advance' });
-      await frame();
-      await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
-    }
+    if (!liveContacts || !(await snapshot()).pressing) await frame();
     return snapshot();
   };
   const down = (p) => touch('touchStart', [[1, p]], 'pointerdown');
@@ -175,11 +186,18 @@ try {
     }
     const target = await point(selector);
     await page(`window.__controlClick = new Promise(resolve => {
-      document.querySelector(${JSON.stringify(selector)}).addEventListener('click', event => resolve(event.isTrusted), {once:true});
+      const finish = trusted => {
+        document.removeEventListener('click', onClick);
+        resolve(trusted);
+      };
+      const onClick = event => {
+        if (event.composedPath().some(node => node instanceof Element && node.matches(${JSON.stringify(selector)}))) finish(event.isTrusted);
+      };
+      window.__cancelControlClick = () => finish(false);
+      document.addEventListener('click', onClick);
     }); true`);
     const clicked = bounded(evaluate(cdp, 'window.__controlClick'), `Native click ${selector}`);
-    // Native touch clicks can arrive after pointerup. Freeze only entity gesture decisions.
-    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'advance' });
+    // Native touch clicks can arrive after pointerup; await the actual activation.
     try {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...target }] });
       liveContacts = 1;
@@ -189,8 +207,7 @@ try {
       await frame();
       return await snapshot();
     } finally {
-      await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
-      await page('delete window.__controlClick');
+      await page('window.__cancelControlClick(); delete window.__cancelControlClick; delete window.__controlClick');
     }
   };
   const unchanged = (after, before) => {
@@ -205,6 +222,7 @@ try {
     assert.deepEqual(after.keys, before.keys, 'selection set rolls back');
     assert.equal(after.moveArmed, before.moveArmed, 'Move mode rolls back');
     assert.equal(after.dragging, false);
+    assert.equal(after.pendingLongPress, before.pendingLongPress, 'canceled gesture does not leave a hold callback');
   };
   const scenario = async (name, run) => {
     try {
@@ -215,7 +233,7 @@ try {
     } catch (error) {
       receipt.scenarios.push({ name, pass: false, error: error.stack, state: await snapshot(), events: await page('window.__simpleGestureEvents') });
       console.error(`FAIL ${name}: ${error.message}`);
-      // End only this scenario's real contacts before resuming screenshot time or loading another fixture.
+      // End only this scenario's real contacts before capturing or loading another fixture.
       if (liveContacts) {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
         liveContacts = 0;
@@ -420,8 +438,24 @@ try {
     return { before, quickSwipe, tapped, selectedPreview, committed };
   });
 
+  await scenario('advanced-long-press-retains-real-handler', async () => {
+    const before = await reset('advanced');
+    const start = await point('[data-item-id="chair"]');
+    const pressed = await down(start);
+    assert.equal(pressed.pendingLongPress, 1);
+    assert.equal(pressed.dragging, false);
+    await page('window.__simpleGestureAudit.advanceLongPress()');
+    const held = await snapshot();
+    assert.equal(held.dragging, true, 'advancing the hold runs the original gesture handler');
+    assert.equal(held.pendingLongPress, 0);
+    await move({ x: start.x + 40, y: start.y + 22 });
+    const committed = await up();
+    assert.equal(committed.history, 1);
+    assert.notDeepEqual(committed.layout.items[0], before.layout.items[0]);
+    return { before, pressed, held, committed };
+  });
+
   await scenario('simple-small-selected-furniture-remains-draggable', async () => {
-    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'advance' });
     await setViewport(cdp, 320, 568);
     const before = await reset('simple', {
       ...fixture,
@@ -444,7 +478,6 @@ try {
   });
 
   await scenario('simple-wide-touch-tap-and-first-drag', async () => {
-    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'advance' });
     await setViewport(cdp, 1100, 900);
     const before = await reset();
     const tapped = await tap('[data-item-id="chair"]');
