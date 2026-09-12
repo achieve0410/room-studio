@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-09-08
+- Last refreshed: 2026-09-12
 - Primary product surfaces: 배경 도면·치수 도구를 포함한 2D 공간·가구·벽·문 편집기, 상세 조정 패널, 3D 1인칭·돌하우스·상공 미리보기
 - Evidence reviewed: `src/main.js`, `src/layout-tools.js`, `src/styles.css`, `src/walkthrough3d.js`, `scripts/mobile-browser-audit.mjs`, 390×844·1440×1000 렌더링, RoomSketcher·Planner 5D·Canva·Figma FigJam·SketchUp LayOut의 공식 조작 문서
 
@@ -22,18 +22,24 @@
 - Key contexts of use: 데스크톱 상담 자리에서는 도면과 상세 정보를 함께 보고, 현장 모바일에서는 도면과 현재 조작에 집중한다. 두 환경에서 같은 데이터와 기능을 제공한다.
 
 ## Information architecture
-- Primary navigation: 모바일 하단의 도면·공간·가구·상세 탭, 데스크톱 3열 작업 공간
+- Primary navigation: 기본은 간편 배치. 데스크톱은 가구·공간을 전환하는 단일 보조 패널과 넓은 도면, 모바일은 도면·공간·가구·상세 탭을 사용한다. 정밀 도구를 켜면 기존 3열 편집기로 전환한다.
 - Core routes/screens: 단일 2D 편집 화면, 전체 화면 3D 둘러보기
-- Content hierarchy: 고객·프로젝트와 현재 배치안 > 도면 > 현재 조작과 확인할 대상 > 제안서 전달 > 보조 통계
+- Content hierarchy: 내 공간 만들기 > 가구 놓기 > 3D 확인. 현재 선택의 조작만 도면 아래에 표시한다. 상담·배치안 비교·제안서는 접힌 보조 영역에서, 좌표·벽·치수·통계는 정밀 도구에서 연다.
 
 ## Design principles
 - Canvas first: 모바일에서도 도면을 기본 화면으로 유지한다.
+- Simple by default: 첫 사용은 가로·세로 두 치수로 빈 방을 바로 만든다. 실제 아파트 샘플, 완전한 빈 도면, 파일 가져오기도 시작 화면에서 선택할 수 있다. 저장된 작업은 그대로 복구하며 화면 모드는 도면 데이터에 저장하지 않는다.
+- Progressive tools: 기본 화면은 가구 놓기·공간 편집·3D 확인을 우선한다. 접힌 기능은 이름이 있는 버튼이나 disclosure로 접근하며, 기능을 사용한 뒤에도 해당 패널과 입력 상태를 유지한다. 정밀 도구는 같은 도면을 편집하며 전환으로 도면·실행 취소를 초기화하지 않는다.
+- Nonblocking selection: 간편 모드의 터치 선택은 모달을 열지 않는다. 도면 아래 선택 막대에서 회전·복제·크기·상세·삭제를 실행한다. 가구 본체는 첫 터치부터 끌 수 있고, 이동 전 탭은 선택만 한다. 두 손가락 확대 전환과 취소 시 미완료 이동은 되돌린다.
+- Small-object manipulation: 간편 모드의 기본 선택은 테두리만 표시한다. 크기 버튼을 열었을 때만 크기·회전 손잡이를 표시해 작은 가구의 이동 영역을 덮지 않는다. 정밀 모드는 기존 상시 손잡이를 유지한다.
 - Touch explicit: 키보드 보조 동작에는 터치 가능한 대체 버튼을 제공한다.
 - Direct manipulation: 대상을 선택하면 별도의 이동 모드 없이 본체를 끌어 이동하고, 경계 핸들로 크기를 바꾸며, 가구는 선택 상단의 회전 핸들로 연속 회전한다.
 - Visible feedback: 선택 테두리와 조작 종류가 구분되는 핸들을 사용하고, 이동·크기·회전 중에는 위치·치수·각도를 캔버스 위에 실시간으로 표시한다.
 - Precision ladder: 캔버스 조작은 빠른 배치를, 스냅·키보드는 미세 조정을, 상세 입력은 정확한 수치 입력을 담당한다. 같은 값을 세 경로에서 일관되게 저장한다.
 - Trace before redraw: 실제 평면도는 배경으로 가져와 알려진 두 점의 거리로 축척을 보정하며, 투명도와 잠금으로 편집 도형보다 뒤에 머물게 한다.
 - Preview before walkthrough: 3D는 돌하우스·상공 시점으로 전체 배치를 먼저 확인하고, 필요할 때 1인칭 통행 검증으로 전환한다.
+- Compact 3D controls: 3D 기본 제어는 전체 보기·위에서·걸어보기·닫기와 도구 더보기만 표시한다. 천장·발표용 벽·선택 초점·PNG는 더보기에서 열며, 모바일의 닫힌 제어판이 장면 위 230px을 차지하지 않도록 134px 이내로 줄인다. 메뉴는 Escape로 닫고 초점을 복귀하며 화면·내보내기 카메라 구도와 실제 통행 계약은 유지한다.
+- 3D input boundary: 3D는 이름 있는 모달이며 배경 편집기를 inert로 만든다. 방향키·단축키는 2D 도면을 바꾸지 않는다. 진입 시 보이는 3D 조작으로 초점을 옮기고 Tab을 안에서 순환하며, 닫기와 정리 후 현재 2D 미리보기 버튼으로 복귀한다.
 - Overview framing: 3D 전체보기는 실제 공간·가구·열린 문·프레임의 범위를 화면 비율과 시야각으로 맞추며 가장자리 여백을 둔다. 바닥 배경이나 숨긴 천장은 구도 계산에서 제외한다. PNG도 같은 카메라 구도를 사용한다.
 - Manual structure: 공간 연결부는 자동 문을 가정하지 않고 사용자가 벽과 문의 위치·폭·방향을 결정한다. 선택된 벽·문은 도면 위 양 끝점과 90도 회전 핸들로 직접 조정하며, 문을 다른 축의 벽 가까이 옮기면 해당 벽의 위치·방향·소유권으로 스냅한다.
 - Door interaction: 여닫이문은 0~120° 각도, 미닫이문은 앞·뒤 두 패널의 0~100% 겹침으로 상태를 저장하며 선택 패널과 모바일 작업 메뉴에서 열고 닫는다. 3D 문짝과 통행 충돌도 같은 상태를 사용한다.
@@ -62,6 +68,9 @@
 - Variants and states: 선택됨, 이동 중, 크기 조절 중, 회전 중, 정렬 스냅됨, 길게 누르기 이동, 그룹 이동 준비, 비활성, 경고, 열린 모바일 패널
 - Token/component ownership: `src/styles.css`의 기존 CSS 변수와 클래스 사용
 - Consultation primitives: 프로젝트 제목과 상담 정보 버튼, A/B 선택 버튼 묶음, 비교 보기, 업체·고객·요구사항 폼, 배치안별 추천·수정 메모, 저장 복구 안내. 버튼은 기본·선택·키보드 초점·비활성 상태를 구분하고 폼은 취소 시 원본을 유지한다.
+- Simple workspace primitives: 방 크기 시작 폼, 보조 패널 탭, 가구 검색, 가구 카드, 선택 조작 막대, 크기 입력 disclosure, 상담·정밀 기능 disclosure. 기존 버튼·입력·초점·비활성 토큰을 재사용한다. 가구 검색은 이름으로 즉시 필터링하고 결과 없음과 검색 지우기를 제공한다.
+- Simple workspace tokens: `--workspace-rail: 264px`, `--workspace-header: 64px`, `--workspace-mobile-nav: 64px`, `--text-section: 18px`, `--workspace-canvas-min: 200px`. 간격은 기존 4·8·12·16·24px, 색상은 paper·ink·accent·line, 터치 목표는 44px을 유지한다.
+- Simple containment: 간편 데스크톱의 도면은 남은 화면 높이를 차지하고 보조 패널만 독립 스크롤한다. 모바일은 도면 위 제어를 한 줄로 줄이고 선택 막대가 도면을 가리지 않도록 흐름에 둔다. 짧은 화면에서는 중앙 작업 영역이 스크롤하며 모달만 화면 전체를 막는다.
 - Workspace containment: 데스크톱은 도면을 중심으로 라이브러리와 상세 패널을 배치하며 각 보조 패널이 자신의 스크롤을 소유한다. 모바일은 도면 문서와 열린 패널을 구분하고, 모달이 열리면 배경을 inert로 만든다. 비교 보기는 넓은 화면에서 두 열, 좁은 화면에서 한 열이다.
 - Reference patterns: [supporting-pane](https://github.com/changeroa/StyleGallery/blob/main/patterns/split-sidebar/supporting-pane.md)의 주 작업·보조 패널 분리와 기존 모달의 초점 복귀 규칙을 사용한다. 새로운 장식적 애니메이션이나 UI 의존성을 추가하지 않는다.
 - Interaction reference: [beui drawer](https://beui.dev/r/drawer/raw)의 배경·패널 분리와 Escape·스크롤 경계를 참고하되 기존 바닐라 모달의 키보드 초점 순환을 유지한다. 폼 닫기와 배경 클릭은 저장하지 않는 취소 동작이다.
@@ -93,6 +102,7 @@
 ## Interaction states
 - Loading: 3D 준비 버튼 상태 유지
 - Empty: 기존 빈 상세 안내 유지
+- Simple empty: 공간이 없으면 방 만들기, 공간은 있으나 가구가 없으면 가구 선택을 다음 동작으로 안내한다. 안내는 한 문장과 한 동작으로 제한한다.
 - Error: 충돌·높이·경계 경고 유지
 - Success: 자동 저장 상태와 정상 배치 상태 유지
 - Disabled: 실행 취소·다시 실행 비활성 표시 유지
@@ -112,3 +122,4 @@
 
 ## Open questions
 - [ ] 실제 사용자 테스트 후 모바일 도면 패닝 제스처의 필요성 재평가 / 제품 / 탐색 효율
+- [ ] 개선된 핵심 흐름의 실제 고객 완료율과 학습 부담은 고객 파일럿으로 확인한다. 자동화된 브라우저 통과를 고객 적합성 검증으로 해석하지 않는다.

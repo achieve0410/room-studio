@@ -33,6 +33,7 @@
     "test:browser:real-plans": "node scripts/real-plan-browser-audit.mjs",
     "test:browser:regional": "node scripts/real-plan-browser-audit.mjs --regional",
     "test:browser:consultation": "node scripts/consultation-browser-audit.mjs && node scripts/consultation-cloud-audit.mjs && node scripts/consultation-cloud-audit.mjs --mobile",
+    "test:browser:simple": "node scripts/simple-workspace-browser-audit.mjs && node scripts/simple-gestures-browser-audit.mjs && node scripts/simple-3d-browser-audit.mjs",
     "check": "npm run lint && npm run test && npm run build"
   },
   "devDependencies": {

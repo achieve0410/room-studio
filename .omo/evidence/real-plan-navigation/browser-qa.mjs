@@ -500,6 +500,10 @@ try {
     if (await evaluate(`Boolean(document.querySelector('[data-start-close]'))`)) {
       await clickSelector('[data-start-close]');
     }
+    await clickSelector('[data-workspace-mode]');
+    if (await evaluate(`document.querySelector('.workspace')?.dataset.mode`) !== 'advanced') {
+      throw new Error(`${demo.id}: precision workspace did not open`);
+    }
     await clickSelector('[data-demo-open]');
     await waitFor(`document.querySelector('[data-demo-layout="${demo.id}"]')`, `${demo.id} gallery card`);
     await clickSelector(`[data-demo-layout="${demo.id}"]`);

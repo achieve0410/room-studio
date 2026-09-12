@@ -138,11 +138,22 @@ try {
   };
 
   const appUrl = server.resolvedUrls.local[0];
+  const enterAdvancedWorkspace = async () => {
+    await click('[data-workspace-mode]');
+    assert.equal(await evaluatePage('document.querySelector(".workspace").dataset.mode'), 'advanced');
+  };
+  const navigateEditor = async () => {
+    await browser.navigate(appUrl);
+    if (!await evaluatePage('Boolean(document.querySelector("[data-start-backdrop]"))')) {
+      await enterAdvancedWorkspace();
+    }
+  };
   const projectName = '테스트 고객의 마포 아파트 거실 배치 상담';
   await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: outputDirectory });
   await viewport(1440, 1000);
-  await browser.navigate(appUrl);
+  await navigateEditor();
   await click('[data-start-sample]');
+  await enterAdvancedWorkspace();
   assert.equal(await evaluatePage('Boolean(document.querySelector("#plan-canvas"))'), true, 'the editor must finish booting');
   await screenshot('desktop-before-consultation');
   assert.equal(
@@ -169,7 +180,7 @@ try {
   assert.equal(optionA.draftMetadata.projectName, projectName);
   assert.equal(optionA.consultation.clientName, '테스트 고객');
   assert.equal(optionA.consultation.inactiveGeometry, null);
-  await browser.navigate(appUrl);
+  await navigateEditor();
   assert.equal(await evaluatePage('document.querySelector("h1").textContent'), projectName);
   assert.equal(await evaluatePage('Boolean(document.querySelector("[data-start-backdrop]"))'), false);
   receipt.scenarios.push('named consultation and notes survive reload without cloud login');
@@ -196,7 +207,7 @@ try {
   assert.equal(twoOptions.consultation.options.A.label, '기존 가구 활용');
   assert.equal(twoOptions.consultation.options.B.label, '수납 우선 배치');
   assert.equal(twoOptions.consultation.recommendedOption, 'B');
-  await browser.navigate(appUrl);
+  await navigateEditor();
   assert.equal((await state()).consultation.activeOption, 'B');
   assert.equal((await state()).items[0].x, movedB.items[0].x);
   receipt.scenarios.push('A/B geometry, active option, notes and recommendation remain independent');
@@ -283,7 +294,7 @@ try {
   await writeFile(receipt.reportPdf, Buffer.from(pdf.data, 'base64'));
   receipt.scenarios.push('self-contained client report contains both options and prints to A4');
 
-  await browser.navigate(appUrl);
+  await navigateEditor();
   await viewport(390, 844);
   await click('.plan-item');
   await screenshot('mobile-after-touch');
@@ -406,7 +417,7 @@ try {
   await evaluatePage('Storage.prototype.setItem = window.__draftOriginalSetItem');
   await click('[data-draft-retry]');
   assert.equal((await state()).draftMetadata.projectName, '저장 실패 복구 테스트');
-  await browser.navigate(appUrl);
+  await navigateEditor();
   assert.equal(await evaluatePage('document.querySelector("h1").textContent'), '저장 실패 복구 테스트');
   receipt.scenarios.push('storage quota failure preserves old data and explicit retry saves current work');
 

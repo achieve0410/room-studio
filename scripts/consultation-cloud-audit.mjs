@@ -423,6 +423,9 @@ try {
       : `window.__cloudFixture?.calls.some(call => call.kind === 'authSubscribed')`);
     await wait();
     await fixture('checkpoint()');
+    if (!baseline) {
+      await click('[data-workspace-mode]', `document.querySelector('.workspace')?.dataset.mode === 'advanced'`);
+    }
   }
   async function openCloud() {
     await click('[data-cloud-open]', visible('[data-cloud-project-name]'));
