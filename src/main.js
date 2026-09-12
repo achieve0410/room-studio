@@ -4912,6 +4912,10 @@ function bindEvents() {
   document.querySelector('[data-background-plan]')?.addEventListener('pointerdown', startBackgroundDrag);
   document.querySelector('.grid-background').addEventListener('pointerdown', startMarquee);
   const planCanvas = document.querySelector('#plan-canvas');
+  // Prevent native flings from consuming the next toolbar tap.
+  planCanvas.addEventListener('touchstart', (event) => {
+    if (event.cancelable) event.preventDefault();
+  }, { passive: false });
   planCanvas.addEventListener('pointermove', updatePlacementPreview, true);
   planCanvas.addEventListener('pointerdown', commitPlacement, true);
   planCanvas.addEventListener('pointerdown', handleOverlapPointer, true);
