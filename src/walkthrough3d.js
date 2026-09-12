@@ -1455,6 +1455,10 @@ export function openWalkthrough({
     document.exitPointerLock?.();
     menu.querySelector('[data-walkthrough-start]').focus({ preventScroll: true });
   };
+  const onTouchStart = (event) => {
+    // Keep native flings from consuming the first toolbar tap after a camera drag.
+    if (event.cancelable) event.preventDefault();
+  };
   const onPointerDown = (event) => {
     if (!navigationActive || event.button !== 0) return;
     if (document.pointerLockElement === renderer.domElement) {
@@ -1682,6 +1686,7 @@ export function openWalkthrough({
     document.removeEventListener('keyup', onKeyUp);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
+    renderer.domElement.removeEventListener('touchstart', onTouchStart);
     renderer.domElement.removeEventListener('pointerdown', onPointerDown);
     renderer.domElement.removeEventListener('pointermove', onPointerMove);
     renderer.domElement.removeEventListener('pointerup', onPointerUp);
@@ -1721,6 +1726,7 @@ export function openWalkthrough({
   document.addEventListener('keyup', onKeyUp);
   document.addEventListener('fullscreenchange', onFullscreenChange);
   document.addEventListener('pointerlockchange', onPointerLockChange);
+  renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
   renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerup', onPointerUp);
