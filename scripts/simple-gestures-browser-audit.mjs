@@ -91,11 +91,21 @@ try {
         };
         window.__simpleGestureEvents = [];
         for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup', 'click']) {
-          document.addEventListener(type, event => window.__simpleGestureEvents.push({
-            type, pointerId: event.pointerId, touches: event.touches?.length,
-            clientX: event.clientX, clientY: event.clientY, timeStamp: event.timeStamp,
-            target: event.target.id || event.target.tagName, trusted: event.isTrusted,
-          }), { capture: true, passive: true });
+          document.addEventListener(type, event => {
+            const target = event.target;
+            const button = target.closest?.('button');
+            window.__simpleGestureEvents.push({
+              type, pointerId: event.pointerId, touches: event.touches?.length,
+              clientX: event.clientX, clientY: event.clientY, timeStamp: event.timeStamp,
+              target: target.id || target.tagName, trusted: event.isTrusted,
+              button: button?.outerHTML, connectedAtDispatch: target.isConnected,
+              final: () => ({
+                defaultPrevented: event.defaultPrevented, connectedAfterDispatch: target.isConnected,
+                disabled: button?.disabled, inert: Boolean(button?.closest('[inert]')),
+                touchAction: getComputedStyle(target).touchAction,
+              }),
+            });
+          }, { capture: true, passive: true });
         }`;
       },
     }],
@@ -106,6 +116,7 @@ try {
     process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/usr/bin/google-chrome'
   ));
   const { cdp } = browser;
+  receipt.browser = await cdp.send('Browser.getVersion');
   cdp.listeners.set('Runtime.exceptionThrown', new Set([
     ({ exceptionDetails }) => receipt.errors.push(exceptionDetails.exception?.description ?? exceptionDetails.text),
   ]));
@@ -228,10 +239,10 @@ try {
     try {
       const evidence = await run();
       await screenshot(name);
-      receipt.scenarios.push({ name, pass: true, evidence });
+      receipt.scenarios.push({ name, pass: true, evidence, events: await page('window.__simpleGestureEvents.map(({ final, ...entry }) => ({ ...entry, ...final() }))') });
       console.log(`PASS ${name}`);
     } catch (error) {
-      receipt.scenarios.push({ name, pass: false, error: error.stack, state: await snapshot(), events: await page('window.__simpleGestureEvents') });
+      receipt.scenarios.push({ name, pass: false, error: error.stack, state: await snapshot(), events: await page('window.__simpleGestureEvents.map(({ final, ...entry }) => ({ ...entry, ...final() }))') });
       console.error(`FAIL ${name}: ${error.message}`);
       // End only this scenario's real contacts before capturing or loading another fixture.
       if (liveContacts) {
@@ -241,6 +252,15 @@ try {
       await screenshot(`${name}-failure`);
     }
   };
+
+  await scenario('fresh-mobile-mode-toggle', async () => {
+    const before = await reset();
+    const advanced = await tap('[data-workspace-mode]');
+    assert.equal(advanced.mode, 'advanced');
+    const simple = await tap('[data-workspace-mode]');
+    assert.equal(simple.mode, 'simple');
+    return { before, advanced, simple };
+  });
 
   await scenario('simple-tap-no-modal', async () => {
     const before = await reset();
