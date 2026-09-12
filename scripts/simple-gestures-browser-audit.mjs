@@ -167,7 +167,32 @@ try {
   const down = (p) => touch('touchStart', [[1, p]], 'pointerdown');
   const move = (p) => touch('touchMove', [[1, p]], 'pointermove');
   const up = () => touch('touchEnd', [], 'pointerup');
-  const tap = async (selector) => { await down(await point(selector)); return up(); };
+  const tap = async (selector) => {
+    const isControl = await page(`document.querySelector(${JSON.stringify(selector)}).matches('button, summary, [role="button"], [role="tab"]')`);
+    if (!isControl) {
+      await down(await point(selector));
+      return up();
+    }
+    const target = await point(selector);
+    await page(`window.__controlClick = new Promise(resolve => {
+      document.querySelector(${JSON.stringify(selector)}).addEventListener('click', event => resolve(event.isTrusted), {once:true});
+    }); true`);
+    const clicked = bounded(evaluate(cdp, 'window.__controlClick'), `Native click ${selector}`);
+    // Native touch clicks can arrive after pointerup. Freeze only entity gesture decisions.
+    await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'advance' });
+    try {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...target }] });
+      liveContacts = 1;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      liveContacts = 0;
+      assert.equal(await clicked, true, 'controls complete a real browser-generated click');
+      await frame();
+      return await snapshot();
+    } finally {
+      await cdp.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
+      await page('delete window.__controlClick');
+    }
+  };
   const unchanged = (after, before) => {
     assert.deepEqual(after.layout, before.layout, 'geometry is unchanged');
     assert.equal(after.history, before.history, 'history is unchanged');
