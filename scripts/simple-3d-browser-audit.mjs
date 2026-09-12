@@ -8,9 +8,10 @@ import { createServer } from 'vite';
 import { DEMO_LAYOUTS } from '../src/demo-layouts.js';
 import { capture, evaluate, launchChrome } from '../.omo/evidence/room-studio-improvements/browser-qa-lib.mjs';
 
-const output = resolve('.omx/artifacts/simple-3d', new Date().toISOString().replaceAll(':', '-'));
+const output = resolve(process.env.SIMPLE_3D_OUTPUT ?? join('.omx/artifacts/simple-3d', new Date().toISOString().replaceAll(':', '-')));
+const touchFollowupOnly = process.argv.includes('--touch-followup-only');
 await mkdir(join(output, 'downloads'), { recursive: true });
-const receipt = { output, surface: 'real editor entry, production renderer profile', viewports: [], screenshots: [], errors: [] };
+const receipt = { output, surface: 'real editor entry; QA-profile touch regression and production-profile scene matrix', viewports: [], screenshots: [], errors: [] };
 const bounded = (promise, label) => {
   let timer;
   return Promise.race([promise, new Promise((_, reject) => {
@@ -101,7 +102,7 @@ ${anchor}`);
     if (event.type === 'error') receipt.errors.push(event.args.map(arg => arg.value ?? arg.description).join(' '));
   }]));
   await cdp.send('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath: join(output, 'downloads'), eventsEnabled: true });
-  await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('room-studio-layout-v2', ${JSON.stringify(JSON.stringify(DEMO_LAYOUTS[0]))});` });
+  const seed = await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('room-studio-layout-v2', ${JSON.stringify(JSON.stringify(DEMO_LAYOUTS[0]))});` });
 
   // Arm the exact state observer before input; separate installation from awaiting its promise.
   const armState = async (expression, label, events = []) => {
@@ -260,8 +261,173 @@ ${anchor}`);
     return { path, bytes: bytes.length, width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), sha256: createHash('sha256').update(bytes).digest('hex') };
   };
 
+  // A small real room keeps software rendering from waiting out Linux fling suppression.
+  // This uses the editor entry and the existing QA render profile, without replacing rendering.
+  // The full scene production-profile matrix follows independently.
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
+  await bounded(browser.navigate(receipt.url), 'Touch fixture editor navigation');
+  await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: seed.identifier });
+  const touchLayout = {
+    wallHeight: 240,
+    zones: [{ id: 'touch-room', name: 'Touch room', type: '방', x: 0, y: 0, width: 400, depth: 400, height: 240, color: '#c9b8a6' }],
+    items: [{ id: 'touch-table', name: 'Table', type: 'table', shape: 'roundRect', x: 200, y: 200, width: 120, depth: 70, height: 74, color: '#b78d65', rotation: 0, elevation: 0 }],
+    structures: [],
+  };
+  await page(`localStorage.setItem('room-studio-layout-v2', ${JSON.stringify(JSON.stringify(touchLayout))})`);
+  await bounded(browser.navigate(receipt.url), 'Touch fixture loaded');
+  await page('window.__roomStudioQaRenderProfile = true');
+  touch = true;
+  await page(`document.querySelector('#open-walkthrough').scrollIntoView({ block: 'center', behavior: 'instant' })`);
+  await paint();
+  const touchReady = await armState(`document.querySelector('[data-walkthrough-ready="true"]')`, 'touch 3D ready');
+  await click('#open-walkthrough');
+  await touchReady();
+  await setMode('walk');
+  await screenshot('touch-before-look');
+  const touchBefore = await snapshot();
+  assert.equal(touchBefore.renderer.pixelRatio, 0.5);
+  assert.equal(touchBefore.renderer.shadows, false);
+  const morePoint = await pointFor('[data-walkthrough-more]');
+  const lookPoint = await page(`(() => {
+    const canvas = document.querySelector('[data-walkthrough-canvas]');
+    const rect = canvas.getBoundingClientRect();
+    const point = { x: rect.x + rect.width * .65, y: rect.y + rect.height * .48 };
+    for (const x of [point.x, point.x + 48]) if (document.elementFromPoint(x, point.y) !== canvas) throw new Error('Touch look is obscured');
+    return point;
+  })()`);
+  const cameraChanged = await armState(`window.__simple3dAudit().camera.quaternion.some((value, index) => Math.abs(value - ${JSON.stringify(touchBefore.camera.quaternion)}[index]) > .001)`, 'touch changes actual camera');
+  const moreOpened = await armState(`document.querySelector('[data-walkthrough-more]').getAttribute('aria-expanded') === 'true'`, 'first post-look More tap');
+  await page(`(() => {
+    const canvas = document.querySelector('[data-walkthrough-canvas]');
+    const more = document.querySelector('[data-walkthrough-more]');
+    window.__touchLookEvents = [];
+    const record = event => {
+      if (event.target !== canvas && !more.contains(event.target)) return;
+      window.__touchLookEvents.push({ type: event.type, target: event.target === canvas ? 'canvas' : 'more',
+        trusted: event.isTrusted, pointerType: event.pointerType, time: event.timeStamp, cancelable: event.cancelable,
+        defaultPrevented: event.defaultPrevented, touches: event.touches?.length });
+    };
+    const types = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'click'];
+    for (const type of types) document.addEventListener(type, record);
+    window.__stopTouchLookEvents = () => { for (const type of types) document.removeEventListener(type, record); };
+    window.__touchMoreClick = new Promise((resolveClick, reject) => {
+      let timer;
+      const finish = () => { clearTimeout(timer); more.removeEventListener('pointerdown', started); more.removeEventListener('click', clicked); };
+      const clicked = event => { finish(); resolveClick({ trusted: event.isTrusted, pointerType: event.pointerType }); };
+      // The deadline measures this tap, not tracing setup or the preceding camera gesture.
+      const started = () => { timer = setTimeout(() => { finish(); reject(new Error('First native post-look toolbar click missing')); }, 1500); };
+      more.addEventListener('pointerdown', started, { once: true });
+      more.addEventListener('click', clicked);
+    });
+    window.__touchMoreClick.catch(() => {});
+  })()`);
+  const trace = [];
+  const traceListener = ({ value }) => trace.push(...value);
+  cdp.listeners.set('Tracing.dataCollected', new Set([traceListener]));
+  await cdp.send('Tracing.start', { categories: 'input,latencyInfo,devtools.timeline,benchmark,disabled-by-default-input', transferMode: 'ReportEvents' });
+  receipt.touchFollowup = { viewport: [320, 568], profile: 'QA input isolation, real rendering', layout: touchLayout, before: touchBefore };
+  try {
+    // Precompute coordinates and arm every signal BEFORE the swipe. No evaluations,
+    // rendering waits, screenshots or activation retries between release and first tap.
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...lookPoint, id: 1 }] });
+    for (const step of [1, 2, 3]) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: lookPoint.x + step * 16, y: lookPoint.y + step * 9, id: 1 }] });
+    }
+    // Queue in protocol order without waiting for a slow render-thread ACK between contacts.
+    await Promise.all([
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }),
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...morePoint, id: 1 }] }),
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }),
+    ]);
+    const clicked = await page('window.__touchMoreClick');
+    assert.equal(clicked.trusted, true, 'first toolbar activation is a trusted click');
+    assert.equal(clicked.pointerType, 'touch');
+    await moreOpened();
+    await cameraChanged();
+  } finally {
+    receipt.touchFollowup.after = await snapshot();
+    receipt.touchFollowup.events = await page('window.__stopTouchLookEvents(); window.__touchLookEvents');
+    const events = receipt.touchFollowup.events;
+    receipt.touchFollowup.releaseToTapMs = events.find(event => event.target === 'more' && event.type === 'pointerdown')?.time
+      - events.find(event => event.target === 'canvas' && event.type === 'touchend')?.time;
+    const complete = bounded(cdp.once('Tracing.tracingComplete'), 'touch trace complete');
+    await cdp.send('Tracing.end');
+    await complete;
+    cdp.listeners.get('Tracing.dataCollected').delete(traceListener);
+    receipt.touchFollowup.trace = join(output, 'touch-look-trace.json');
+    await writeFile(receipt.touchFollowup.trace, JSON.stringify({ traceEvents: trace }));
+    receipt.touchFollowup.flingStarts = trace.filter(event => event.name === 'FlingBooster::GetVelocityForFlingStart').length;
+    receipt.touchFollowup.tapSuppressions = trace.filter(event => event.name === 'FilterTapSuppression').length;
+    await screenshot('touch-after-look-first-tap');
+  }
+  const touchEvents = receipt.touchFollowup.events;
+  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend']) {
+    assert.ok(touchEvents.some(event => event.target === 'canvas' && event.type === type && event.trusted), `genuine canvas ${type}`);
+  }
+  assert.equal(touchEvents.some(event => event.type === 'pointercancel'), false);
+  assert.equal(touchEvents.filter(event => event.target === 'more' && event.type === 'pointerdown').length, 1, 'one toolbar tap, not a retry');
+  assert.equal(touchEvents.filter(event => event.target === 'more' && event.type === 'click' && event.trusted).length, 1);
+  assert.ok(receipt.touchFollowup.releaseToTapMs >= 0 && receipt.touchFollowup.releaseToTapMs < 180, 'tap must not wait out native fling suppression');
+  assert.notDeepEqual(receipt.touchFollowup.after.camera.quaternion, touchBefore.camera.quaternion, 'real camera rotated');
+  assert.equal(receipt.touchFollowup.after.viewMode, 'walk');
+  assert.equal(receipt.touchFollowup.after.navigationActive, true);
+  assert.equal(await page(`document.querySelector('[data-walkthrough-more-panel]').hidden`), false);
+  await closeMore();
+  const touchExited = await armState(`!document.querySelector('[data-walkthrough]')`, 'touch fixture closed');
+  await click('.walkthrough-exit');
+  await touchExited();
+  const touchCleanup = await snapshot();
+  assert.equal(touchCleanup.destroyed, true);
+  for (const counts of Object.values(touchCleanup.resources)) assert.equal(counts.disposed, counts.total);
+  receipt.touchFollowup.cleanup = touchCleanup.resources;
+
+  // Exercise the actual raycast/pointerup contract, including its persisted editor callback.
+  receipt.openingActivations = [];
+  for (const kind of ['door', 'window']) {
+    const layout = {
+      ...touchLayout, items: [],
+      structures: [
+        { id: 'wall', type: 'wall', x: 200, y: 200, length: 400, height: 240, thickness: 6, orientation: 'vertical' },
+        { id: kind, type: kind, wallId: 'wall', x: 200, y: 200, width: 90, height: kind === 'door' ? 205 : 120,
+          sillHeight: 90, orientation: 'vertical', doorType: 'swing', hinge: 'start', openSide: -1, openAngle: 0, openRatio: 0, slideDirection: 'end' },
+      ],
+    };
+    await page(`localStorage.setItem('room-studio-layout-v2', ${JSON.stringify(JSON.stringify(layout))})`);
+    await bounded(browser.navigate(receipt.url), `${kind} editor fixture`);
+    await page(`window.__roomStudioQaRenderProfile = true; document.querySelector('#open-walkthrough').scrollIntoView({ block: 'center', behavior: 'instant' })`);
+    await paint();
+    const ready = await armState(`document.querySelector('[data-walkthrough-ready="true"]')`, `${kind} ready`);
+    await click('#open-walkthrough');
+    await ready();
+    const targeted = await armState(`document.querySelector('[data-walkthrough]').getAttribute('data-target-${kind}-id') === '${kind}'`, `${kind} raycast target`);
+    await setMode('walk');
+    await targeted();
+    const field = kind === 'door' ? 'openAngle' : 'openRatio';
+    const opening = kind === 'door' ? 90 : 100;
+    for (const [input, value] of [['touch', opening], ['keyboard', 0], ['mouse', opening]]) {
+      touch = input !== 'mouse';
+      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: touch, maxTouchPoints: 2 });
+      const changed = await armState(`document.querySelector('[data-walkthrough]').getAttribute('data-last-${kind}-action') === '${kind}:${value}'`, `${input} ${kind} activation`);
+      if (input === 'mouse') await page(`window.__openingClick = new Promise(resolveClick => document.querySelector('[data-walkthrough-canvas]').addEventListener('click', event => resolveClick(event.isTrusted), { once: true })); true`);
+      if (input === 'keyboard') await key('e', 'KeyE', 69);
+      else await click('[data-walkthrough-canvas]');
+      await changed();
+      if (input === 'mouse') assert.equal(await page('window.__openingClick'), true, 'native canvas mouse click remains intact');
+      const saved = await page(`JSON.parse(localStorage.getItem('room-studio-layout-v2')).structures.find(entry => entry.id === '${kind}').${field}`);
+      assert.equal(saved, value, 'raycast activation reaches the real editor persistence callback');
+      assert.equal(await page('document.pointerLockElement === null'), true, 'opening activation does not fall through to pointer lock');
+      receipt.openingActivations.push({ kind, input, [field]: saved });
+    }
+    await screenshot(`${kind}-native-activation`);
+    const exited = await armState(`!document.querySelector('[data-walkthrough]')`, `${kind} fixture closed`);
+    await click('.walkthrough-exit');
+    await exited();
+  }
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('room-studio-layout-v2', ${JSON.stringify(JSON.stringify(DEMO_LAYOUTS[0]))});` });
+
   // Narrow geometry runs first so this regression is RED on the old 230px toolbar.
-  for (const [width, height] of [[390, 844], [320, 568], [1440, 1000], [844, 390]]) {
+  for (const [width, height] of touchFollowupOnly ? [] : [[390, 844], [320, 568], [1440, 1000], [844, 390]]) {
     touch = width <= 900;
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: touch, maxTouchPoints: 2 });
     await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: touch });
@@ -280,10 +446,28 @@ ${anchor}`);
     const entryFocusInside = await page(`Boolean(document.activeElement?.closest('[data-walkthrough]'))`);
     const backgroundInert = await page(`document.querySelector('#app').inert`);
     await setMode('walk');
+    // Linux grants native pointer lock here; arm its actual transition before the click.
+    const acquired = !touch && process.platform === 'linux'
+      ? await armState(`document.pointerLockElement === document.querySelector('[data-walkthrough-canvas]')`, 'native canvas pointer lock', ['pointerlockchange'])
+      : null;
     await click('[data-walkthrough-canvas]');
+    if (acquired) await acquired();
     const beforeArrow = await page(`localStorage.getItem('room-studio-layout-v2')`);
     await key('ArrowRight', 'ArrowRight', 39);
     assert.equal(await page(`localStorage.getItem('room-studio-layout-v2')`), beforeArrow, '3D arrow keys must not change the saved 2D drawing');
+    if (!touch) {
+      const wasLocked = await page('document.pointerLockElement !== null');
+      receipt.desktopPointerLock = { wasLocked };
+      if (wasLocked) {
+        const paused = await armState(`!document.pointerLockElement && !document.querySelector('[data-walkthrough-menu]').hidden`, 'Escape recovers toolbar access', ['pointerlockchange']);
+        await page(`window.__nativeUnlock = new Promise(resolveUnlock => document.addEventListener('pointerlockchange', event => resolveUnlock({ trusted: event.isTrusted, locked: !!document.pointerLockElement }), { once: true })); true`);
+        await key('Escape', 'Escape', 27);
+        await paused();
+        receipt.desktopPointerLock.escape = await page('window.__nativeUnlock');
+        assert.deepEqual(receipt.desktopPointerLock.escape, { trusted: true, locked: false });
+        assert.equal((await snapshot()).navigationActive, false);
+      }
+    }
     await setMode('dollhouse');
     assert.equal(entryFocusInside, true, '3D entry moves keyboard focus inside the overlay');
     assert.equal(backgroundInert, true, 'the background editor is inert during 3D');
@@ -401,7 +585,7 @@ ${anchor}`);
   }
   assert.deepEqual(receipt.errors, []);
   receipt.status = 'PASS';
-  console.log(`SIMPLE_3D_PASS ${receipt.viewports.length} viewports`);
+  console.log(`SIMPLE_3D_PASS touch follow-up + ${receipt.viewports.length} production viewports`);
 } catch (error) {
   receipt.status = 'FAIL';
   receipt.failure = error.stack;
