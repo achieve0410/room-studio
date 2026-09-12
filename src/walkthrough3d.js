@@ -1022,9 +1022,14 @@ export function openWalkthrough({
   initialMode = 'walk',
   onDoorChange = null,
   onStructureChange = onDoorChange,
+  onClose = null,
 }) {
   activeCleanup?.();
 
+  const previousFocus = document.activeElement;
+  const background = document.querySelector('#app');
+  const previousInert = background?.inert;
+  const previousHidden = background?.getAttribute('aria-hidden');
   const layout = getLayoutBounds(zones);
   const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
   const openingPromptCopy = coarsePointer ? '탭하여' : '클릭 또는 E로';
@@ -1037,26 +1042,22 @@ export function openWalkthrough({
       .walkthrough-overlay .walkthrough-view-tools button.is-active,
       .walkthrough-overlay .walkthrough-view-tools button:hover { color: #242a26; }
       .walkthrough-overlay button:focus-visible { outline: 3px solid #e9a06e; outline-offset: 2px; }
-      .walkthrough-overlay .walkthrough-view-tools { max-width: calc(100% - 24px); }
+      .walkthrough-overlay .walkthrough-view-tools { top: calc(68px + env(safe-area-inset-top)); max-width: calc(100% - 24px); overflow: visible; z-index: 1; }
+      .walkthrough-overlay .walkthrough-more-panel { position: absolute; top: calc(100% + 8px); right: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(320px, calc(100vw - 24px)); max-height: calc(100dvh - 148px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid rgba(255,255,255,.23); border-radius: 5px; background: #1a211e; box-shadow: 0 10px 32px rgba(0,0,0,.3); }
+      .walkthrough-overlay .walkthrough-more-panel[hidden] { display: none; }
+      .walkthrough-overlay .walkthrough-more-panel button { border: 1px solid rgba(255,255,255,.16); }
+      .walkthrough-overlay .walkthrough-location { top: calc(12px + env(safe-area-inset-top)); min-width: 0; max-width: calc(100% - 100px); padding: 8px 12px; }
+      .walkthrough-overlay .walkthrough-location strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .walkthrough-overlay .walkthrough-location small { display: none; }
       .walkthrough-overlay.is-overview .walkthrough-stage { top: calc(134px + env(safe-area-inset-top)); height: auto; }
-      .walkthrough-overlay.is-overview .walkthrough-location small { display: none; }
-      @media (max-width: 600px) {
-        .walkthrough-overlay .walkthrough-view-tools { left: 12px; right: 12px; top: calc(68px + env(safe-area-inset-top)); transform: none; display: grid; grid-template-columns: 1fr 1fr; overflow: visible; }
-        .walkthrough-overlay .walkthrough-view-modes { grid-column: 1 / -1; }
-        .walkthrough-overlay .walkthrough-view-modes button { flex: 1; min-width: 0; }
+      @media (max-width: 900px) {
+        .walkthrough-overlay .walkthrough-location strong { font-size: 19px; }
+        .walkthrough-overlay .walkthrough-view-tools { left: 12px; right: 12px; transform: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+        .walkthrough-overlay .walkthrough-view-modes button { flex: 1; }
         .walkthrough-overlay .walkthrough-view-tools button { padding: 0 6px; }
         .walkthrough-overlay .walkthrough-status { top: auto; bottom: calc(12px + env(safe-area-inset-bottom)); font-size: 12px; }
-        .walkthrough-overlay.is-overview .walkthrough-stage { top: calc(230px + env(safe-area-inset-top)); bottom: 44px; }
+        .walkthrough-overlay.is-overview .walkthrough-stage { bottom: 44px; }
         .walkthrough-overlay:not(.is-overview) .walkthrough-status { display: none; }
-      }
-      @media (min-width: 601px) and (max-width: 900px) and (min-height: 451px) {
-        .walkthrough-overlay .walkthrough-view-tools { top: calc(120px + env(safe-area-inset-top)); }
-        .walkthrough-overlay.is-overview .walkthrough-stage { top: calc(180px + env(safe-area-inset-top)); }
-      }
-      @media (max-height: 450px) and (min-width: 601px) {
-        .walkthrough-overlay .walkthrough-location { top: 12px; padding: 8px 12px; }
-        .walkthrough-overlay .walkthrough-location small { display: none; }
-        .walkthrough-overlay .walkthrough-view-tools { top: 68px; }
       }
     </style>
     <div class="walkthrough-stage" data-walkthrough-stage></div>
@@ -1065,17 +1066,20 @@ export function openWalkthrough({
     <div class="walkthrough-hud">
       <div class="walkthrough-location"><span>NOW EXPLORING</span><strong data-current-room>불러오는 중</strong><small>직접 걸으며 배치를 확인하세요</small></div>
       <div class="walkthrough-status" data-walkthrough-status role="status" aria-live="polite"><i></i> 둘러보기 준비</div>
-      <button class="walkthrough-exit" data-walkthrough-exit type="button" aria-label="3D 둘러보기 닫기"><span>나가기</span>×</button>
+      <button class="walkthrough-exit" data-walkthrough-exit type="button" aria-label="3D 둘러보기 닫기"><span>닫기</span>×</button>
       <div class="walkthrough-view-tools" aria-label="3D 보기 도구">
         <div class="walkthrough-view-modes">
-          <button data-view-mode="walk" type="button">1인칭</button>
-          <button data-view-mode="dollhouse" type="button">돌하우스</button>
-          <button data-view-mode="top" type="button">상공</button>
+          <button data-view-mode="dollhouse" type="button">전체 보기</button>
+          <button data-view-mode="top" type="button">위에서</button>
+          <button data-view-mode="walk" type="button">걸어보기</button>
         </div>
-        <button data-toggle-ceiling type="button" aria-pressed="false">천장 숨기기</button>
-        <button data-toggle-walls type="button" aria-pressed="true" aria-label="발표용 벽 낮추기" title="돌하우스·상공에서만 벽을 낮춰 표시합니다. 실제 벽 높이와 통행 충돌은 유지됩니다.">발표용 벽 낮추기</button>
-        <button data-focus-selection type="button" ${focus ? '' : 'disabled'}>선택 보기</button>
-        <button data-save-snapshot type="button">PNG 저장</button>
+        <button data-walkthrough-more type="button" aria-expanded="false" aria-controls="walkthrough-more-panel">도구 더보기</button>
+        <div class="walkthrough-more-panel" id="walkthrough-more-panel" data-walkthrough-more-panel role="group" aria-label="추가 3D 도구" hidden>
+          <button data-toggle-ceiling type="button" aria-pressed="false">천장 숨기기</button>
+          <button data-toggle-walls type="button" aria-pressed="true" aria-label="발표용 벽 낮추기" title="전체 보기·위에서 보기에서만 벽을 낮춰 표시합니다. 실제 벽 높이와 통행 충돌은 유지됩니다.">발표용 벽 낮추기</button>
+          <button data-focus-selection type="button" ${focus ? '' : 'disabled'}>선택 보기</button>
+          <button data-save-snapshot type="button">PNG 저장</button>
+        </div>
       </div>
       <div class="walkthrough-minimap" data-minimap>${miniMapMarkup(zones, layout)}</div>
       <div class="walkthrough-controls" data-walkthrough-controls>
@@ -1136,6 +1140,8 @@ export function openWalkthrough({
   const ceilingButton = overlay.querySelector('[data-toggle-ceiling]');
   const wallButton = overlay.querySelector('[data-toggle-walls]');
   const focusButton = overlay.querySelector('[data-focus-selection]');
+  const moreButton = overlay.querySelector('[data-walkthrough-more]');
+  const morePanel = overlay.querySelector('[data-walkthrough-more-panel]');
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xcbd2d1);
   scene.fog = new THREE.FogExp2(0xcbd2d1, 0.025);
@@ -1267,16 +1273,19 @@ export function openWalkthrough({
     syncViewToolState();
   };
   const hideMenu = () => {
+    const menuHadFocus = menu.contains(document.activeElement);
     menu.classList.add('is-hidden');
     menu.hidden = true;
     menu.inert = true;
     menu.setAttribute('aria-hidden', 'true');
+    if (menuHadFocus) renderer.domElement.focus({ preventScroll: true });
   };
   const showMenu = () => {
     menu.hidden = false;
     menu.classList.remove('is-hidden');
     menu.inert = false;
     menu.setAttribute('aria-hidden', 'false');
+    overlay.querySelector('[data-walkthrough-start]').focus({ preventScroll: true });
   };
   const setOverviewCamera = (mode, target = null) => {
     overviewTarget = target;
@@ -1697,6 +1706,13 @@ export function openWalkthrough({
     if (document.fullscreenElement === overlay) document.exitFullscreen().catch(() => {});
     overlay.remove();
     if (activeCleanup === cleanup) activeCleanup = null;
+    if (background) {
+      background.inert = previousInert;
+      if (previousHidden === null) background.removeAttribute('aria-hidden');
+      else background.setAttribute('aria-hidden', previousHidden);
+    }
+    if (onClose) onClose();
+    else previousFocus?.focus({ preventScroll: true });
   };
   activeCleanup = cleanup;
 
@@ -1715,7 +1731,37 @@ export function openWalkthrough({
   joystick.addEventListener('pointerup', onJoystickEnd);
   joystick.addEventListener('pointercancel', onJoystickEnd);
   joystick.addEventListener('lostpointercapture', onJoystickEnd);
+  const setMoreOpen = (open) => {
+    morePanel.hidden = !open;
+    moreButton.setAttribute('aria-expanded', String(open));
+    moreButton.focus({ preventScroll: true });
+    if (open) stopMovement();
+  };
+  moreButton.addEventListener('click', () => setMoreOpen(morePanel.hidden));
+  overlay.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') {
+      const scope = menu.hidden ? overlay : menu;
+      const controls = [...scope.querySelectorAll('button:not(:disabled), [tabindex]:not([tabindex="-1"])')]
+        .filter((node) => node.getClientRects().length && !node.closest('[inert]'));
+      const current = controls.indexOf(document.activeElement);
+      const next = event.shiftKey
+        ? (current <= 0 ? controls.length - 1 : current - 1)
+        : (current + 1) % controls.length;
+      event.preventDefault();
+      event.stopPropagation();
+      controls[next]?.focus({ preventScroll: true });
+      return;
+    }
+    if (morePanel.hidden) return;
+    if (event.code === 'Escape') {
+      event.preventDefault();
+      setMoreOpen(false);
+    }
+    // Enter/Space activate tools without triggering editor or walk shortcuts.
+    event.stopPropagation();
+  });
   overlay.querySelectorAll('[data-view-mode]').forEach((button) => button.addEventListener('click', () => {
+    if (!morePanel.hidden) setMoreOpen(false);
     if (button.dataset.viewMode === 'walk') activateNavigation();
     else activateOverview(button.dataset.viewMode);
   }));
@@ -1744,6 +1790,17 @@ export function openWalkthrough({
   } else {
     syncViewToolState();
   }
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', '3D 공간 미리보기');
+  if (background) {
+    background.inert = true;
+    background.setAttribute('aria-hidden', 'true');
+  }
+  const initialControl = menu.hidden
+    ? overlay.querySelector('[data-view-mode][aria-pressed="true"]')
+    : overlay.querySelector('[data-walkthrough-start]');
+  initialControl.focus({ preventScroll: true });
   overlay.dataset.walkthroughReady = 'true';
   requestAnimationFrame(() => overlay.classList.add('is-ready'));
   animate();

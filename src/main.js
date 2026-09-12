@@ -408,6 +408,10 @@ const mobileLayoutQuery = window.matchMedia(`(max-width: ${FOCUSED_MOBILE_BREAKP
 let canvasZoom = 1;
 let canvasCenter = null;
 let mobilePanel = 'canvas';
+let workspaceMode = 'simple';
+let workspacePanel = 'furniture';
+let furnitureSearch = '';
+let quickSizesOpen = false;
 let mobileMultiSelect = false;
 let pendingFocus = startsWithoutStoredLayout ? { kind: 'starter-sample' } : null;
 const activePointers = new Map();
@@ -786,10 +790,15 @@ function commitHistory(previous) {
 
 function restoreSnapshot(snapshot, destination) {
   if (!snapshot) return;
+  const previousSelection = state.selection;
   destination.push(layoutSnapshot());
   state = { ...state, ...snapshot, selection: null };
   if (!snapshot.consultation) delete state.consultation;
-  selectionKeys = new Set();
+  const remainingSelection = workspaceMode === 'simple' ? selectedEntries() : [];
+  selectionKeys = new Set(remainingSelection.map(({ kind, id }) => selectionKey(kind, id)));
+  const primary = remainingSelection.find(({ kind, id }) => kind === previousSelection?.kind && id === previousSelection.id)
+    ?? remainingSelection.at(-1);
+  state.selection = primary ? { kind: primary.kind, id: primary.id } : null;
   drag = null;
   resize = null;
   backgroundDrag = null;
@@ -833,6 +842,7 @@ function isSelected(kind, id) {
 }
 
 function selectEntity(kind, id, toggle = false) {
+  if (state.selection?.kind !== kind || state.selection.id !== id) quickSizesOpen = false;
   const key = selectionKey(kind, id);
   if (toggle && selectionKeys.has(key)) {
     selectionKeys.delete(key);
@@ -847,6 +857,7 @@ function selectEntity(kind, id, toggle = false) {
 }
 
 function clearSelection() {
+  quickSizesOpen = false;
   selectionKeys = new Set();
   state.selection = null;
   mobileContextMenu = null;
@@ -943,7 +954,7 @@ function applyDemoLayout(id) {
   starterDialogOpen = false;
   demoGalleryOpen = false;
   pendingDemoId = null;
-  editorNotice = `${demo.name}을 열었습니다. 배치와 3D 미리보기를 자유롭게 수정해 보세요.`;
+  editorNotice = '샘플 도면을 열었습니다.';
   pendingFocus = { kind: 'canvas' };
   render();
 }
@@ -1832,7 +1843,7 @@ function commitPlacement(event) {
   const session = placementSession;
   const entity = placementAtPoint(svgPoint(event));
   placementSession = null;
-  editorNotice = `${entity.name}을(를) 배치했습니다.`;
+  editorNotice = `${entity.name} 배치 완료`;
   pendingFocus = { kind: 'canvas' };
   if (session.kind === 'item') {
     updateState({
@@ -1888,6 +1899,10 @@ function handleOverlapPointer(event) {
   if (placementSession || event.button !== 0) return;
   const candidates = pointerHitCandidates(event);
   if (candidates.some(({ kind }) => kind === 'control')) return;
+  if (workspaceMode === 'simple' && event.pointerType === 'touch' && event.target.closest('[data-item-id]')) {
+    overlapPicker = null;
+    return;
+  }
   if (overlapSelectionBypass) {
     const bypassed = candidates.some(({ selectionKind, id }) => (
       selectionKind === overlapSelectionBypass.kind && id === overlapSelectionBypass.id
@@ -2512,7 +2527,7 @@ function transformHudContent(mode = 'selected') {
 }
 
 function renderTransformHud() {
-  if (placementSession || (isMobileLayout() && mobileContextMenu)) return '';
+  if (workspaceMode === 'simple' || placementSession || (isMobileLayout() && mobileContextMenu)) return '';
   const content = transformHudContent();
   if (!content) return '';
   const entity = selectionKeys.size === 1 ? selectedEntity() : null;
@@ -2971,18 +2986,19 @@ function beginLongPressDrag() {
 }
 
 function startEntityPress(event, kind, id) {
+  const simpleTouch = workspaceMode === 'simple' && event.pointerType === 'touch';
   const collection = kind === 'zone' ? state.zones : kind === 'item' ? state.items : state.structures;
   const entity = collection.find((entry) => entry.id === id);
   if (entity?.locked) {
     event.preventDefault();
     event.stopPropagation();
     selectEntity(kind, id, usesAdditiveSelection(event));
-    mobileContextMenu = isMobileLayout() ? { kind, id } : null;
+    mobileContextMenu = isMobileLayout() && !simpleTouch ? { kind, id } : null;
     editorNotice = `${entity.name}은(는) 잠겨 있습니다.`;
     render();
     return;
   }
-  if (event.pointerType !== 'touch' || !isMobileLayout()) {
+  if (event.pointerType !== 'touch' || (!isMobileLayout() && !(simpleTouch && kind === 'item'))) {
     startDrag(event, kind, id);
     return;
   }
@@ -3026,7 +3042,7 @@ function startEntityPress(event, kind, id) {
     selectionSnapshot,
     primarySelectionSnapshot,
     moveArmedSnapshot,
-    timer: window.setTimeout(beginLongPressDrag, MOBILE_LONG_PRESS_MS),
+    timer: simpleTouch && kind === 'item' ? null : window.setTimeout(beginLongPressDrag, MOBILE_LONG_PRESS_MS),
   };
   gestureMode = 'press';
   captureActivePointers(event);
@@ -3047,8 +3063,8 @@ function finishEntityPress(event) {
     } else {
       selectEntity(press.kind, press.id);
     }
-    mobileContextMenu = { kind: press.kind, id: press.id };
-    pendingFocus = { kind: 'context-menu' };
+    mobileContextMenu = workspaceMode === 'simple' ? null : { kind: press.kind, id: press.id };
+    pendingFocus = { kind: workspaceMode === 'simple' ? 'canvas' : 'context-menu' };
   }
   return true;
 }
@@ -3362,6 +3378,7 @@ function resizeHandlesMarkup(entity, kind) {
   const frame = kind === 'item'
     ? `<rect class="transform-bounds" x="${-halfWidth}" y="${-halfDepth}" width="${entity.width}" height="${entity.depth}" />`
     : `<rect class="transform-bounds" x="${entity.x}" y="${entity.y}" width="${entity.width}" height="${entity.depth}" />`;
+  if (workspaceMode === 'simple' && !quickSizesOpen) return frame;
   const handles = Object.keys(RESIZE_DIRECTIONS).map((handle) => {
     const [x, y] = positions[handle];
     return `<circle class="resize-hit-target handle-${handle}" cx="${x}" cy="${y}" r="${radius}"
@@ -3386,6 +3403,9 @@ function resizeHandlesMarkup(entity, kind) {
 
 function structureHandlesMarkup(entity) {
   const half = (entity.type === 'wall' ? entity.length : entity.width) / 2;
+  if (workspaceMode === 'simple' && !quickSizesOpen) {
+    return `<line class="structure-transform-bounds" x1="${-half}" y1="0" x2="${half}" y2="0" />`;
+  }
   const radius = isMobileLayout() ? 13 : 8;
   const endpoint = (handle, x) => `<circle class="resize-hit-target structure-endpoint-hit" cx="${x}" cy="0" r="${radius}"
       fill="none" stroke="transparent" stroke-width="44" vector-effect="non-scaling-stroke" pointer-events="stroke"
@@ -3847,6 +3867,35 @@ function renderMobileSelectionBar() {
   </section>`;
 }
 
+function renderSimpleSelection() {
+  if (workspaceMode !== 'simple' || placementSession) return '';
+  const entity = selectedEntity();
+  if (!entity || !state.selection) {
+    return `<div class="workspace-hint"><span>${state.zones.length
+      ? state.items.length ? '가구를 끌어 옮기고, 크기 버튼으로 조절하세요.' : '가구를 고른 뒤 도면의 원하는 곳을 누르세요.'
+      : '먼저 공간을 만들어주세요.'}</span><button type="button" data-simple-action="${state.zones.length ? 'furniture' : 'start'}">${state.zones.length ? '가구 놓기' : '공간 만들기'}</button></div>`;
+  }
+  const single = selectionKeys.size === 1;
+  const fields = single && !entity.locked
+    ? quickNumericFields(state.selection.kind, entity).filter(([field]) => ['width', 'depth', 'length'].includes(field))
+    : [];
+  const canRotate = selectedEntries().some(({ kind, entity: selected }) => kind === 'item' && !selected.locked);
+  const opening = single && state.selection.kind === 'structure' && entity.type !== 'wall';
+  const isOpen = opening && (entity.type === 'door' && entity.doorType === 'swing' ? entity.openAngle : entity.openRatio) > 0;
+  return `<section class="simple-selection" aria-label="선택한 대상 조작">
+    <div class="simple-selection-heading"><strong>${single ? escapeHtml(entity.name) : `${selectionKeys.size}개 선택`}</strong><span>${single ? entity.locked ? '잠김' : '끌어서 이동' : '함께 이동'}</span><button type="button" data-simple-action="clear" aria-label="선택 해제">닫기</button></div>
+    <div class="simple-selection-actions">
+      ${canRotate ? '<button type="button" data-simple-action="rotate">회전</button>' : ''}
+      ${opening ? `<button type="button" data-simple-action="opening" aria-label="${entity.type === 'window' ? '창' : '문'} ${isOpen ? '닫기' : '열기'}">${isOpen ? '닫기' : '열기'}</button>` : ''}
+      ${fields.length ? `<button type="button" data-simple-action="size" aria-expanded="${quickSizesOpen}">크기</button>` : ''}
+      <button type="button" data-simple-action="duplicate">복제</button>
+      <button type="button" data-simple-action="details">상세</button>
+      <button type="button" data-simple-action="delete" ${entity.locked ? 'disabled' : ''}>삭제</button>
+    </div>
+    ${quickSizesOpen && fields.length ? `<div class="simple-size-fields">${fields.map(([field]) => `<label>${{ width: '가로', depth: '세로', length: '길이' }[field]} <span>cm</span><input type="number" inputmode="decimal" data-quick-field="${field}" data-quick-kind="${state.selection.kind}" data-quick-id="${entity.id}" value="${Math.round(entity[field])}" aria-label="${escapeHtml(entity.name)} ${{ width: '가로', depth: '세로', length: '길이' }[field]}"></label>`).join('')}</div>` : ''}
+  </section>`;
+}
+
 function renderProjectDialog() {
   if (!projectDialogOpen) return '';
   return `<div class="cloud-dialog-backdrop" data-project-backdrop>
@@ -3877,25 +3926,33 @@ function renderStarterDialog() {
   return `<div class="cloud-dialog-backdrop" data-start-backdrop>
     <section class="cloud-dialog starter-dialog" role="dialog" aria-modal="true" aria-labelledby="starter-dialog-title">
       <button class="cloud-dialog-close" data-start-close type="button" aria-label="시작 화면 닫기">×</button>
-      <span class="eyebrow">START WITH CONFIDENCE</span>
-      <h2 id="starter-dialog-title">어떻게 시작할까요?</h2>
-      <p>샘플로 배치 감각을 익히거나, 빈 도면과 기존 파일에서 바로 시작할 수 있습니다.</p>
+      <span class="eyebrow">내 공간, 내 배치</span>
+      <h2 id="starter-dialog-title">방 크기만 알면 시작할 수 있어요</h2>
+      <p>공간을 만들고, 가구를 놓고, 3D로 확인하세요.</p>
+      <form class="starter-room-form" data-start-room-form>
+        <div class="starter-room-preview" aria-hidden="true"><span>내 공간</span><small>가구를 자유롭게 놓아보세요</small></div>
+        <div class="starter-room-fields">
+          <label>가로 <span>cm</span><input name="roomWidth" type="number" inputmode="numeric" min="100" max="1200" step="1" value="400" required></label>
+          <label>세로 <span>cm</span><input name="roomDepth" type="number" inputmode="numeric" min="100" max="1200" step="1" value="300" required></label>
+          <button class="primary-button" type="submit">이 크기로 시작</button>
+        </div>
+      </form>
       <div class="starter-options">
-        <button class="starter-option is-primary" data-start-sample type="button">
-          <b>실제 아파트 참고 샘플</b>
-          <span>${escapeHtml(REGIONAL_DEMO_LAYOUTS[0].name)}의 공개 평면을 참고한 재구성 도면입니다. 치수와 가구 배치는 추정입니다.</span>
+        <button class="starter-option" data-start-sample type="button">
+          <b>아파트 샘플 체험</b>
+          <span>${escapeHtml(REGIONAL_DEMO_LAYOUTS[0].name)} 참고 도면. 치수·배치는 추정입니다.</span>
         </button>
         <button class="starter-option" data-start-blank type="button">
-          <b>빈 도면</b>
-          <span>실측 치수에 맞춰 공간을 처음부터 만듭니다.</span>
+          <b>직접 그리기</b>
+          <span>빈 도면에 여러 공간을 이어 만듭니다.</span>
         </button>
         <label class="starter-option starter-import" data-start-import role="button" tabindex="0">
-          <b>도면 파일 가져오기</b>
-          <span>기존 .roomstudio.json 작업을 이어서 편집합니다.</span>
+          <b>저장한 파일 열기</b>
+          <span>.roomstudio.json 작업을 이어갑니다.</span>
           <input data-start-file type="file" accept=".json,.roomstudio.json,application/json">
         </label>
       </div>
-      <p class="starter-note">기존 브라우저 도면이 있으면 이 화면은 자동으로 열리지 않으며, 상단의 ‘시작’ 버튼으로 언제든 다시 볼 수 있습니다.</p>
+      <p class="starter-note">작업은 이 브라우저에 자동 저장됩니다. 다른 기기로 옮길 때는 도면 파일로 보관하세요.</p>
     </section>
   </div>`;
 }
@@ -4070,6 +4127,13 @@ function render() {
   }
   inputRenderPending = false;
   const focusedMobileLayout = isMobileLayout();
+  const simpleWorkspace = workspaceMode === 'simple';
+  const retainedDisclosures = new Map([...(document.querySelector('.workspace')?.dataset.mode === workspaceMode
+    ? document.querySelectorAll('[data-disclosure]') : [])]
+    .map((node) => [node.dataset.disclosure, node.open]));
+  const customDraft = renderedDocumentGeneration === documentGeneration
+    ? [...document.querySelectorAll('.custom-section input, .custom-section select')].map((node) => [node.id, node.value])
+    : [];
   const panelScroll = !focusedMobileLayout && renderedDocumentGeneration === documentGeneration
     ? ['.left-panel', '.right-panel', '.canvas-column'].map((selector) => {
       const panel = document.querySelector(selector);
@@ -4095,18 +4159,20 @@ function render() {
   const cloudState = cloudFeedbackTone === 'error' ? 'error' : !cloudConfigured ? 'setup' : cloudSession ? 'synced' : 'idle';
 
   const accountName = cloudSession?.user?.user_metadata?.full_name || cloudSession?.user?.email?.split('@')[0];
-  app.innerHTML = `<header class="topbar" ${cloudBackgroundAttributes}>
-    <a class="brand" href="#"><span class="brand-mark"><i></i><i></i><i></i></span><span><strong>ROOM</strong> STUDIO</span></a>
+  app.innerHTML = `<header class="topbar ${simpleWorkspace ? 'simple-topbar' : ''}" ${cloudBackgroundAttributes}>
+    <a class="brand" href="#" aria-label="Room Studio"><span class="brand-mark"><i></i><i></i><i></i></span><span><strong>ROOM</strong> STUDIO</span></a>
     <div class="topbar-cloud">
       <button class="project-account-button" data-start-open type="button" aria-haspopup="dialog"><b aria-hidden="true">✦</b><span>시작</span></button>
-      <button class="project-account-button demo-open-button" data-demo-open type="button" aria-haspopup="dialog"><b aria-hidden="true">⌂</b><span>모델 홈</span></button>
-      <button class="project-account-button" data-project-open type="button" aria-haspopup="dialog"><b aria-hidden="true">↥</b><span>도면 파일</span></button>
+      <button class="project-account-button demo-open-button" data-demo-open type="button" aria-haspopup="dialog"><b aria-hidden="true">⌂</b><span>${simpleWorkspace ? '샘플' : '모델 홈'}</span></button>
+      <button class="project-account-button" data-project-open type="button" aria-haspopup="dialog"><b aria-hidden="true">↥</b><span>${simpleWorkspace ? '파일' : '도면 파일'}</span></button>
       <div class="save-state" data-state="${cloudState}"><span></span><span data-cloud-status>${escapeHtml(cloudFeedback)}</span></div>
-      <button class="cloud-account-button" data-cloud-open type="button" aria-haspopup="dialog"><b aria-hidden="true">${cloudSession ? '●' : '○'}</b><span>${escapeHtml(accountName || (cloudConfigured ? '로그인' : '클라우드 설정'))}</span></button>
+      ${cloudConfigured || !simpleWorkspace ? `<button class="cloud-account-button" data-cloud-open type="button" aria-haspopup="dialog"><b aria-hidden="true">${cloudSession ? '●' : '○'}</b><span>${escapeHtml(accountName || (cloudConfigured ? '로그인' : '클라우드 설정'))}</span></button>` : ''}
+      <button class="workspace-mode-button" data-workspace-mode type="button" aria-pressed="${!simpleWorkspace}" aria-label="${simpleWorkspace ? '정밀 도구 열기' : '간편 배치로 돌아가기'}">${simpleWorkspace ? '정밀 도구' : '<span class="desktop-only">간편 배치</span><span class="mobile-only">간편</span>'}</button>
     </div>
   </header>
-  <main class="workspace mobile-${mobilePanel}" ${cloudBackgroundAttributes}>
+  <main class="workspace mobile-${mobilePanel} workspace-panel-${workspacePanel}" data-mode="${workspaceMode}" ${cloudBackgroundAttributes}>
     <aside class="panel left-panel" aria-label="공간과 가구 패널">
+      ${simpleWorkspace ? `<nav class="workspace-panel-tabs" aria-label="편집 도구"><button type="button" data-workspace-panel="furniture" aria-pressed="${workspacePanel === 'furniture'}">가구 놓기</button><button type="button" data-workspace-panel="spaces" aria-pressed="${workspacePanel === 'spaces'}">공간 편집</button></nav>` : ''}
       <section class="space-section" id="mobile-panel-spaces" ${mobilePanelAttributes('spaces')}>
         <div class="section-title"><span>01</span><h2>집 구성</h2><button class="add-mini" id="add-zone" type="button">＋ 공간</button></div>
         ${renderBlueprintControls()}
@@ -4117,23 +4183,28 @@ function render() {
           const area = calculateUnionArea(parts) / 10000;
           return `<button class="${selectedSpaceIds.has(spaceIdOf(representative)) ? 'active' : ''}" data-select-zone="${representative.id}" type="button"><i style="--zone:${representative.color}"></i><span><strong>${escapeHtml(representative.name)}</strong><small>${escapeHtml(representative.type)} · ${area.toFixed(1)}m² · H ${representative.height ?? 240}cm${parts.length > 1 ? ` · ${parts.length}조각` : ''}</small></span></button>`;
         }).join('')}</div>
-        <div class="structure-library">
+        <details class="structure-library workspace-disclosure" data-disclosure="structures" ${simpleWorkspace ? '' : 'open'}>
+          <summary>벽·문·창 추가</summary>
           <div class="section-title compact"><span>02</span><h2>벽·문·창</h2></div>
           <p class="section-help">벽을 선택한 뒤 문이나 창을 추가하면 벽에 연결됩니다. 선택을 해제하면 공간 경계에 직접 놓을 수 있습니다.</p>
           <div class="structure-add-row"><button class="${placementControlArmed('wall') ? 'is-placement-armed' : ''}" data-add-structure="wall" type="button" aria-pressed="${placementControlArmed('wall')}">━ 벽</button><button class="${placementControlArmed('swing') ? 'is-placement-armed' : ''}" data-add-structure="swing" type="button" aria-pressed="${placementControlArmed('swing')}">◜ 여닫이문</button><button class="${placementControlArmed('sliding') ? 'is-placement-armed' : ''}" data-add-structure="sliding" type="button" aria-pressed="${placementControlArmed('sliding')}">⇆ 미닫이문</button><button class="${placementControlArmed('window') ? 'is-placement-armed' : ''}" data-add-structure="window" type="button" aria-pressed="${placementControlArmed('window')}">▤ 미닫이창</button></div>
           <div class="structure-list">${state.structures.map((structure) => `<button class="${isSelected('structure', structure.id) ? 'active' : ''}" data-select-structure="${structure.id}" type="button"><b aria-hidden="true">${structure.type === 'wall' ? '━' : structure.type === 'window' ? '▤' : structure.doorType === 'sliding' ? '⇆' : '◜'}</b><span><strong>${escapeHtml(structure.name)}</strong><small>${structure.type === 'wall' ? `${ORIENTATIONS[structure.orientation]} · ${structure.length}cm · T ${structure.thickness ?? 4}cm` : structure.type === 'window' ? `샷시 미닫이 · ${ORIENTATIONS[structure.orientation]} · ${structure.width}×${structure.height}cm · 창턱 ${structure.sillHeight ?? 90}cm · ${Math.round(structure.openRatio ?? 0)}% 열림` : `${DOOR_TYPES[structure.doorType]} · ${ORIENTATIONS[structure.orientation]} · ${structure.width}cm · ${structure.wallId ? '벽 연결' : '직접 배치'} · ${structure.doorType === 'swing' ? `${Math.round(structure.openAngle ?? 0)}° 열림` : `${Math.round(structure.openRatio ?? 0)}% 열림`}`}</small></span></button>`).join('')}</div>
-        </div>
+        </details>
       </section>
       <section class="furniture-section" id="mobile-panel-furniture" ${mobilePanelAttributes('furniture')}>
         <div class="section-title"><span>03</span><h2>가구 라이브러리</h2></div>
-        <div class="furniture-library">${furnitureTemplates.map((template) => `<button class="${placementControlArmed(template.type) ? 'is-placement-armed' : ''}" type="button" data-add-type="${template.type}" aria-pressed="${placementControlArmed(template.type)}"><i class="shape-${template.shape}" style="--item:${template.color}"></i><span><strong>${escapeHtml(template.name)}</strong><small>${SHAPES[template.shape]} · H ${template.height}cm</small></span><b>＋</b></button>`).join('')}</div>
+        <div class="furniture-search"><label class="sr-only" for="furniture-search">가구 이름 검색</label><input id="furniture-search" type="search" data-furniture-search placeholder="가구 검색" value="${escapeHtml(furnitureSearch)}"><button type="button" data-furniture-search-clear aria-label="가구 검색 지우기" ${furnitureSearch ? '' : 'hidden'}>지우기</button></div>
+        <p class="section-help">고르고, 도면을 누르면 놓입니다.</p>
+        <div class="furniture-library">${furnitureTemplates.map((template) => `<button class="${placementControlArmed(template.type) ? 'is-placement-armed' : ''}" type="button" data-add-type="${template.type}" aria-pressed="${placementControlArmed(template.type)}" ${template.name.includes(furnitureSearch.trim()) ? '' : 'hidden'}><i class="shape-${template.shape}" style="--item:${template.color}"></i><span><strong>${escapeHtml(template.name)}</strong><small>${template.width} × ${template.depth}cm</small></span><b>＋</b></button>`).join('')}</div>
+        <p class="section-help" data-furniture-empty ${furnitureTemplates.some((template) => template.name.includes(furnitureSearch.trim())) ? 'hidden' : ''}>찾는 가구가 없어요. 아래에서 원하는 크기로 만들어보세요.</p>
       </section>
       <section class="custom-section">
-        <div class="section-title"><span>04</span><h2>커스텀 가구</h2></div>
+        <details class="workspace-disclosure" data-disclosure="custom" ${simpleWorkspace ? '' : 'open'}><summary>내 가구 만들기</summary>
         <label>이름<input id="custom-name" placeholder="예: 반려견 집" /></label>
         <label>도형<select id="custom-shape">${Object.entries(SHAPES).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
         <div class="custom-grid"><label>가로<input id="custom-width" type="number" value="100" min="20" step="10" /></label><label>세로<input id="custom-depth" type="number" value="70" min="20" step="10" /></label><label>높이<input id="custom-height" type="number" value="80" min="1" /></label><label>색상<input id="custom-color" type="color" value="#b97962" /></label></div>
         <button class="primary-button" id="add-custom" type="button">커스텀 가구 추가</button>
+        </details>
       </section>
     </aside>
 
@@ -4141,16 +4212,31 @@ function render() {
       <div class="canvas-toolbar"><div><span class="eyebrow">배치 상담</span><h1 title="${escapeHtml(activeProjectName)}">${escapeHtml(activeProjectName)}</h1><p class="planning-scope" data-planning-scope><strong>기획·배치 확인용</strong><span class="desktop-only">건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다.</span><span class="mobile-only">시공 판단은 전문가 검토</span></p></div>
         <div class="view-tabs"><button class="active" type="button">2D 편집</button><button id="open-walkthrough" type="button">3D 미리보기</button></div>
       </div>
+      ${simpleWorkspace ? '<details class="consultation-tools workspace-disclosure" data-disclosure="consultation"><summary>배치 비교 · 상담 · 제안서</summary>' : ''}
       ${renderConsultationToolbar({ projectName: activeProjectName, consultation: state.consultation })}
+      ${simpleWorkspace ? '</details>' : ''}
       <div class="draft-status" data-draft-status hidden>
         <p data-draft-message></p>
         <div><button data-draft-retry type="button">다시 저장</button><button data-draft-export type="button">도면 파일로 보관</button><button data-recovery-restore type="button">이전 상담 복구</button></div>
       </div>
       <div class="canvas-actions">
         <span>방향키 1cm · Shift+방향키 40cm · ⌘/Ctrl+C·V · Shift 클릭 다중 선택</span>
-        <div><span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span><button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button><button id="undo-action" type="button" aria-label="실행 취소" ${historyPast.length ? '' : 'disabled'}><span class="desktop-only">↶ 실행 취소</span><span class="mobile-only" aria-hidden="true">↶</span></button><button id="redo-action" type="button" aria-label="다시 실행" ${historyFuture.length ? '' : 'disabled'}><span class="desktop-only">↷ 다시 실행</span><span class="mobile-only" aria-hidden="true">↷</span></button><button id="add-dimension" class="${precisionTool?.type === 'dimension' ? 'is-active' : ''}" type="button">↔ 거리 측정</button><details class="canvas-more-actions" ${isMobileLayout() ? '' : 'open'}><summary>더보기</summary><div role="group" aria-label="추가 도면 도구"><button id="duplicate-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>⧉ 복제</button><button id="copy-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>복사</button><button id="paste-selection" type="button" ${internalClipboard ? '' : 'disabled'}>붙여넣기</button><button id="clear-furniture" type="button">가구 비우기</button></div></details></div>
+        <div>
+          <span class="zoom-controls"><button id="zoom-out" type="button" title="축소" aria-label="도면 축소">−</button><b id="zoom-level">${Math.round(canvasZoom * 100)}%</b><button id="zoom-in" type="button" title="확대" aria-label="도면 확대">＋</button><button id="zoom-fit" type="button">전체 보기</button></span>
+          <button class="mobile-only ${mobileMultiSelect ? 'is-active' : ''}" id="multi-select-action" type="button" aria-pressed="${mobileMultiSelect}">그룹 선택${selectionKeys.size ? ` ${selectionKeys.size}` : ''}</button>
+          <button id="undo-action" type="button" aria-label="실행 취소" title="실행 취소" ${historyPast.length ? '' : 'disabled'}>↶<span class="desktop-only"> 실행 취소</span></button>
+          <button id="redo-action" type="button" aria-label="다시 실행" title="다시 실행" ${historyFuture.length ? '' : 'disabled'}>↷<span class="desktop-only"> 다시 실행</span></button>
+          <button id="add-dimension" class="${precisionTool?.type === 'dimension' ? 'is-active' : ''}" type="button">↔ 거리 측정</button>
+          <details class="canvas-more-actions" ${!simpleWorkspace && !isMobileLayout() ? 'open' : ''}><summary>더보기</summary><div role="group" aria-label="추가 도면 도구">
+            <button id="duplicate-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>⧉ 복제</button>
+            <button id="copy-selection" type="button" ${selectionKeys.size ? '' : 'disabled'}>복사</button>
+            <button id="paste-selection" type="button" ${internalClipboard ? '' : 'disabled'}>붙여넣기</button>
+            <button id="clear-furniture" type="button">가구 비우기</button>
+          </div></details>
+        </div>
       </div>
       <div class="canvas-wrap">${render2d(collisions, outOfBounds, heightViolations, zoneOverlaps)}${renderPlacementHud()}${renderOverlapPicker()}${renderTransformHud()}${editorNotice || precisionTool ? `<div class="editor-notice ${precisionTool ? 'is-tool-active' : ''}" role="status"><span>${escapeHtml(editorNotice)}</span>${precisionTool ? '<button id="cancel-precision-tool" type="button">취소</button>' : ''}</div>` : ''}</div>
+      ${renderSimpleSelection()}
       <div class="stats-bar"><div><span>공간 면적</span><strong>${area.toFixed(1)}<small>m²</small></strong></div><div><span>공간 구성</span><strong>${spaces.length}<small>개 · ${state.zones.length}조각</small></strong></div><div><span title="바닥에 놓인 가구의 외곽 사각형 기준이며 통행 여유를 뜻하지 않습니다.">바닥 점유 추정</span><strong>${calculateCoverage(state.items, state.zones)}<small>%</small></strong></div><div><span>최고 높이</span><strong>${maxHeight}<small>cm</small></strong></div><div class="${warningCount ? 'warning' : ''}"><span>배치 확인</span><strong>${warningCount ? `${warningCount}개 확인` : '검사 경고 없음'}</strong></div></div>
       <div class="legend"><span><i class="collision-dot"></i>가구 3D 충돌</span><span><i class="height-dot"></i>공간 높이 초과</span><span><i class="outside-dot"></i>집 밖 배치</span><span><i class="zone-dot"></i>공간 중복</span></div>
       <details class="placement-checks"><summary>${warningCount ? `확인할 대상 ${warningCount}개` : '검사 범위 확인'}</summary>
@@ -4162,7 +4248,7 @@ function render() {
       </details>
     </section>
 
-    <aside class="panel right-panel" id="mobile-panel-inspector" ${mobilePanelAttributes('inspector')}><div class="section-title"><span>05</span><h2>상세 조정</h2></div>${renderInspector(selected)}
+    <aside class="panel right-panel" id="mobile-panel-inspector" ${mobilePanelAttributes('inspector')}>${simpleWorkspace ? '<button class="workspace-panel-back" type="button" data-workspace-panel="furniture">가구 놓기로 돌아가기</button>' : ''}<div class="section-title"><span>05</span><h2>상세 조정</h2></div>${renderInspector(selected)}
       <div class="tips"><h3>3차원 배치 기준</h3><p><b>높이 H</b>는 가구 자체 높이입니다.</p><p><b>바닥 높이 Z</b>는 선반처럼 바닥에서 띄운 높이입니다.</p><p>가구의 바닥 면적과 높이 구간이 모두 겹칠 때만 3D 충돌로 표시합니다.</p></div>
     </aside>
   </main>
@@ -4187,6 +4273,10 @@ function render() {
     panel.scrollTop = top;
     panel.scrollLeft = left;
   }
+  for (const node of document.querySelectorAll('[data-disclosure]')) {
+    if (retainedDisclosures.has(node.dataset.disclosure)) node.open = retainedDisclosures.get(node.dataset.disclosure);
+  }
+  for (const [id, value] of customDraft) document.getElementById(id).value = value;
   renderedDocumentGeneration = documentGeneration;
   bindEvents();
   updateDraftStatus();
@@ -4216,7 +4306,9 @@ function focusPendingTarget() {
     'panel-heading': '#inspector-heading',
     'context-menu': '[data-context-action="move"]',
     canvas: '#plan-canvas',
-    'starter-sample': '[data-start-sample]',
+    'starter-sample': '[name="roomWidth"]',
+    'starter-room': '[name="roomWidth"]',
+    'furniture-search': '[data-furniture-search]',
     'group-move': '[data-group-action="move"]',
     'group-rotate': '[data-group-action="rotate"]',
   }[focusRequest.kind] ?? `#mobile-tab-${focusRequest.panel}`;
@@ -4237,6 +4329,87 @@ function moveMobileTabFocus(event, currentPanel) {
 }
 
 function bindEvents() {
+  document.querySelector('[data-workspace-mode]')?.addEventListener('click', () => {
+    if (numericEdit) commitQuickNumericEdit();
+    workspaceMode = workspaceMode === 'simple' ? 'advanced' : 'simple';
+    mobileContextMenu = null;
+    quickSizesOpen = false;
+    render();
+    document.querySelector('[data-workspace-mode]')?.focus();
+  });
+  document.querySelectorAll('[data-workspace-panel]').forEach((button) => button.addEventListener('click', () => {
+    workspacePanel = button.dataset.workspacePanel;
+    if (isMobileLayout()) {
+      mobilePanel = workspacePanel;
+      pendingFocus = workspacePanel === 'furniture'
+        ? { kind: 'furniture-search' } : { kind: 'mobile-tab', panel: workspacePanel };
+    }
+    render();
+    if (!isMobileLayout()) document.querySelector(`[data-workspace-panel="${workspacePanel}"]`)?.focus();
+  }));
+  document.querySelector('[data-furniture-search]')?.addEventListener('input', (event) => {
+    furnitureSearch = event.target.value;
+    let visible = 0;
+    document.querySelectorAll('[data-add-type]').forEach((button) => {
+      const template = furnitureTemplates.find(({ type }) => type === button.dataset.addType);
+      button.hidden = !template.name.includes(furnitureSearch.trim());
+      if (!button.hidden) visible += 1;
+    });
+    document.querySelector('[data-furniture-empty]').hidden = visible > 0;
+    document.querySelector('[data-furniture-search-clear]').hidden = !furnitureSearch;
+  });
+  document.querySelector('[data-furniture-search-clear]')?.addEventListener('click', () => {
+    furnitureSearch = '';
+    render();
+    document.querySelector('[data-furniture-search]')?.focus();
+  });
+  document.querySelectorAll('[data-simple-action]').forEach((button) => button.addEventListener('click', () => {
+    const action = button.dataset.simpleAction;
+    pendingFocus = { kind: 'canvas' };
+    if (action === 'rotate') return rotateSelection();
+    if (action === 'duplicate') return duplicateSelection();
+    if (action === 'delete') return deleteSelection();
+    if (action === 'clear') return clearSelection();
+    if (action === 'opening') {
+      const opening = selectedEntity();
+      const swing = opening.type === 'door' && opening.doorType === 'swing';
+      return setDoorOpening(opening.id, (swing ? opening.openAngle : opening.openRatio) > 0 ? 0 : swing ? 90 : 100);
+    }
+    if (action === 'size') {
+      quickSizesOpen = !quickSizesOpen;
+      pendingFocus = quickSizesOpen ? { kind: 'quick-field', field: state.selection.kind === 'structure' && selectedEntity().type === 'wall' ? 'length' : 'width' } : { kind: 'canvas' };
+    } else if (action === 'details') {
+      workspacePanel = 'inspector';
+      if (isMobileLayout()) mobilePanel = 'inspector';
+      pendingFocus = { kind: 'panel-heading' };
+    } else if (action === 'furniture') {
+      workspacePanel = 'furniture';
+      if (isMobileLayout()) mobilePanel = 'furniture';
+      pendingFocus = { kind: 'furniture-search' };
+    } else if (action === 'start') {
+      starterDialogOpen = true;
+      pendingFocus = { kind: 'starter-room' };
+    }
+    render();
+  }));
+  document.querySelector('[data-start-room-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!event.currentTarget.reportValidity() || !canReplaceCurrentDraft()) return;
+    const fields = new FormData(event.currentTarget);
+    const zone = makeZone({
+      name: '내 공간', type: '방', x: 0, y: 0,
+      width: Number(fields.get('roomWidth')), depth: Number(fields.get('roomDepth')),
+      color: spaceColors[0],
+    });
+    applyProjectDocument({ projectName: '내 공간', layout: { ...blankLayout(), zones: [zone] } });
+    starterDialogOpen = false;
+    workspaceMode = 'simple';
+    workspacePanel = 'furniture';
+    mobilePanel = 'canvas';
+    editorNotice = '';
+    pendingFocus = { kind: 'canvas' };
+    render();
+  });
   document.querySelector('[data-consultation-open]')?.addEventListener('click', () => {
     consultationDialogOpen = true;
     mobileContextMenu = null;
@@ -4711,6 +4884,7 @@ function bindEvents() {
         focus: state.selection ? { ...state.selection } : null,
         initialMode: 'dollhouse',
         onStructureChange: (id, updates) => updateStructure(id, updates),
+        onClose: () => document.querySelector('#open-walkthrough')?.focus({ preventScroll: true }),
       });
     } catch {
       editorNotice = '3D 화면을 열지 못했습니다. 도면은 유지됩니다. WebGL을 지원하는 브라우저에서 다시 시도해주세요.';
@@ -4899,6 +5073,7 @@ document.addEventListener('focusin', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
+  if (document.querySelector('[data-walkthrough-ready="true"]')) return;
   const activeModal = document.querySelector('[role="dialog"][aria-modal="true"]');
   if (activeModal && event.key === 'Tab') {
     const focusable = [...activeModal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [href], [tabindex]:not([tabindex="-1"])')]
@@ -5066,7 +5241,8 @@ document.addEventListener('pointermove', (event) => {
       window.clearTimeout(entityPress.timer);
       entityPress.timer = null;
     }
-    if (movedPastSlop && entityPress.initiallySelected && isSelected(entityPress.kind, entityPress.id)) {
+    const directFurnitureDrag = workspaceMode === 'simple' && entityPress.kind === 'item';
+    if (movedPastSlop && (directFurnitureDrag || (entityPress.initiallySelected && isSelected(entityPress.kind, entityPress.id)))) {
       const press = entityPress;
       entityPress = null;
       startDrag(press.event, press.kind, press.id, {

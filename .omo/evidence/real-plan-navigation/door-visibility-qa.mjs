@@ -20,6 +20,25 @@ async function nextFrames() {
   })`);
 }
 
+async function click(selector) {
+  const point = await evaluate(browser.cdp, `(async () => {
+    const control = document.querySelector(${JSON.stringify(selector)});
+    if (!control) throw new Error('Missing control: ' + ${JSON.stringify(selector)});
+    control.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const rect = control.getBoundingClientRect();
+    const point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    if (control.closest('[inert]') || !control.contains(document.elementFromPoint(point.x, point.y))) {
+      throw new Error('Obscured control: ' + ${JSON.stringify(selector)});
+    }
+    return point;
+  })()`);
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await browser.cdp.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+  }
+  await nextFrames();
+}
+
 async function waitFor(expression, label, timeout = 20_000) {
   const passed = await evaluate(browser.cdp, `new Promise((resolve) => {
     const check = () => {
@@ -46,9 +65,15 @@ try {
   await browser.navigate(url);
   await setViewport(browser.cdp, 1440, 1000);
   await waitFor(`document.querySelector('[data-demo-open]')`, 'application shell');
-  await evaluate(browser.cdp, `localStorage.clear();
-    document.querySelector('[data-start-close]')?.click();
-    document.querySelector('[data-demo-open]').click();`);
+  await evaluate(browser.cdp, `localStorage.clear()`);
+  if (await evaluate(browser.cdp, `Boolean(document.querySelector('[data-start-close]'))`)) {
+    await click('[data-start-close]');
+  }
+  await click('[data-workspace-mode]');
+  if (await evaluate(browser.cdp, `document.querySelector('.workspace')?.dataset.mode`) !== 'advanced') {
+    throw new Error('Precision workspace did not open');
+  }
+  await click('[data-demo-open]');
   await waitFor(`document.querySelectorAll('[data-demo-card]').length === ${DEMO_LAYOUTS.length + REGIONAL_DEMO_LAYOUTS.length}`, 'demo gallery');
 
   const reports = [];
@@ -77,9 +102,9 @@ try {
           doors,
         };
       })()`);
-    await evaluate(browser.cdp, `document.querySelector('[data-demo-layout="${demo.id}"]').click()`);
+    await click(`[data-demo-layout="${demo.id}"]`);
     if (await evaluate(browser.cdp, `Boolean(document.querySelector('[data-demo-confirm-accept]'))`)) {
-      await evaluate(browser.cdp, `document.querySelector('[data-demo-confirm-accept]').click()`);
+      await click('[data-demo-confirm-accept]');
     }
     await waitFor(
       `document.querySelectorAll('.plan-door').length === ${demo.structures.filter(({ type }) => type === 'door').length}`,
@@ -105,7 +130,7 @@ try {
     }))`);
     await capture(browser.cdp, `${outputDir}/${demo.id}-plan.png`);
 
-    await evaluate(browser.cdp, `document.querySelector('#open-walkthrough').click()`);
+    await click('#open-walkthrough');
     await waitFor(`document.querySelector('[data-walkthrough-ready="true"]')`, `${demo.id} 3D`, 30_000);
     await waitFor(
       `getComputedStyle(document.querySelector('.walkthrough-curtain')).opacity === '0'`,
@@ -121,7 +146,7 @@ try {
       };
     })()`);
     await capture(browser.cdp, `${outputDir}/${demo.id}-3d.png`);
-    await evaluate(browser.cdp, `document.querySelector('[data-walkthrough-exit]').click()`);
+    await click('[data-walkthrough-exit]');
     await waitFor(`!document.querySelector('[data-walkthrough]')`, `${demo.id} 3D cleanup`);
 
     reports.push({
@@ -146,7 +171,7 @@ try {
         && threeDimensionalDoors.visibleMeshes >= threeDimensionalDoors.controllers
         && threeDimensionalDoors.visibleFrameParts >= threeDimensionalDoors.controllers * 3,
     });
-    await evaluate(browser.cdp, `document.querySelector('[data-demo-open]').click()`);
+    await click('[data-demo-open]');
     await waitFor(`document.querySelector('[data-demo-layout="${demo.id}"]')`, `${demo.id} gallery return`);
   }
   const report = { passed: reports.every(({ passed }) => passed), reports };

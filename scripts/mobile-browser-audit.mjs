@@ -232,38 +232,52 @@ async function loadViewport(url, width, height, touch = width <= 900) {
     `document.querySelector('.mobile-nav') !== null && document.querySelector('.workspace') !== null`,
     'application shell after page load',
   );
+  if (!await evaluate(`Boolean(document.querySelector('[data-start-backdrop]'))`)) {
+    await enterAdvancedWorkspace();
+  }
+}
+
+async function clickControl(selector) {
+  const point = await centerOf(selector);
+  if (!point) throw new Error(`Missing control: ${selector}`);
+  if (!await evaluate(`(() => {
+    const control = document.querySelector(${JSON.stringify(selector)});
+    return control && !control.closest('[inert]') && control.contains(document.elementFromPoint(${point.x}, ${point.y}));
+  })()`)) throw new Error(`Unavailable or obscured control: ${selector}`);
+  await mouseClick(point);
+}
+
+async function enterAdvancedWorkspace() {
+  await clickControl('[data-workspace-mode]');
+  const mode = await evaluate(`document.querySelector('.workspace')?.dataset.mode`);
+  if (mode !== 'advanced') throw new Error(`Precision workspace did not open: ${mode}`);
 }
 
 async function completeStarterIfPresent() {
-  const result = await evaluate(`new Promise((resolve) => {
-    const starter = document.querySelector('[data-start-backdrop]');
-    if (!starter) {
-      resolve({ present: false });
-      return;
-    }
-    document.querySelector('[data-start-sample]')?.click();
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const saved = JSON.parse(localStorage.getItem('${STORAGE_KEY}') ?? '{}');
-      resolve({
-        present: true,
-        closed: !document.querySelector('[data-start-backdrop]'),
-        zones: saved.zones?.length ?? 0,
-        items: saved.items?.length ?? 0,
-      });
-    }));
-  })`);
-  if (result.present && (!result.closed || result.zones === 0 || result.items === 0)) {
+  if (!await evaluate(`Boolean(document.querySelector('[data-start-backdrop]'))`)) return;
+  await clickControl('[data-start-sample]');
+  const result = await evaluate(`(() => {
+    const saved = JSON.parse(localStorage.getItem('${STORAGE_KEY}') ?? '{}');
+    return {
+      closed: !document.querySelector('[data-start-backdrop]'),
+      zones: saved.zones?.length ?? 0,
+      items: saved.items?.length ?? 0,
+    };
+  })()`);
+  if (!result.closed || result.zones === 0 || result.items === 0) {
     throw new Error(`Starter setup did not complete: ${JSON.stringify(result)}`);
   }
-  if (result.present) {
-    // The editing regression coordinates use the fixed legacy preset, not a gallery floor plan.
-    await evaluate(`document.querySelector('[data-layout="apartment"]').click()`);
-    const loaded = cdp.once('Page.loadEventFired');
-    await cdp.send('Page.reload');
-    await loaded;
-    await waitForExpression(`document.querySelector('#plan-canvas') !== null`, 'fresh legacy editing history');
-    await doubleRaf();
+  await enterAdvancedWorkspace();
+  // The editing regression coordinates use the fixed legacy preset, not a gallery floor plan.
+  if (await evaluate(`matchMedia('(max-width: 900px)').matches`)) {
+    await clickControl('[data-mobile-panel="spaces"]');
   }
+  await clickControl('[data-layout="apartment"]');
+  const loaded = cdp.once('Page.loadEventFired');
+  await cdp.send('Page.reload');
+  await loaded;
+  await doubleRaf();
+  await enterAdvancedWorkspace();
 }
 
 async function reloadViewport(url, width, height, touch = width <= 900) {
@@ -396,6 +410,7 @@ async function inspectViewport() {
       mobileNavVisible: visible(document.querySelector('.mobile-nav')),
       mobileNavDisplay: getComputedStyle(document.querySelector('.mobile-nav')).display,
       workspaceVisible: visible(document.querySelector('.workspace')),
+      workspaceMode: document.querySelector('.workspace').dataset.mode,
       workspaceDisplay: getComputedStyle(document.querySelector('.workspace')).display,
       mobileNavButtons: sizes('.mobile-nav [role="tab"]'),
       toolbarButtons: sizes('.canvas-toolbar button'),
@@ -2042,13 +2057,17 @@ try {
   ));
   report.screenshots.push(await screenshot('desktop-sliding-window-2d'));
 
+  if (!await evaluate(`document.querySelector('[data-disclosure="custom"]').open`)) {
+    await clickControl('[data-disclosure="custom"] > summary');
+  }
+  await clickControl('#custom-name');
   await evaluate(`(() => {
     document.querySelector('#custom-name').value = '반려견 휴식장';
     document.querySelector('#custom-width').value = '120';
     document.querySelector('#custom-depth').value = '80';
     document.querySelector('#custom-height').value = '70';
-    document.querySelector('#add-custom').click();
   })()`);
+  await clickControl('#add-custom');
   await placePendingAtWorld(200, 150);
   await evaluate(`(() => {
     const setField = (field, value) => {
@@ -2440,13 +2459,14 @@ try {
     overview: document.querySelector('[data-walkthrough]')?.classList.contains('is-overview'),
     cutaway: document.querySelector('[data-walkthrough]')?.dataset.dollhouseCutaway,
   }))()`);
-  await mouseClick(await centerOf('[data-focus-selection]'));
+  await clickControl('[data-walkthrough-more]');
+  await clickControl('[data-focus-selection]');
   const previewFocus = await evaluate(`(() => ({
     mode: document.querySelector('[data-walkthrough]')?.dataset.viewMode,
     cutaway: document.querySelector('[data-walkthrough]')?.dataset.dollhouseCutaway,
     status: document.querySelector('[data-walkthrough-status]')?.textContent.replace(/\\s+/g, ' ').trim(),
   }))()`);
-  await mouseClick(await centerOf('[data-save-snapshot]'));
+  await clickControl('[data-save-snapshot]');
   await waitForExpression(`document.querySelector('[data-walkthrough]')?.dataset.lastSnapshot === 'png'`, '3D PNG snapshot');
   const previewSnapshot = await evaluate(`document.querySelector('[data-walkthrough]')?.dataset.lastSnapshot`);
   report.interactionAssertions.push(assertion(
@@ -2487,6 +2507,13 @@ try {
   report.error = { name: error.name, message: error.message, stack: error.stack };
   report.consoleErrors = browserErrors;
   exitCode = 1;
+  if (cdp) {
+    try {
+      report.screenshots.push(await screenshot('failure'));
+    } catch (captureError) {
+      report.captureError = captureError.message;
+    }
+  }
 } finally {
   report.finishedAt = new Date().toISOString();
   try {
