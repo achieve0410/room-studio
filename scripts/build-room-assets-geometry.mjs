@@ -45,7 +45,16 @@ function rod(group, name, start, end, bottom = 0.024, top = bottom, slot = 'wood
 }
 
 function tube(group, name, points, radius, slot, closed = false, segments = 36) {
-  return add(group, name, new T.TubeGeometry(new T.CatmullRomCurve3(points.map((point) => new T.Vector3(...point)), closed), segments, radius, 6, closed), slot);
+  const path = new T.CatmullRomCurve3(points.map((point) => new T.Vector3(...point)), closed);
+  const getPoint = path.getPoint.bind(path);
+  path.getPoint = (t, target) => {
+    const point = getPoint(t, target);
+    // Picometer samples prevent runtime Math.pow last bits from being amplified by
+    // tangent/Frenet calculations, without quantizing the final Float32 geometry.
+    for (const axis of ['x', 'y', 'z']) point[axis] = Math.round(point[axis] * 1e12) / 1e12;
+    return point;
+  };
+  return add(group, name, new T.TubeGeometry(path, segments, radius, 6, closed), slot);
 }
 
 function roundPath(width, depth, radius, y, centerZ = 0) {
