@@ -8,6 +8,9 @@ import {
 } from '../room-studio-improvements/browser-qa-lib.mjs';
 import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
 import { safeArtifactPath } from './artifact-path.mjs';
+import { selectAuditLayouts } from './audit-layouts.mjs';
+
+const auditLayouts = selectAuditLayouts(process.env.REGIONAL_PLANS === '1', process.env.REAL_PLAN_AUDIT_ID);
 
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const url = process.argv[2] ?? 'http://127.0.0.1:4173/';
@@ -77,7 +80,7 @@ try {
   await waitFor(`document.querySelectorAll('[data-demo-card]').length === ${DEMO_LAYOUTS.length + REGIONAL_DEMO_LAYOUTS.length}`, 'demo gallery');
 
   const reports = [];
-  for (const demo of process.env.REGIONAL_PLANS === '1' ? REGIONAL_DEMO_LAYOUTS : DEMO_LAYOUTS) {
+  for (const demo of auditLayouts) {
     const expectedInteriorDoors = demo.structures.filter(({ type, exterior }) => type === 'door' && !exterior).length;
     const previewDoors = await evaluate(browser.cdp,
       `(() => {
