@@ -7,6 +7,9 @@ import { chromium } from 'playwright-core';
 import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from '../src/demo-layouts.js';
 
 const root = resolve(import.meta.dirname, '..');
+// Avoid SwiftShader backpressure in the Linux functional matrix; full-quality views
+// have a separate production-profile gate. macOS captures and baselines stay full quality.
+const qaRenderProfile = process.platform === 'linux' && !process.env.STUDIO_BASELINE;
 const output = resolve(process.env.STUDIO3D_OUTPUT ?? join(root, '.omx/artifacts/studio3d', new Date().toISOString().replaceAll(':', '-')));
 await mkdir(output, { recursive: true });
 const port = await new Promise((resolvePort, reject) => {
@@ -42,7 +45,7 @@ const server = await createServer({
 });
 let browser;
 let page;
-const report = { output, checks: [], screenshots: [], errors: [] };
+const report = { output, renderProfile: qaRenderProfile ? 'qa-functional' : 'production', checks: [], screenshots: [], errors: [] };
 try {
   await server.listen();
   const url = server.resolvedUrls.local[0];
@@ -62,8 +65,11 @@ try {
   page.setDefaultTimeout(20000);
   page.on('pageerror', (error) => report.errors.push(error.message));
   await page.addInitScript(
-    (layout) => localStorage.setItem('room-studio-layout-v2', JSON.stringify(layout)),
-    DEMO_LAYOUTS[0],
+    ({ layout, qaRenderProfile }) => {
+      localStorage.setItem('room-studio-layout-v2', JSON.stringify(layout));
+      window.__roomStudioQaRenderProfile = qaRenderProfile;
+    },
+    { layout: DEMO_LAYOUTS[0], qaRenderProfile },
   );
   await page.goto(url);
   let serial = 0;
@@ -86,6 +92,13 @@ try {
     const done = await arm(expression);
     await action();
     await done();
+  };
+  const close = async () => {
+    await change(
+      `!document.querySelector('[data-walkthrough]') && window.__scene().destroyed`,
+      () => page.locator('[data-walkthrough-exit]').first().click(),
+    );
+    assert.equal(await page.locator('#app').evaluate(app => app.inert), false);
   };
   // Drive canvas gestures directly; observe native delivery after the app handler.
   const mouse = async (type, x, y, modifiers = 0) => {
@@ -213,7 +226,7 @@ try {
     await capture('baseline-top');
     await page.locator('button[data-view-mode="walk"]').click();
     await capture('baseline-walk');
-    await page.locator('[data-walkthrough-exit]').first().click();
+    await close();
   } else {
     await open();
     const frameCounts = await page.evaluate(() => {
@@ -384,7 +397,7 @@ try {
     await page.locator('[data-save-snapshot]').click();
     await (await download).saveAs(join(output, 'edited-snapshot.png'));
     await page.keyboard.press('Escape');
-    await page.locator('[data-walkthrough-exit]').first().click();
+    await close();
     assert.equal(await page.locator('[data-walkthrough]').count(), 0);
     assert.equal(await page.evaluate(() => window.__scene().destroyed), true);
     report.checks.push('PNG export; cleanup closes canvas and marks renderer destroyed');
@@ -518,7 +531,7 @@ try {
           actionCountBeforeWalk,
           'walk keys cannot edit',
         );
-        await page.locator('[data-walkthrough-exit]').first().click();
+        await close();
         report.checks.push(
           `${width}px sample ${index}: ${counts.models} loaded GLBs, ${counts.textures} textured meshes, three views and walk movement`,
         );
@@ -539,7 +552,7 @@ try {
     await page.unroute('**/seoul-sofa.glb');
     await change(assetReady, () => page.locator('[data-studio-retry]').click());
     await capture('model-retry-ready');
-    await page.locator('[data-walkthrough-exit]').first().click();
+    await close();
     report.checks.push('real failed GLB request is visibly error, retry loads actual model');
 
     // The actual parent entry uses main.js history and localStorage, not the harness callbacks.
@@ -573,7 +586,7 @@ try {
       ),
       actualItem.rotation,
     );
-    await page.locator('[data-walkthrough-exit]').first().click();
+    await close();
     assert.equal(
       await page.locator('#open-walkthrough').evaluate((button) => document.activeElement === button),
       true,
@@ -586,7 +599,7 @@ try {
       ),
       actualItem.rotation,
     );
-    await page.locator('[data-walkthrough-exit]').first().click();
+    await close();
     report.checks.push(
       'real main entry: preview does not save, commit persists, app remains inert, undo refreshes, close focus and reopen preserve state',
     );
