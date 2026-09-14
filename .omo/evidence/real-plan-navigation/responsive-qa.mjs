@@ -6,6 +6,10 @@ import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { safeArtifactPath } from './artifact-path.mjs';
 import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from '../../../src/demo-layouts.js';
+import { selectAuditLayouts } from './audit-layouts.mjs';
+
+// Validate the shard before side effects; responsive assertions cover the full gallery.
+selectAuditLayouts(process.env.REGIONAL_PLANS === '1', process.env.REAL_PLAN_AUDIT_ID);
 
 const chrome = [
   process.env.CHROME_BIN,
