@@ -1242,7 +1242,7 @@ export function openWalkthrough({
     studioPanel?.setAssets(state);
     if (state.errors.length) {
       assetErrorVisible = true;
-      setStatusMessage(status, `에셋 로딩 실패 · ${state.errors.join(' / ')} · 닫고 다시 열어 주세요`);
+      setStatusMessage(status, '에셋 로딩 실패 · 편집 패널에서 다시 불러오세요');
     } else if (!state.pending && assetErrorVisible) {
       assetErrorVisible = false;
       setStatusMessage(status, '에셋을 다시 불러왔습니다');

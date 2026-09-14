@@ -4098,7 +4098,7 @@ function renderDemoGallery() {
           </div>
           <span class="demo-area" data-demo-area>${demo.region ? `${escapeHtml(demo.region)} · ` : ''}${escapeHtml(demo.source.planType)}</span>
           ${demo.source.areaLabel ? `<p data-demo-area-label>출처 표기 면적: ${escapeHtml(demo.source.areaLabel)}</p>` : ''}
-          <h3>${escapeHtml(demo.name)}</h3>
+          <h3>${escapeHtml(demo.name).replace(/(\d+(?:\.\d+)?㎡)/g, '<span class="demo-measurement">$1</span>')}</h3>
           ${demo.assetStyle ? `<div class="demo-asset-style"><strong>${escapeHtml(demo.assetStyle.name)}</strong><p>${escapeHtml(demo.assetStyle.description)}</p><button class="demo-studio-button" data-demo-studio="${demo.id}" type="button">3D로 꾸며보기</button></div>` : ''}
           <dl><div><dt>출처</dt><dd data-demo-source><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(demo.source.attribution)}</a>${demo.source.archiveEntry ? ` · ${escapeHtml(demo.source.archiveEntry)}` : ''}</dd></div></dl>
           ${demo.assetStyle ? '<p class="sample-scope">참고 평면 재구성 · 치수와 가구 배치는 추정입니다.</p><details class="demo-source-details"><summary>공간 구성·추정 범위 보기</summary>' : ''}

@@ -429,7 +429,7 @@ footer { height: 36px; display: grid; place-items: center; border-top: 1px solid
 .walkthrough-location span { display: block; margin-bottom: 3px; color: #e9a06e; font-size: 8px; font-weight: 800; letter-spacing: .19em; }
 .walkthrough-location strong { display: block; font: 400 23px/1.1 Georgia, serif; letter-spacing: -.02em; }
 .walkthrough-location small { display: block; margin-top: 6px; color: rgba(255,255,255,.53); font-size: 8px; }
-.walkthrough-status { position: absolute; left: 50%; top: calc(27px + env(safe-area-inset-top)); transform: translateX(-50%); padding: 9px 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(13,18,15,.55); color: rgba(255,255,255,.76); font-size: 9px; letter-spacing: .02em; box-shadow: 0 8px 28px rgba(0,0,0,.12); backdrop-filter: blur(14px); }
+.walkthrough-status { position: absolute; left: 50%; top: calc(27px + env(safe-area-inset-top)); transform: translateX(-50%); padding: 9px 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(13,18,15,.55); color: rgba(255,255,255,.76); font-size: 9px; letter-spacing: .02em; word-break: keep-all; box-shadow: 0 8px 28px rgba(0,0,0,.12); backdrop-filter: blur(14px); }
 .walkthrough-status i { display: inline-block; width: 5px; height: 5px; margin-right: 6px; border-radius: 50%; background: #9ed8aa; box-shadow: 0 0 9px #7dce8e; vertical-align: 1px; }
 .walkthrough-exit { position: absolute; right: calc(25px + env(safe-area-inset-right)); top: calc(24px + env(safe-area-inset-top)); display: flex; align-items: center; justify-content: center; gap: 9px; min-width: 44px; height: 44px; padding: 0 13px 0 15px; border: 1px solid rgba(255,255,255,.23); border-radius: 999px; background: rgba(13,18,15,.56); color: #fff; font: 300 22px/1 sans-serif; pointer-events: auto; backdrop-filter: blur(14px); }
 .walkthrough-exit span { color: rgba(255,255,255,.66); font-size: 9px; }
@@ -810,6 +810,7 @@ footer { height: 36px; display: grid; place-items: center; border-top: 1px solid
   background: var(--ink); color: var(--paper); font-size: var(--text-caption); font-weight: 800; word-break: keep-all;
 }
 .demo-card h3 { margin: 4px 0 0; font: 700 19px/1.2 var(--font-display); }
+.demo-measurement { white-space: nowrap; }
 .demo-card > p { min-height: 34px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .demo-card > [data-demo-rooms] { word-break: keep-all; }
 .demo-card > [data-demo-rooms] span { display: inline-block; }
