@@ -167,7 +167,7 @@ export async function generateAssets() {
     parts.forEach((part) => part.geometry.dispose());
   }
   const sources = [];
-  for (const path of ['scripts/build-room-assets.mjs', 'scripts/build-room-assets-geometry.mjs', 'src/asset-library.js']) sources.push({ path, sha256: hash(await readFile(join(root, path))) });
+  for (const path of ['scripts/build-room-assets.mjs', 'scripts/build-room-assets-geometry.mjs', 'scripts/build-room-assets-render.mjs', 'src/asset-library.js', 'src/asset-library-loader.js', 'src/asset-library-preview.js']) sources.push({ path, sha256: hash(await readFile(join(root, path))) });
   const provenance = {
     version: 1, author: 'Room Studio contributors', license: 'Apache-2.0',
     attribution: 'Original Room Studio Seoul collection. No vendor affiliation or replica claim.',

@@ -11,15 +11,27 @@
   "sources": [
     {
       "path": "scripts/build-room-assets.mjs",
-      "sha256": "e34d8f3e3ead61666ad08d5a62beea7b3d40396210d1f462576e1501a3d4b871"
+      "sha256": "dd1fa0ce0cf0cfc990c13c7c72b3bbf27beb3e39a240a088202cbb80fca1df47"
     },
     {
       "path": "scripts/build-room-assets-geometry.mjs",
       "sha256": "b9fa975b9b4188e4033cf2a27429fe0c14a0790a0a7183ce35cbf4dd72d891aa"
     },
     {
+      "path": "scripts/build-room-assets-render.mjs",
+      "sha256": "b37be5e41387d37f90e1add91301e89486c149d7159c992ee1b6365c8ce4f571"
+    },
+    {
       "path": "src/asset-library.js",
-      "sha256": "a9aa8d4a9e6ab6de30970c0c11d54d95b09e89d77e618daf31087eeefd1cf632"
+      "sha256": "6ddf4aff20e4c6d22b8152661868ca5db9365f4a534aba4ee9309c00de18714a"
+    },
+    {
+      "path": "src/asset-library-loader.js",
+      "sha256": "e67a7eb6925e6e646a59d7a90cc9b3b6eb24efb509db80ff31e5c5d5940ff45e"
+    },
+    {
+      "path": "src/asset-library-preview.js",
+      "sha256": "d17dd563969e396e2e4eb291c9f18e943a693c1549356cc28a3df282eb1dcdda"
     }
   ],
   "generatorDependencies": [

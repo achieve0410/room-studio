@@ -579,8 +579,13 @@ try {
   await beginNormalPendingSave();
   await click('[data-cloud-close]', `!${visible('[data-cloud-backdrop]')}`);
   assert.ok(await stored(RECOVERY), 'Owner A recovery must exist before switching');
+  await click('#open-walkthrough', `document.querySelector('[data-walkthrough]')?.dataset.studioReady === 'true'`);
   await fixture(`switchUser(${JSON.stringify(secondOwner)})`);
   // Check before releasing the old response: account isolation cannot wait on it.
+  assert.equal(await page(visible('[data-walkthrough]')), false,
+    'Previous owner 3D document must close immediately when the account changes');
+  assert.equal(await page('document.querySelector("#app").inert'), false,
+    'Closing the previous owner 3D view must restore the current editor');
   assert.notEqual(await page('document.querySelector("h1").textContent'), remoteName,
     'Scenario 6: previous owner document remains rendered while old save is pending');
   assert.equal(await page(visible('[data-recovery-restore]')), false,

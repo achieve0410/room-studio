@@ -34,9 +34,13 @@
     "test:browser:regional": "node scripts/real-plan-browser-audit.mjs --regional",
     "test:browser:consultation": "node scripts/consultation-browser-audit.mjs && node scripts/consultation-cloud-audit.mjs && node scripts/consultation-cloud-audit.mjs --mobile",
     "test:browser:simple": "node scripts/simple-workspace-browser-audit.mjs && node scripts/simple-gestures-browser-audit.mjs && node scripts/simple-3d-browser-audit.mjs",
+    "test:browser:assets": "node scripts/seoul-assets-browser-audit.mjs && node tests/studio3d.browser.mjs",
+    "assets:build": "node scripts/build-room-assets.mjs --render",
+    "assets:examples": "node scripts/capture-seoul-examples.mjs",
     "check": "npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
+    "playwright-core": "1.62.1",
     "vite": "^8.1.5"
   },
   "dependencies": {

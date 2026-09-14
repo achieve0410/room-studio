@@ -74,6 +74,8 @@ export async function renderAssets({ thumbnails = false } = {}) {
       await page(`window.assetStudio.show(${JSON.stringify({ ids: [asset.id], width: 512, height: 512 })})`);
       const png = await page('window.assetStudio.png()');
       await writeFile(join(root, 'public/assets/room-studio', asset.thumbnailPath), Buffer.from(png, 'base64'));
+      const webp = await page('window.assetStudio.webp()');
+      await writeFile(join(root, 'public/assets/room-studio', asset.thumbnailWebpPath), Buffer.from(webp, 'base64'));
     }
     await page('window.assetStudio.dispose(); true');
     assert.deepEqual(errors, [], 'No browser exceptions or rendering/texture errors');

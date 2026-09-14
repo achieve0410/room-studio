@@ -301,6 +301,8 @@ try {
   assert.equal(await evaluatePage('Boolean(document.querySelector(".mobile-context-menu"))'), true);
   assert.equal(await evaluatePage('Boolean(document.querySelector("[data-transform-hud]"))'), false);
   await screenshot('mobile-selection');
+  const editedItemId = await evaluatePage('document.querySelector(".plan-item.is-selected").dataset.itemId');
+  const beforeNumericEdit = await state();
   await click('[data-context-action="details"]');
   await input('[data-item-field="width"]', '185');
   await click('[data-item-field="depth"]');
@@ -322,10 +324,13 @@ try {
     'true',
     'the first tap after editing a numeric field must activate the canvas tab',
   );
-  assert.equal((await state()).items[0].width, 185);
-  assert.equal((await state()).items[0].depth, 215);
+  const afterNumericEdit = await state();
+  assert.equal(afterNumericEdit.items.find(item => item.id === editedItemId).width, 185);
+  assert.equal(afterNumericEdit.items.find(item => item.id === editedItemId).depth, 215);
+  assert.deepEqual(afterNumericEdit.items.filter(item => item.id !== editedItemId),
+    beforeNumericEdit.items.filter(item => item.id !== editedItemId), 'numeric edits change only the selected furniture');
   await click('[data-option-select="A"]');
-  assert.equal((await state()).items[0].width, optionA.items[0].width);
+  assert.deepEqual((await state()).items, optionA.items, 'the other option remains unchanged');
   await click('[data-option-select="B"]');
   receipt.scenarios.push('genuine touch opens one editing surface and changes only the current option');
 

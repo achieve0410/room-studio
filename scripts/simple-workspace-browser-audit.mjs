@@ -104,7 +104,10 @@ try {
   await click('[data-simple-action="furniture"]');
   assert.equal(await page('document.activeElement.matches("[data-furniture-search]")'), true, 'furniture navigation moves focus to the visible destination');
   await input('[data-furniture-search]', '소파');
-  assert.equal(await page('document.querySelectorAll(".furniture-library button:not([hidden])").length'), 1);
+  assert.deepEqual(await page(`[
+    ...document.querySelectorAll('.furniture-library button:not([hidden]) img')
+  ].map(image => image.getAttribute('src').split('/').at(-1)).sort()`),
+  ['seoul-coffee-table.webp', 'seoul-sofa.webp'], 'search returns the sofa and its matching coffee table, not unrelated models');
   await input('[data-furniture-search]', '찾을수없는가구');
   assert.equal(await page('document.querySelector("[data-furniture-empty]").hidden'), false);
   await click('[data-furniture-search-clear]');

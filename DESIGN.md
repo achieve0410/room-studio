@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-09-12
+- Last refreshed: 2026-09-14
 - Primary product surfaces: 배경 도면·치수 도구를 포함한 2D 공간·가구·벽·문 편집기, 상세 조정 패널, 3D 1인칭·돌하우스·상공 미리보기
 - Evidence reviewed: `src/main.js`, `src/layout-tools.js`, `src/styles.css`, `src/walkthrough3d.js`, `scripts/mobile-browser-audit.mjs`, 390×844·1440×1000 렌더링, RoomSketcher·Planner 5D·Canva·Figma FigJam·SketchUp LayOut의 공식 조작 문서
 
@@ -114,12 +114,27 @@
 - Microcopy rules: 모바일 버튼은 명사 또는 한 동작으로 표기
 
 ## Implementation constraints
-- Framework/styling system: Vite, 바닐라 JavaScript, 단일 CSS 파일
+- Framework/styling system: Vite, 바닐라 JavaScript, 공통 CSS 토큰과 지연 로드하는 3D 패널 스타일
 - Design-token constraints: 기존 `--ink`, `--muted`, `--line`, `--paper`, `--accent` 재사용
-- Performance constraints: 새 UI 라이브러리와 의존성 추가 금지
+- Performance constraints: 런타임 UI 프레임워크·컴포넌트 라이브러리를 추가하지 않는다. `playwright-core`는 브라우저 검증 전용 개발 의존성이며 제품 번들에는 포함하지 않는다.
 - Compatibility constraints: 기존 저장 데이터와 데스크톱 편집 동작, Supabase·Tailscale·공개 localStorage 전용 데모 경계를 보존
 - Test/screenshot expectations: 390×844, 768×1024, 1440×1000에서 44px 조작 영역, 배경 도면·치수·잠금·복제, 직접 변형, 3D 3개 시점·선택 초점·PNG 흐름을 포함한 114개 브라우저 검증과 실제 평면 문의 가시성·반응형·전 공간 통행 검증을 확인
 
 ## Open questions
 - [ ] 실제 사용자 테스트 후 모바일 도면 패닝 제스처의 필요성 재평가 / 제품 / 탐색 효율
 - [ ] 개선된 핵심 흐름의 실제 고객 완료율과 학습 부담은 고객 파일럿으로 확인한다. 자동화된 브라우저 통과를 고객 적합성 검증으로 해석하지 않는다.
+
+## Seoul asset studio
+- Product reference: [Pascal Editor](https://github.com/pascalorg/editor)의 같은 장면 안에서 선택·배치·재질 변경을 이어가는 경험을 따른다. 로고·화면의 픽셀 복제나 고객별 AI 이미지 생성은 이번 제공 방식이 아니다.
+- Primary job: 서울 아파트 참고 예시를 열고, 사전 제작된 가구와 마감재를 고르고, 직접 배치를 바꿔 결과를 저장한다. 기존 상담·정밀 편집은 같은 도면을 사용하는 보조 흐름이다.
+- Examples: 대치 래미안대치팰리스는 밝은 오크·린넨, 압구정 현대는 월넛·차분한 패브릭, 도곡 렉슬은 밝은 중성색·부드러운 질감으로 구분한다. 구조·출처·추정 범위와 문을 통한 통행은 유지한다. 스타일은 실제 세대의 마감재나 판매 상품을 의미하지 않는다.
+- Assets: 가구는 크기·방향·바닥 원점을 검증한 실제 3D 모델이며, 카드와 갤러리 이미지는 해당 모델과 장면을 촬영한다. 생성된 참고 이미지를 편집 가능한 모델이나 실측 결과처럼 표시하지 않는다.
+- Catalog: 썸네일, 한국어 이름, 가로·세로 치수와 선택 상태를 가진 같은 가구 카드를 2D와 3D에서 재사용한다. 재질은 이름 있는 견본 버튼으로 제공한다. 선택 여부는 테두리와 텍스트 상태로 함께 표시한다.
+- Appearance: 가구의 주 재질과 공간의 바닥·벽 재질을 각각 바꾼다. 모델·재질은 버전이 있는 정적 카탈로그에서 해석하며 도면에는 식별자만 저장한다. 옛 도면은 명시적 선택 전까지 원래 색상과 형태를 유지한다.
+- Layout: `supporting-pane`의 주 작업·보조 패널 분리와 `scroll-body-shell`의 높이 경계를 사용한다. 3D 장면이 남는 너비·높이를 차지하고 에셋 패널은 별도 스크롤을 소유한다. 모바일은 에셋 목록을 접어 장면과 현재 선택의 44px 조작 버튼을 우선한다.
+- Interaction: 가구 선택·이동·회전·재질 변경에 즉시 시각 피드백을 제공한다. 미완료 이동은 Escape·pointercancel·두 손가락 전환에서 되돌리고 한 번의 확정은 한 번의 실행 취소로 복원한다. 잠긴 가구와 1인칭 이동 제어는 편집 제스처가 변경하지 않는다.
+- Tabs and motion: [beui tabs](https://beui.dev/r/tabs/raw)의 선택 상태와 패널 연결을 참고한다. 기존 180ms opacity·transform 전환만 사용하며 `prefers-reduced-motion`에서는 이동 효과를 제거한다. 카메라·가구 드래그에는 상태 전환 애니메이션을 걸지 않는다.
+- Tokens: 기존 paper·ink·accent·line과 4·8·12·16·24px 간격을 유지한다. 추가 토큰은 `--asset-card-preview: 96px`, `--asset-panel-width: 288px`, `--sample-cover-height: 180px`이다. 문이 식별되도록 평면 미리보기는 기존 `--demo-preview-height: 200px`을 유지한다. 가구·재질 자체 색상은 UI 토큰이 아닌 에셋 데이터이다.
+- Sample cards: 시작 화면에서 세 예시의 실제 3D 장면과 지역을 나란히 제공한다. 갤러리는 3D 이미지·문이 보이는 작은 평면·스타일·바로 열기를 먼저 보여주며, 출처 링크와 추정 표시는 유지하고 긴 공간 목록·설명만 disclosure로 접는다. 갤러리를 열 때 닫기 버튼에 초점을 두어 첫 카드를 아래로 밀어내지 않으며 닫기 헤더는 스크롤 중에도 유지한다.
+- States: 카드와 재질 견본은 기본·hover·focus·선택·disabled 상태를 제공한다. 모델 로딩은 진행 상태, 실패는 원인과 다시 열기 경로를 표시한다. 실패한 모델을 준비 완료 상태나 정상 미리보기로 숨기지 않는다.
+- Evidence: 세 예시 모두 데스크톱·모바일, 전체·상공·실내 시점에서 본다. 모델 로딩, 배치·회전·재질 변경, 실행 취소, 2D 복귀, 재열기, 파일 이동, 기존 도면 보존을 실제 브라우저로 확인한다.

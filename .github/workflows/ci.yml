@@ -39,10 +39,14 @@ jobs:
         run: npm run test:browser:mobile
       - name: Run simple workspace and direct manipulation audit
         run: npm run test:browser:simple
+      - name: Run prebuilt asset and 3D editing audit
+        run: npm run test:browser:assets
       - name: Run consultation and recovery audit
         run: npm run test:browser:consultation
       - name: Run real-plan door and traversal audit
         run: npm run test:browser:real-plans
+      - name: Run Seoul apartment door and traversal audit
+        run: npm run test:browser:regional
       - name: Upload browser audit artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -60,6 +64,16 @@ jobs:
             .omx/artifacts/simple-workspace/
             .omx/artifacts/simple-gestures/
             .omx/artifacts/simple-3d/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload prebuilt asset and 3D editing artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: seoul-assets-audit-${{ github.run_attempt }}
+          path: |
+            .omx/artifacts/seoul-assets/
+            .omx/artifacts/studio3d/
           if-no-files-found: warn
           retention-days: 7
       - name: Upload real-plan browser artifacts

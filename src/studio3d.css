@@ -1,0 +1,292 @@
+.walkthrough-overlay.has-studio3d {
+  --asset-card-preview: 96px;
+  --asset-panel-width: 288px;
+}
+.walkthrough-overlay.has-studio3d .walkthrough-hud {
+  z-index: 8;
+}
+.walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
+  right: calc(var(--asset-panel-width) + 24px);
+  width: auto;
+}
+.studio3d-shell {
+  position: absolute;
+  z-index: 6;
+  top: calc(134px + env(safe-area-inset-top));
+  right: 12px;
+  bottom: 12px;
+  width: var(--asset-panel-width);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px #0002;
+  font-size: var(--text-control, 13px);
+}
+.walkthrough-overlay .studio3d-shell[hidden],
+.walkthrough-overlay .studio3d-shell [hidden] {
+  display: none;
+}
+.studio3d-shell button,
+.studio3d-shell input,
+.studio3d-shell select {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+}
+.studio3d-shell button {
+  padding: 8px;
+  cursor: pointer;
+}
+.studio3d-shell button:hover:not(:disabled),
+.studio3d-shell button[aria-selected='true'],
+.studio3d-shell button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--paper));
+}
+.studio3d-shell button[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.studio3d-shell button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.walkthrough-overlay .studio3d-shell :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.studio3d-panel-head {
+  display: grid;
+  grid-template-columns: 1fr 44px 44px;
+  gap: 4px;
+  flex: none;
+}
+.studio3d-panel-head > button:first-child {
+  text-align: left;
+  font-weight: 700;
+}
+.studio3d-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 12px;
+  padding: 2px;
+}
+.studio3d-field {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+}
+.studio3d-field select {
+  width: 100%;
+  padding: 8px;
+}
+.studio3d-hint {
+  margin: 0;
+  font-size: var(--text-caption, 12px);
+  line-height: 1.5;
+  word-break: keep-all;
+  color: var(--muted);
+}
+.studio3d-hint > span {
+  display: block;
+}
+.studio3d-coordinates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.studio3d-coordinates label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+}
+.studio3d-coordinates input {
+  width: 100%;
+  padding: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.studio3d-nudges {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+}
+.studio3d-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.studio3d-swatches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.studio3d-swatches button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font-size: var(--text-caption, 12px);
+}
+.studio3d-swatches i {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: 1px solid #0002;
+  border-radius: 50%;
+}
+.studio3d-replace {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.studio3d-replace input {
+  width: 20px;
+  accent-color: var(--accent);
+}
+.studio3d-catalog {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.studio3d-catalog .room-asset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  overflow: hidden;
+  padding: 4px;
+}
+.studio3d-catalog .room-asset-card img {
+  width: 100%;
+  height: var(--asset-card-preview);
+  object-fit: contain;
+  background: #ece9e1;
+  border-radius: 4px;
+}
+.studio3d-catalog .room-asset-card strong {
+  font-size: var(--text-caption, 12px);
+  font-weight: 600;
+}
+.studio3d-catalog .room-asset-card small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.studio3d-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  flex: none;
+  min-width: 0;
+}
+.studio3d-shell .studio3d-selection strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  font-weight: 600;
+}
+.studio3d-selection span {
+  color: var(--accent);
+  font-size: var(--text-caption, 12px);
+}
+.studio3d-actions {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 4px;
+  flex: none;
+}
+.studio3d-actions [data-studio-apply]:not(:disabled) {
+  color: var(--paper);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.studio3d-load {
+  font-size: var(--text-caption, 12px);
+  line-height: 1.5;
+  color: var(--muted);
+  max-height: 88px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.studio3d-load:empty {
+  display: none;
+}
+.studio3d-shell[data-asset-state='error'] .studio3d-load {
+  color: var(--error, var(--accent));
+}
+@media (max-width: 900px), (max-height: 600px) {
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
+    right: 0;
+    bottom: 156px;
+  }
+  .studio3d-shell {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: min(48dvh, 420px);
+    padding: 8px;
+    gap: 4px;
+  }
+  .studio3d-body {
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+  }
+  .studio3d-shell input,
+  .studio3d-shell select {
+    font-size: 16px;
+  }
+  .studio3d-catalog {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .studio3d-selection {
+    font-size: 12px;
+    min-height: 18px;
+  }
+  .studio3d-shell.is-expanded {
+    max-height: 48dvh;
+  }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-status {
+    display: none;
+  }
+}
+@media (max-height: 450px) {
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
+    right: 240px;
+    bottom: 0;
+  }
+  .studio3d-shell {
+    top: 134px;
+    left: auto;
+    width: 228px;
+    max-height: none;
+    bottom: 8px;
+  }
+  .studio3d-shell.is-expanded {
+    top: 8px;
+    max-height: calc(100dvh - 16px);
+  }
+  .studio3d-catalog {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio3d-shell {
+    transition: none;
+  }
+}

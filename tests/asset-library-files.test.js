@@ -4,10 +4,24 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { ROOM_ASSETS, ROOM_MATERIALS, roomAssetUrl } from '../src/asset-library.js';
 import { createAssetGeometry } from '../scripts/build-room-assets-geometry.mjs';
+import { webpDimensions } from './webp-dimensions.js';
 
 const root = new URL('../public/assets/room-studio/', import.meta.url);
 const json = async (path) => JSON.parse(await readFile(new URL(path, root), 'utf8'));
 const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
+
+test('browser thumbnails keep full resolution in smaller WebP companions', async () => {
+  for (const asset of ROOM_ASSETS) {
+    assert.equal(typeof asset.thumbnailWebpPath, 'string');
+    const original = await readFile(new URL(asset.thumbnailPath, root));
+    const optimized = await readFile(new URL(asset.thumbnailWebpPath, root));
+    assert.equal(optimized.toString('ascii', 0, 4), 'RIFF');
+    assert.equal(optimized.toString('ascii', 8, 12), 'WEBP');
+    assert.deepEqual(webpDimensions(optimized), { width: 512, height: 512 });
+    assert.ok(optimized.length > 1000 && optimized.length < original.length);
+    assert.ok(roomAssetUrl(asset.thumbnailWebpPath).startsWith('./assets/room-studio/'));
+  }
+});
 
 test('shipped manifest, original source provenance, and all PBR maps are complete and consistent', async () => {
   const manifest = await json('manifest.json'), provenance = await json('PROVENANCE.json');
