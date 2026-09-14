@@ -16,6 +16,7 @@
       },
       "modelPath": "models/seoul-sofa.glb",
       "thumbnailPath": "thumbnails/seoul-sofa.png",
+      "thumbnailWebpPath": "thumbnails/seoul-sofa.webp",
       "primarySlot": "fabric",
       "materialSlots": [
         "fabric",
@@ -47,6 +48,7 @@
       },
       "modelPath": "models/seoul-bed.glb",
       "thumbnailPath": "thumbnails/seoul-bed.png",
+      "thumbnailWebpPath": "thumbnails/seoul-bed.webp",
       "primarySlot": "fabric",
       "materialSlots": [
         "wood",
@@ -78,6 +80,7 @@
       },
       "modelPath": "models/seoul-dining-table.glb",
       "thumbnailPath": "thumbnails/seoul-dining-table.png",
+      "thumbnailWebpPath": "thumbnails/seoul-dining-table.webp",
       "primarySlot": "wood",
       "materialSlots": [
         "wood",
@@ -107,6 +110,7 @@
       },
       "modelPath": "models/seoul-dining-chair.glb",
       "thumbnailPath": "thumbnails/seoul-dining-chair.png",
+      "thumbnailWebpPath": "thumbnails/seoul-dining-chair.webp",
       "primarySlot": "fabric",
       "materialSlots": [
         "wood",
@@ -137,6 +141,7 @@
       },
       "modelPath": "models/seoul-desk.glb",
       "thumbnailPath": "thumbnails/seoul-desk.png",
+      "thumbnailWebpPath": "thumbnails/seoul-desk.webp",
       "primarySlot": "wood",
       "materialSlots": [
         "wood",
@@ -167,6 +172,7 @@
       },
       "modelPath": "models/seoul-coffee-table.glb",
       "thumbnailPath": "thumbnails/seoul-coffee-table.png",
+      "thumbnailWebpPath": "thumbnails/seoul-coffee-table.webp",
       "primarySlot": "wood",
       "materialSlots": [
         "wood",
@@ -194,6 +200,7 @@
       },
       "modelPath": "models/seoul-side-table.glb",
       "thumbnailPath": "thumbnails/seoul-side-table.png",
+      "thumbnailWebpPath": "thumbnails/seoul-side-table.webp",
       "primarySlot": "wood",
       "materialSlots": [
         "wood",
@@ -221,6 +228,7 @@
       },
       "modelPath": "models/seoul-wardrobe.glb",
       "thumbnailPath": "thumbnails/seoul-wardrobe.png",
+      "thumbnailWebpPath": "thumbnails/seoul-wardrobe.webp",
       "primarySlot": "wood",
       "materialSlots": [
         "wood",
@@ -252,6 +260,7 @@
       },
       "modelPath": "models/seoul-tv-console.glb",
       "thumbnailPath": "thumbnails/seoul-tv-console.png",
+      "thumbnailWebpPath": "thumbnails/seoul-tv-console.webp",
       "primarySlot": "wood",
       "materialSlots": [
         "wood",
@@ -283,6 +292,7 @@
       },
       "modelPath": "models/seoul-plant.glb",
       "thumbnailPath": "thumbnails/seoul-plant.png",
+      "thumbnailWebpPath": "thumbnails/seoul-plant.webp",
       "primarySlot": "primary",
       "materialSlots": [
         "primary",
@@ -314,6 +324,7 @@
       },
       "modelPath": "models/seoul-floor-lamp.glb",
       "thumbnailPath": "thumbnails/seoul-floor-lamp.png",
+      "thumbnailWebpPath": "thumbnails/seoul-floor-lamp.webp",
       "primarySlot": "primary",
       "materialSlots": [
         "primary",
@@ -345,6 +356,7 @@
       },
       "modelPath": "models/seoul-rug.glb",
       "thumbnailPath": "thumbnails/seoul-rug.png",
+      "thumbnailWebpPath": "thumbnails/seoul-rug.webp",
       "primarySlot": "fabric",
       "materialSlots": [
         "fabric",

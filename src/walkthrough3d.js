@@ -1,11 +1,17 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { createStudioEditSession, studioWallRuns } from './studio3d-edit.js';
+import { createStudioAssets, disposeStudioScene } from './studio3d-assets.js';
+import { createStudioPanel } from './studio3d-panel.js';
+import { studioSpatialPoints, fitStudioCamera, createStudioNavigation } from './studio3d-camera.js';
 import {
   doorsForAutomaticWallSegment,
   getExteriorWallSegments,
   getDoorLeafSegments,
   getInteriorWallSegments,
   getLayoutBounds,
+  itemBounds,
+  snap,
   isPointBlockedByFurniture,
   isPointBlockedByDoorLeaves,
   isPointBlockedByInteriorWall,
@@ -64,8 +70,11 @@ export function createWallPresentation(scene) {
     if (!object.isMesh || !['wall', 'wall-trim'].includes(object.userData.type)
       || object.userData.doorFramePart) return;
     const original = object.material;
-    if (!materials.has(original)) materials.set(original, original.clone());
-    object.material = materials.get(original);
+    const clone = (entry) => {
+      if (!materials.has(entry)) materials.set(entry, entry.clone());
+      return materials.get(entry);
+    };
+    object.material = Array.isArray(original) ? original.map(clone) : clone(original);
     walls.push({ object, original });
   });
   return {
@@ -85,8 +94,8 @@ export function createWallPresentation(scene) {
   };
 }
 
-export function overviewSpatialBounds(scene) {
-  const bounds = new THREE.Box3();
+export function overviewSpatialMeshes(scene) {
+  const meshes = [];
   scene.updateMatrixWorld(true);
   scene.traverseVisible((object) => {
     if (!object.isMesh) return;
@@ -97,7 +106,14 @@ export function overviewSpatialBounds(scene) {
       if (['floor', 'wall', 'wall-trim', 'furniture'].includes(ancestor.userData.type)) relevant = true;
       if (['ceiling', 'ceiling-fixture', 'furniture-label'].includes(ancestor.userData.type)) return;
     }
-    if (!relevant) return;
+    if (relevant) meshes.push(object);
+  });
+  return meshes;
+}
+
+export function overviewSpatialBounds(scene) {
+  const bounds = new THREE.Box3();
+  overviewSpatialMeshes(scene).forEach((object) => {
     object.geometry.computeBoundingBox();
     bounds.union(object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld));
   });
@@ -139,6 +155,12 @@ export function fitOverviewCamera(camera, bounds, mode, target = null) {
   camera.far = Math.max(100, ...corners.map((corner) => (distance - corner.z) * 1.1));
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld(true);
+}
+
+export function pickWalkthroughOpening(raycaster, scene) {
+  const intersection = raycaster.intersectObjects(scene.children, true)
+    .find((entry) => entry.distance <= 4 && entry.object.isMesh);
+  return intersection?.object.userData.openingController ?? null;
 }
 
 export function setStatusMessage(status, message) {
@@ -751,7 +773,7 @@ function buildWindowSash(scene, windowStructure, center, frameMaterial) {
   return controller;
 }
 
-function buildScene(scene, zones, items, structures, wallHeight, center) {
+function buildScene(scene, zones, items, structures, wallHeight, center, assets) {
   const wallHeightMeters = Math.max(wallHeight, ...zones.map((zone) => zone.height ?? wallHeight)) / 100;
   const toWorld = (x, y) => ({ x: (x - center.x) / 100, z: (y - center.y) / 100 });
   const wallMaterial = material(0xe8e4db, 0.9);
@@ -770,12 +792,13 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
     const world = toWorld(zone.x + zone.width / 2, zone.y + zone.depth / 2);
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(zone.width / 100, zone.depth / 100),
-      new THREE.MeshStandardMaterial({ map: createFloorTexture(zone), roughness: 0.8, metalness: 0.01 }),
+      new THREE.MeshStandardMaterial({ map: zone.floorMaterialId ? null : createFloorTexture(zone), roughness: 0.8, metalness: 0.01 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(world.x, 0, world.z);
     floor.receiveShadow = true;
     floor.userData = { type: 'floor', id: zone.id, name: zone.name };
+    if (zone.floorMaterialId) assets.surface(floor.material, zone.floorMaterialId, zone.width / 100, zone.depth / 100, zone.name);
     scene.add(floor);
 
     const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(zone.width / 100, zone.depth / 100), ceilingMaterial);
@@ -806,14 +829,25 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
   const openings = [...doors, ...windows];
   const userWalls = structures.filter((structure) => structure.type === 'wall');
   const automaticWallOpenings = (segment) => doorsForAutomaticWallSegment(segment, openings, userWalls);
-  const buildWallSegment = (
+  const buildWallRun = (
     segment,
     wallOpenings,
     heightMeters = wallHeightMeters,
     thickness = WALL_THICKNESS_M,
     dollhouseCutaway = false,
+    owners = null,
   ) => {
     const horizontal = segment.orientation === 'horizontal';
+    const wallFaces = Array(6).fill(wallMaterial);
+    for (const [side, face] of [['positive', horizontal ? 4 : 0], ['negative', horizontal ? 5 : 1]]) {
+      const zone = owners?.[side];
+      if (zone?.wallMaterialId) {
+        wallFaces[face] = material(0xe8e4db, 0.9);
+        assets.surface(wallFaces[face], zone.wallMaterialId,
+          (horizontal ? segment.x2 - segment.x1 : segment.y2 - segment.y1) / 100, heightMeters, zone.name);
+      }
+    }
+    const runMaterial = owners ? wallFaces : wallMaterial;
     const fixed = (horizontal ? segment.y : segment.x) - (horizontal ? center.y : center.x);
     const axisCenter = horizontal ? center.x : center.y;
     const layout = splitWallSegment(segment, wallOpenings);
@@ -828,7 +862,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
         fixed,
         heightMeters,
         heightMeters / 2,
-        wallMaterial,
+        runMaterial,
         trimMaterial,
         thickness,
         dollhouseCutaway,
@@ -852,7 +886,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
           fixed,
           openingBottom,
           openingBottom / 2,
-          wallMaterial,
+          runMaterial,
           trimMaterial,
           thickness,
           dollhouseCutaway,
@@ -867,7 +901,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
         fixed,
         lintelHeight,
         openingTop + lintelHeight / 2,
-        wallMaterial,
+        runMaterial,
         trimMaterial,
         thickness,
         dollhouseCutaway,
@@ -887,6 +921,26 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
           doorFramePart: opening.doors.some(({ type }) => type === 'door'),
         };
         scene.add(jamb);
+      });
+    });
+  };
+
+  const buildWallSegment = (segment, openings, height, thickness, cutaway) => {
+    const runs = studioWallRuns(segment, zones);
+    // Keep the legacy wall/opening geometry intact until a finish is explicitly chosen.
+    if (!zones.some(zone => zone.wallMaterialId)) {
+      const first = scene.children.length;
+      buildWallRun(segment, openings, height, thickness, cutaway);
+      scene.children.slice(first).forEach(object => {
+        if (object.userData.type === 'wall') object.userData.wallRuns = runs;
+      });
+      return;
+    }
+    runs.forEach(run => {
+      const first = scene.children.length;
+      buildWallRun(run.segment, openings, height, thickness, cutaway, run);
+      scene.children.slice(first).forEach(object => {
+        if (object.userData.type === 'wall') object.userData.wallRuns = [run];
       });
     });
   };
@@ -911,7 +965,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
   const windowControllers = windows.map((windowStructure) => buildWindowSash(scene, windowStructure, center, trimMaterial));
 
   items.forEach((item) => {
-    const group = createFurnitureGroup(item);
+    const group = item.assetId ? assets.furniture(item) : createFurnitureGroup(item);
     const world = toWorld(item.x, item.y);
     group.position.x = world.x;
     group.position.z = world.z;
@@ -925,6 +979,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center) {
       shadow.rotation.x = -Math.PI / 2;
       shadow.scale.z = Math.max(0.45, item.depth / item.width);
       shadow.position.set(world.x, 0.006, world.z);
+      shadow.userData = { type: 'furniture-shadow', id: item.id };
       scene.add(shadow);
     }
   });
@@ -1023,6 +1078,11 @@ export function openWalkthrough({
   onDoorChange = null,
   onStructureChange = onDoorChange,
   onClose = null,
+  getLayout = null,
+  onEdit = null,
+  onUndo = null,
+  onRedo = null,
+  historyState = null,
 }) {
   activeCleanup?.();
 
@@ -1030,7 +1090,13 @@ export function openWalkthrough({
   const background = document.querySelector('#app');
   const previousInert = background?.inert;
   const previousHidden = background?.getAttribute('aria-hidden');
-  const layout = getLayoutBounds(zones);
+  zones = structuredClone(zones);
+  items = structuredClone(items);
+  let layout = getLayoutBounds(zones);
+  let studioPanel = null;
+  let editSession = null;
+  let assetState = { pending: 0, errors: [] };
+  let refreshAssetPresentation = () => {};
   const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
   const openingPromptCopy = coarsePointer ? '탭하여' : '클릭 또는 E로';
   const overlay = document.createElement('section');
@@ -1132,7 +1198,7 @@ export function openWalkthrough({
   const status = overlay.querySelector('[data-walkthrough-status]');
   const openingStatus = overlay.querySelector('[data-opening-status]');
   const currentRoom = overlay.querySelector('[data-current-room]');
-  const mapPlayer = overlay.querySelector('[data-map-player]');
+  let mapPlayer = overlay.querySelector('[data-map-player]');
   const roomToast = overlay.querySelector('[data-room-toast]');
   const openingPrompt = overlay.querySelector('[data-opening-prompt]');
   const joystick = overlay.querySelector('[data-walkthrough-joystick]');
@@ -1156,10 +1222,10 @@ export function openWalkthrough({
   const camera = new THREE.PerspectiveCamera(70, stage.clientWidth / stage.clientHeight, 0.05, 50);
   camera.rotation.order = 'YXZ';
   const center = { x: (layout.left + layout.right) / 2, y: (layout.top + layout.bottom) / 2 };
-  const sceneStructures = structures.map((structure) => ({ ...structure }));
-  const doors = sceneStructures.filter((structure) => structure.type === 'door');
-  const userWalls = sceneStructures.filter((structure) => structure.type === 'wall');
-  const interiorWalls = [
+  let sceneStructures = structures.map((structure) => ({ ...structure }));
+  let doors = sceneStructures.filter((structure) => structure.type === 'door');
+  let userWalls = sceneStructures.filter((structure) => structure.type === 'wall');
+  let interiorWalls = [
     ...getInteriorWallSegments(zones).flatMap((segment) => splitWallSegment(
       segment,
       doorsForAutomaticWallSegment(segment, doors, userWalls),
@@ -1169,28 +1235,45 @@ export function openWalkthrough({
     )),
   ];
   let doorLeafSegments = getDoorLeafSegments(doors);
-  const openingControllers = buildScene(scene, zones, items, sceneStructures, wallHeight, center);
-  const doorControllers = openingControllers.filter(({ kind }) => kind === 'door');
+  let assetErrorVisible = false;
+  const assets = createStudioAssets((state) => {
+    assetState = state;
+    overlay.dataset.assetState = state.errors.length ? 'error' : state.pending ? 'loading' : 'ready';
+    studioPanel?.setAssets(state);
+    if (state.errors.length) {
+      assetErrorVisible = true;
+      setStatusMessage(status, `에셋 로딩 실패 · ${state.errors.join(' / ')} · 닫고 다시 열어 주세요`);
+    } else if (!state.pending && assetErrorVisible) {
+      assetErrorVisible = false;
+      setStatusMessage(status, '에셋을 다시 불러왔습니다');
+    }
+    if (!state.pending) refreshAssetPresentation();
+  });
+  const worldRoot = new THREE.Group();
+  scene.add(worldRoot);
+  let openingControllers = buildScene(worldRoot, zones, items, sceneStructures, wallHeight, center, assets);
+  let doorControllers = openingControllers.filter(({ kind }) => kind === 'door');
+  const hasVisibleMaterial = material => (Array.isArray(material) ? material : [material]).some(
+    entry => entry?.visible !== false && entry?.colorWrite !== false && entry?.opacity > 0,
+  );
   overlay.dataset.doorControllerCount = String(doorControllers.length);
   overlay.dataset.visibleDoorMeshCount = String(doorControllers.reduce(
-    (count, controller) => count + controller.meshes.filter(({ material }) => material?.visible !== false
-      && material?.colorWrite !== false && material?.opacity > 0).length,
+    (count, controller) => count + controller.meshes.filter(({ material }) => hasVisibleMaterial(material)).length,
     0,
   ));
   let visibleDoorFramePartCount = 0;
   scene.traverse((object) => {
-    if (object.isMesh && object.userData.doorFramePart && object.material?.visible !== false
-      && object.material?.opacity > 0) visibleDoorFramePartCount += 1;
+    if (object.isMesh && object.userData.doorFramePart && hasVisibleMaterial(object.material)) visibleDoorFramePartCount += 1;
   });
   overlay.dataset.visibleDoorFramePartCount = String(visibleDoorFramePartCount);
   const furnitureLabels = [];
   const ceilingObjects = [];
-  const wallPresentation = createWallPresentation(scene);
+  let wallPresentation = createWallPresentation(scene);
   scene.traverse((object) => {
     if (object.userData.type === 'furniture-label') furnitureLabels.push(object);
     if (object.userData.type === 'ceiling' || object.userData.type === 'ceiling-fixture') ceilingObjects.push(object);
   });
-  const selectedFocusTarget = focusTargetForSelection(focus, zones, items, sceneStructures, center, wallHeight);
+  let selectedFocusTarget = focusTargetForSelection(focus, zones, items, sceneStructures, center, wallHeight);
   focusButton.disabled = !selectedFocusTarget;
   const labelWorldPosition = new THREE.Vector3();
   const raycaster = new THREE.Raycaster();
@@ -1235,6 +1318,18 @@ export function openWalkthrough({
   let ceilingsVisible = true;
   let presentationWalls = true;
   let overviewTarget = null;
+  const overviewOrbitTarget = new THREE.Vector3();
+  let overviewNavigated = false;
+  const overviewNavigation = createStudioNavigation({
+    camera,
+    target: overviewOrbitTarget,
+    mode: () => viewMode,
+    size: () => ({ width: stage.clientWidth, height: stage.clientHeight }),
+    onChange: () => {
+      overviewNavigated = true;
+      overlay.dataset.cameraRevision = String(Number(overlay.dataset.cameraRevision ?? 0) + 1);
+    },
+  });
   let animationFrame = 0;
   let previousFrameTime = performance.now();
   let destroyed = false;
@@ -1298,6 +1393,12 @@ export function openWalkthrough({
       );
     }
     fitOverviewCamera(camera, bounds, mode, target);
+    overviewOrbitTarget.copy(target ? new THREE.Vector3(target.x, target.y, target.z) : bounds.getCenter(new THREE.Vector3()));
+    // Legacy drawings keep their audited envelope; asset scenes fit the visible mesh envelope.
+    if (!target && (items.some(item => item.assetId) || zones.some(zone => zone.floorMaterialId || zone.wallMaterialId))) {
+      overviewOrbitTarget.copy(fitStudioCamera(camera, studioSpatialPoints(overviewSpatialMeshes(scene)), overviewOrbitTarget));
+    }
+    overviewNavigated = false;
     currentRoom.textContent = targetPoint.name ?? (mode === 'top' ? '상공 보기' : '돌하우스 보기');
   };
   const activateOverview = (mode, target = null) => {
@@ -1310,12 +1411,14 @@ export function openWalkthrough({
     stopMovement();
     document.exitPointerLock?.();
     viewMode = mode;
+    studioPanel?.setMode(mode);
     overlay.classList.add('is-active', 'is-overview');
     renderer.setSize(stage.clientWidth, stage.clientHeight, false);
     camera.aspect = stage.clientWidth / stage.clientHeight;
-    setOverviewCamera(mode, target);
     setCeilingsVisible(false);
     syncWallPresentation();
+    overviewNavigation.cancel();
+    setOverviewCamera(mode, target);
     hideMenu();
     overlay.classList.remove('can-use-door');
     delete overlay.dataset.targetDoorId;
@@ -1364,9 +1467,7 @@ export function openWalkthrough({
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     raycaster.setFromCamera(rayPointer, camera);
-    const intersection = raycaster.intersectObjects(scene.children, true)
-      .find((entry) => entry.distance <= 4);
-    return intersection?.object.userData.openingController ?? null;
+    return pickWalkthroughOpening(raycaster, scene);
   };
   const interactWithOpening = (clientX, clientY) => {
     const hit = openingAt(clientX, clientY);
@@ -1376,6 +1477,7 @@ export function openWalkthrough({
     const opening = hit.targetOpening > 5 ? 0 : isSliding ? 100 : 90;
     hit.setOpening(opening);
     onStructureChange?.(hit.structure.id, isSliding ? { openRatio: opening } : { openAngle: opening });
+    if (getLayout && editSession) editSession.refresh(getLayout());
     const action = opening > 0 ? '열었습니다' : '닫았습니다';
     const label = isWindow ? '미닫이창을' : isSliding ? '미닫이문을' : '여닫이문을';
     setStatusMessage(status, `${label} ${action}`);
@@ -1390,6 +1492,13 @@ export function openWalkthrough({
 
   const onKeyDown = (event) => {
     if (!overlay.isConnected) return;
+    if (event.target instanceof Element && event.target.matches('input, select, textarea')) return;
+    if (event.code === 'Escape' && (editSession?.pending || editDrag)) {
+      event.preventDefault();
+      editDrag = null;
+      studioPanel.cancel();
+      return;
+    }
     if (event.code === 'KeyE' && navigationActive) {
       event.preventDefault();
       if (event.repeat) return;
@@ -1412,7 +1521,7 @@ export function openWalkthrough({
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    if (viewMode !== 'walk') setOverviewCamera(viewMode, overviewTarget);
+    if (viewMode !== 'walk' && !overviewNavigated) setOverviewCamera(viewMode, overviewTarget);
   };
   const activateNavigation = () => {
     if (viewMode === 'walk') {
@@ -1420,6 +1529,9 @@ export function openWalkthrough({
       walkPose.quaternion.copy(camera.quaternion);
     }
     viewMode = 'walk';
+    editDrag = null;
+    overviewNavigation.cancel();
+    studioPanel?.setMode('walk');
     overlay.classList.remove('is-overview');
     onResize();
     camera.up.set(0, 1, 0);
@@ -1448,6 +1560,8 @@ export function openWalkthrough({
     }
     navigationActive = false;
     draggingLook = false;
+    overviewNavigation.cancel();
+    studioPanel?.setMode('walk');
     showMenu();
     overlay.classList.remove('is-active', 'is-overview', 'can-use-door');
     status.textContent = '일시 정지';
@@ -1455,11 +1569,161 @@ export function openWalkthrough({
     document.exitPointerLock?.();
     menu.querySelector('[data-walkthrough-start]').focus({ preventScroll: true });
   };
+  const selectionRing = new THREE.Box3Helper(new THREE.Box3(), 0xad4b32);
+  selectionRing.material.depthTest = false;
+  selectionRing.renderOrder = 5;
+  selectionRing.visible = false;
+  scene.add(selectionRing);
+  const updateSelection = (selection = studioPanel?.selection ?? focus) => {
+    focus = selection;
+    selectedFocusTarget = focusTargetForSelection(selection, zones, items, sceneStructures, center, wallHeight);
+    focusButton.disabled = !selectedFocusTarget;
+    const item = selection?.kind === 'item' ? items.find(item => item.id === selection.id) : null;
+    const zone = selection?.kind === 'zone' ? zones.find(zone => zone.id === selection.id) : null;
+    selectionRing.visible = Boolean(onEdit && (item || zone) && viewMode !== 'walk');
+    if (item || zone) {
+      const bounds = item ? itemBounds(item) : { left: zone.x, right: zone.x + zone.width, top: zone.y, bottom: zone.y + zone.depth };
+      selectionRing.box.set(
+        new THREE.Vector3((bounds.left - center.x) / 100, item ? (item.elevation ?? 0) / 100 + 0.01 : 0.01, (bounds.top - center.y) / 100),
+        new THREE.Vector3((bounds.right - center.x) / 100, item ? ((item.elevation ?? 0) + item.height) / 100 + 0.02 : 0.035, (bounds.bottom - center.y) / 100),
+      );
+    }
+  };
+  const geometryKey = value => JSON.stringify({
+    ...value,
+    items: value.items.map(({x, y, rotation, elevation, ...item}) => item),
+    structures: value.structures.map(({openAngle, openRatio, ...structure}) => structure),
+  });
+  let sceneKey = geometryKey({ zones, items, structures, wallHeight });
+  const refreshLayout = (next, force = false) => {
+    if (destroyed || !next) return;
+    const nextKey = geometryKey({ zones: next.zones, items: next.items, structures: next.structures ?? [], wallHeight: next.wallHeight ?? wallHeight });
+    zones = structuredClone(next.zones);
+    items = structuredClone(next.items);
+    wallHeight = next.wallHeight ?? wallHeight;
+    layout = getLayoutBounds(zones);
+    if (force || nextKey !== sceneKey) {
+      sceneKey = nextKey;
+      wallPresentation.dispose();
+      disposeStudioScene(worldRoot);
+      assets.begin();
+      worldRoot.clear();
+      sceneStructures = structuredClone(next.structures ?? []);
+      doors = sceneStructures.filter(structure => structure.type === 'door');
+      userWalls = sceneStructures.filter(structure => structure.type === 'wall');
+      interiorWalls = [
+        ...getInteriorWallSegments(zones).flatMap(segment => splitWallSegment(segment, doorsForAutomaticWallSegment(segment, doors, userWalls)).spans),
+        ...userWalls.flatMap(wall => splitWallSegment(structureSegment(wall), doors.filter(door => door.wallId === wall.id)).spans),
+      ];
+      doorLeafSegments = getDoorLeafSegments(doors);
+      openingControllers = buildScene(worldRoot, zones, items, sceneStructures, wallHeight, center, assets);
+      doorControllers = openingControllers.filter(({kind}) => kind === 'door');
+      wallPresentation = createWallPresentation(scene);
+      furnitureLabels.length = 0;
+      ceilingObjects.length = 0;
+      scene.traverse(object => {
+        if (object.userData.type === 'furniture-label') furnitureLabels.push(object);
+        if (['ceiling', 'ceiling-fixture'].includes(object.userData.type)) ceilingObjects.push(object);
+      });
+      setCeilingsVisible(ceilingsVisible);
+      syncWallPresentation();
+      overlay.querySelector('[data-minimap]').innerHTML = miniMapMarkup(zones, layout);
+      mapPlayer = overlay.querySelector('[data-map-player]');
+      assets.finish();
+    } else {
+      openingControllers.forEach(controller => {
+        const current = next.structures?.find(structure => structure.id === controller.structure.id);
+        if (current) controller.setOpening(controller.kind === 'window' || current.doorType === 'sliding' ? current.openRatio ?? 0 : current.openAngle ?? 0);
+      });
+      worldRoot.children.forEach(object => {
+        if (!['furniture', 'furniture-shadow'].includes(object.userData.type)) return;
+        const item = items.find(item => item.id === object.userData.id);
+        object.position.x = (item.x - center.x) / 100;
+        object.position.z = (item.y - center.y) / 100;
+        if (object.userData.type === 'furniture') {
+          object.position.y = (item.elevation ?? 0) / 100;
+          object.rotation.y = -(item.rotation ?? 0) * Math.PI / 180;
+        }
+      });
+    }
+    updateSelection();
+    studioPanel?.sync();
+    overlay.dataset.sceneRevision = String(Number(overlay.dataset.sceneRevision ?? 0) + 1);
+  };
+  refreshAssetPresentation = () => {
+    if (destroyed) return;
+    wallPresentation.dispose();
+    wallPresentation = createWallPresentation(scene);
+    syncWallPresentation();
+    updateSelection();
+    if (viewMode !== 'walk' && !editDrag && !overviewNavigated) setOverviewCamera(viewMode, overviewTarget);
+  };
+  const editPointers = new Set();
+  let editDrag = null;
+  const setEditRay = (event) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    rayPointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+    scene.updateMatrixWorld(true);
+    raycaster.setFromCamera(rayPointer, camera);
+  };
+  const groundPoint = (event) => {
+    setEditRay(event);
+    const point = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+    return point ? { x: point.x * 100 + center.x, y: point.z * 100 + center.y } : null;
+  };
+  const pickEditable = (event) => {
+    setEditRay(event);
+    for (const hit of raycaster.intersectObjects(worldRoot.children, true)) {
+      let object = hit.object, invisible = false, furniture = null;
+      for (let ancestor = object; ancestor; ancestor = ancestor.parent) {
+        if (!ancestor.visible) invisible = true;
+        if (ancestor.userData.type === 'furniture') furniture = ancestor;
+      }
+      if (invisible || ['furniture-shadow','furniture-label'].includes(object.userData.type)) continue;
+      if (furniture) return { kind: 'item', id: furniture.userData.id };
+      if (object.userData.type === 'floor') return { kind: 'zone', id: object.userData.id, surface: 'floor' };
+      if (object.userData.type === 'wall') {
+        if (presentationWalls && hit.point.y > 0.65 && !object.userData.doorFramePart) continue;
+        const runs = object.userData.wallRuns ?? [];
+        const run = runs.find(run => {
+          const axis = run.segment.orientation === 'horizontal' ? hit.point.x * 100 + center.x : hit.point.z * 100 + center.y;
+          return axis >= (run.segment.x1 ?? run.segment.y1) - 1 && axis <= (run.segment.x2 ?? run.segment.y2) + 1;
+        });
+        if (run) {
+          const positive = run.segment.orientation === 'horizontal' ? hit.face.materialIndex === 4 : hit.face.materialIndex === 0;
+          const zone = (positive ? run.positive : run.negative) ?? run.positive ?? run.negative;
+          if (zone) return { kind: 'zone', id: zone.id, surface: 'wall' };
+        }
+      }
+      if (object.userData.openingController) return null;
+    }
+    return null;
+  };
   const onTouchStart = (event) => {
     // Keep native flings from consuming the first toolbar tap after a camera drag.
     if (event.cancelable) event.preventDefault();
   };
   const onPointerDown = (event) => {
+    if (viewMode !== 'walk' && [0, 1, 2].includes(event.button)) {
+      editPointers.add(event.pointerId);
+      renderer.domElement.setPointerCapture?.(event.pointerId);
+      if (editPointers.size > 1) {
+        editDrag = null;
+        studioPanel?.cancel();
+        overviewNavigation.down(event);
+        return;
+      }
+      const selection = studioPanel && event.button === 0 && !event.shiftKey ? pickEditable(event) : null;
+      if (studioPanel && event.button === 0 && !event.shiftKey) studioPanel.select(selection);
+      const item = studioPanel?.current;
+      const point = groundPoint(event);
+      if (selection?.kind === 'item' && !item.locked && point) {
+        editDrag = { id: event.pointerId, x: item.x, y: item.y, point, clientX: event.clientX, clientY: event.clientY, moved: false };
+      }
+      overviewNavigation.down(event, selection?.kind === 'item');
+      renderer.domElement.focus({ preventScroll: true });
+      return;
+    }
     if (!navigationActive || event.button !== 0) return;
     if (document.pointerLockElement === renderer.domElement) {
       pointerStart = { locked: true };
@@ -1475,6 +1739,17 @@ export function openWalkthrough({
     renderer.domElement.setPointerCapture?.(event.pointerId);
   };
   const onPointerMove = (event) => {
+    if (editDrag?.id === event.pointerId) {
+      overviewNavigation.move(event);
+      if (Math.hypot(event.clientX - editDrag.clientX, event.clientY - editDrag.clientY) < 4 && !editDrag.moved) return;
+      const point = groundPoint(event);
+      if (point) {
+        editDrag.moved = true;
+        studioPanel.move(snap(editDrag.x + point.x - editDrag.point.x, 1), snap(editDrag.y + point.y - editDrag.point.y, 1));
+      }
+      return;
+    }
+    if (viewMode !== 'walk' && overviewNavigation.move(event)) return;
     if (document.pointerLockElement === renderer.domElement) {
       applyLookDelta(event.movementX, event.movementY);
       return;
@@ -1499,6 +1774,19 @@ export function openWalkthrough({
     }
   };
   const onPointerUp = (event) => {
+    if (editPointers.has(event.pointerId)) {
+      // A release can carry movement that was not dispatched as pointermove.
+      if (event.type === 'pointerup') onPointerMove(event);
+      editPointers.delete(event.pointerId);
+      overviewNavigation.up(event);
+      const drag = editDrag;
+      editDrag = null;
+      if (drag?.id === event.pointerId) {
+        if (event.type === 'pointerup' && drag.moved) studioPanel.commit();
+        else if (event.type !== 'pointerup') studioPanel.cancel();
+      }
+      return;
+    }
     const pointerLocked = document.pointerLockElement === renderer.domElement;
     const wasTap = event.type === 'pointerup' && pointerStart && (pointerLocked || dragDistance < 8);
     const usedOpening = wasTap && (pointerLocked
@@ -1510,6 +1798,15 @@ export function openWalkthrough({
     draggingLook = false;
     previousPointer = null;
     pointerStart = null;
+  };
+
+  const onOverviewWheel = (event) => {
+    if (viewMode === 'walk') return;
+    event.preventDefault();
+    overviewNavigation.wheel(event);
+  };
+  const onOverviewContextMenu = (event) => {
+    if (viewMode !== 'walk') event.preventDefault();
   };
 
   const updateJoystick = (clientX, clientY) => {
@@ -1654,6 +1951,7 @@ export function openWalkthrough({
       delete overlay.dataset.targetWindowId;
       furnitureLabels.forEach((label) => { label.visible = false; });
     }
+    selectionRing.visible = Boolean(onEdit && selectedFocusTarget && focus && ['item','zone'].includes(focus.kind) && viewMode !== 'walk');
     renderer.render(scene, camera);
   };
 
@@ -1687,6 +1985,9 @@ export function openWalkthrough({
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     renderer.domElement.removeEventListener('touchstart', onTouchStart);
+    renderer.domElement.removeEventListener('wheel', onOverviewWheel);
+    renderer.domElement.removeEventListener('contextmenu', onOverviewContextMenu);
+    overviewNavigation.cancel();
     renderer.domElement.removeEventListener('pointerdown', onPointerDown);
     renderer.domElement.removeEventListener('pointermove', onPointerMove);
     renderer.domElement.removeEventListener('pointerup', onPointerUp);
@@ -1698,13 +1999,10 @@ export function openWalkthrough({
     joystick.removeEventListener('pointercancel', onJoystickEnd);
     joystick.removeEventListener('lostpointercapture', onJoystickEnd);
     stopMovement();
+    studioPanel?.dispose();
     wallPresentation.dispose();
-    scene.traverse((object) => {
-      object.geometry?.dispose?.();
-      if (Array.isArray(object.material)) object.material.forEach((entry) => entry.dispose());
-      else object.material?.dispose?.();
-      object.material?.map?.dispose?.();
-    });
+    disposeStudioScene(scene);
+    assets.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
     document.exitPointerLock?.();
@@ -1720,6 +2018,10 @@ export function openWalkthrough({
     else previousFocus?.focus({ preventScroll: true });
   };
   activeCleanup = cleanup;
+  cleanup.refresh = (next = getLayout?.()) => {
+    if (editSession) editSession.refresh(next);
+    else refreshLayout(next);
+  };
 
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKeyDown);
@@ -1727,6 +2029,8 @@ export function openWalkthrough({
   document.addEventListener('fullscreenchange', onFullscreenChange);
   document.addEventListener('pointerlockchange', onPointerLockChange);
   renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+  renderer.domElement.addEventListener('wheel', onOverviewWheel, { passive: false });
+  renderer.domElement.addEventListener('contextmenu', onOverviewContextMenu);
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
   renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerup', onPointerUp);
@@ -1747,7 +2051,7 @@ export function openWalkthrough({
   overlay.addEventListener('keydown', (event) => {
     if (event.key === 'Tab') {
       const scope = menu.hidden ? overlay : menu;
-      const controls = [...scope.querySelectorAll('button:not(:disabled), [tabindex]:not([tabindex="-1"])')]
+      const controls = [...scope.querySelectorAll('button:not(:disabled):not([tabindex="-1"]), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')]
         .filter((node) => node.getClientRects().length && !node.closest('[inert]'));
       const current = controls.indexOf(document.activeElement);
       const next = event.shiftKey
@@ -1791,6 +2095,21 @@ export function openWalkthrough({
     activateNavigation();
   });
   overlay.querySelectorAll('[data-walkthrough-exit]').forEach((button) => button.addEventListener('click', cleanup));
+  if (onEdit) {
+    const showEditError = error => setStatusMessage(status, `변경을 적용하지 못했습니다 · ${error.message}`);
+    editSession = createStudioEditSession({ layout: { zones, items, structures, wallHeight }, getLayout, onEdit, onPreview: refreshLayout });
+    studioPanel = createStudioPanel({ overlay, session: editSession, focus, onSelection: updateSelection, onResize, onUndo, onRedo, historyState, onError: showEditError });
+    studioPanel.onRetry(() => refreshLayout(editSession.layout, true));
+    studioPanel.setAssets(assetState);
+    studioPanel.setMode(initialMode);
+    import('./studio3d.css').then(() => {
+      if (destroyed) return;
+      studioPanel.reveal();
+      onResize();
+      overlay.dataset.studioReady = 'true';
+    }).catch(showEditError);
+  }
+  assets.finish();
   if (initialMode === 'dollhouse' || initialMode === 'top') {
     activateOverview(initialMode);
   } else {

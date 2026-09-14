@@ -40,7 +40,7 @@ Use `materialById(id).tileSize` instead of a hardcoded repeat denominator. Each 
 
 Asset IDs: `seoul-sofa`, `seoul-bed`, `seoul-dining-table`, `seoul-dining-chair`, `seoul-desk`, `seoul-coffee-table`, `seoul-side-table`, `seoul-wardrobe`, `seoul-tv-console`, `seoul-plant`, `seoul-floor-lamp`, `seoul-rug`.
 
-Metadata: `id`, `name`, `category`, `dimensions: {width, depth, height}` (meters), `modelPath`, `thumbnailPath`, `materialSlots`, `primarySlot`, `legacyTypes`. Origin is bottom-center; +Y up, +Z front. Parent owns layout cm conversion and orientation. Full mesh height includes headboards/lamps; bed height is not just mattress height.
+Metadata: `id`, `name`, `category`, `dimensions: {width, depth, height}` (meters), `modelPath`, `thumbnailPath`, `thumbnailWebpPath`, `materialSlots`, `primarySlot`, `legacyTypes`. Origin is bottom-center; +Y up, +Z front. Parent owns layout cm conversion and orientation. Full mesh height includes headboards/lamps; bed height is not just mattress height.
 
 Persist `item.assetId`, `item.materialId`, `zone.floorMaterialId`, `zone.wallMaterialId` as IDs. Omitted appearance fields preserve legacy behavior.
 
@@ -67,7 +67,7 @@ Original contemporary apartment furniture, not reproductions of branded products
 | seoul-floor-lamp | 0.48 x 0.48 x 1.50 | 102,756 | 3,312 | 4 |
 | seoul-rug | 2.10 x 1.50 x 0.018 | 193,700 | 6,660 | 3 |
 
-Totals: **2,267,052 model bytes**, **594,015 shared texture bytes**, **79,136 triangles**. Fifteen 256x256 RGB PNGs supply sRGB base color plus linear tangent-space normal and roughness maps for furniture wood, woven fabric, plank oak, stone tile and plaster. Twelve 512x512 PNG thumbnails total 1,063,907 bytes. Textures are shared via relative paths, not duplicated in GLBs. The machine-readable `manifest.json` records precise sizes, hashes, draw calls, dimensions and slots.
+Totals: **2,267,052 model bytes**, **594,015 shared texture bytes**, **79,136 triangles**. Fifteen 256x256 RGB PNGs supply sRGB base color plus linear tangent-space normal and roughness maps for furniture wood, woven fabric, plank oak, stone tile and plaster. The twelve 512x512 PNG thumbnails are retained; browsers use smaller WebP companions at the same resolution. Textures are shared via relative paths, not duplicated in GLBs. The machine-readable `manifest.json` records precise sizes, hashes, draw calls, dimensions and slots.
 
 ## Rebuild and provenance
 
@@ -80,15 +80,15 @@ node scripts/build-room-assets-render.mjs   # Validate existing shipped pack wit
 npm run build -- --base=./
 ```
 
-The renderer uses installed Chrome on macOS; set `CHROME_BIN` elsewhere. It uses dynamically assigned ports, isolated browser profiles, exact load/frame events with bounded timeouts, and the repository's existing CDP helper. No browser package or runtime dependency was added.
+The pack renderer uses installed Chrome on macOS; set `CHROME_BIN` elsewhere. It uses dynamically assigned ports, isolated browser profiles, exact load/frame events with bounded timeouts, and the repository's existing CDP helper. It adds no runtime dependency. The editor's separate browser regression suite uses dev-only `playwright-core`.
 
 Authoring source: `scripts/build-room-assets-geometry.mjs` (bowed upholstery, piping, draped quilt, bentwood chair, trestle joinery, turned profiles, tambour slats, botanical leaves, pleated shade, rug binding/fringe). `scripts/build-room-assets.mjs` creates analytic periodic textures, serializes standard glTF 2.0 and records SHA-256 provenance. No external assets, reference-image pixels, AI images, network downloads, or vendor replicas are used. The original pack is Apache-2.0, with the full license in the pack; the Three.js MIT license is included separately. `PROVENANCE.json` records source and output hashes and dependency use. Redistribution and modification follow those licenses.
 
-Geometry, textures and metadata reproduce byte-for-byte from source on the pinned dependency tree; a complete rebuild verified all 31 model/texture/metadata/license outputs by SHA-256 equality (`.omx/artifacts/seoul-assets/reproducibility.json`). Tests also rebuild geometry and compare shipped vertex buffers. Thumbnails are actual GLB renders, not image substitutes for models. Their exact pixels can vary by Chrome/GPU version. Resolve `thumbnailPath` through `roomAssetUrl`, use an accessible name and lazy loading in cards. Do not regenerate checked-in outputs by hand.
+Geometry, textures and metadata reproduce byte-for-byte from source on the pinned dependency tree. Tests rebuild geometry and compare shipped vertex buffers. Thumbnails are actual GLB renders, not image substitutes for models. Their exact pixels can vary by Chrome/GPU version. Resolve `thumbnailWebpPath` through `roomAssetUrl` for browser cards; `thumbnailPath` retains the PNG original. Use an accessible name and lazy loading in cards. Do not regenerate checked-in outputs by hand.
 
 ## Validation evidence
 
-The first contract run was RED because the catalog module did not exist. Final focused run: **19/19 passing** (bounds/indices/finite coordinates, slots, output/source hashes, thumbnails, unknown IDs/base paths, concurrent cache deduplication, independent palette materials, exact disposal ownership, failure retry, and late-load disposal). All source/test files passed `node --check`.
+The first contract run was RED because the catalog module did not exist. Coverage includes bounds/indices/finite coordinates, slots, output/source hashes, PNG originals and smaller full-resolution WebP companions, unknown IDs/base paths, concurrent cache deduplication, independent palette materials, exact disposal ownership, failure retry, and late-load disposal. Source/test files are checked with `node --check` and the Node test runner.
 
 Real Chrome 153 rendered **38 views**: four furniture groups x three palettes x front/rear/top, plus wood/mineral surface swatches. All twelve GLBs and all fifteen textures decoded from same-origin `/room-studio/` URLs; exact loaded bounds and bottom-center origins passed. Front/rear/top screenshots were inspected, and quilt/chair intersections found during inspection were fixed in the authored geometry. Screenshots and `render-report.json` remain under `.omx/artifacts/seoul-assets/`, not repository docs.
 

@@ -97,6 +97,7 @@ export function createAssetPreview(container) {
       return { entries, renderer: { ...renderer.info.render }, textureCount: renderer.info.memory.textures, materialId, angle, size: [width, height] };
     },
     png() { return renderer.domElement.toDataURL('image/png').split(',')[1]; },
+    webp() { return renderer.domElement.toDataURL('image/webp', 0.9).split(',')[1]; },
     catalog: ROOM_ASSETS,
     dispose() {
       handles.forEach((handle) => handle.release());

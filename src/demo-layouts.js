@@ -1,4 +1,5 @@
 import regionalLayouts from './regional-demo-layouts.js';
+import { withRegionalAssets } from './regional-asset-styles.js';
 
 const DATASET_URL = 'https://www.data.go.kr/data/15037046/fileData.do';
 const CATALOG_URL = 'https://www.data.go.kr/catalog/15037046/fileData.json';
@@ -194,7 +195,7 @@ const hoecheon84 = {
 };
 
 export const DEMO_LAYOUTS = deepFreeze([mandeok59, hoecheon74, hoecheon84]);
-export const REGIONAL_DEMO_LAYOUTS = deepFreeze(regionalLayouts);
+export const REGIONAL_DEMO_LAYOUTS = deepFreeze(regionalLayouts.map(withRegionalAssets));
 
 export function demoLayoutById(id) {
   const layout = [...REGIONAL_DEMO_LAYOUTS, ...DEMO_LAYOUTS].find((candidate) => candidate.id === id);

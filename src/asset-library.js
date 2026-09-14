@@ -11,6 +11,7 @@ const asset = (category, name, size, primarySlot, materialSlots, legacyTypes) =>
   dimensions: { width: size[0], depth: size[1], height: size[2] },
   modelPath: `models/seoul-${category}.glb`,
   thumbnailPath: `thumbnails/seoul-${category}.png`,
+  thumbnailWebpPath: `thumbnails/seoul-${category}.webp`,
   primarySlot, materialSlots, legacyTypes,
   units: 'm', origin: 'bottom-center', front: '+Z', license: 'Apache-2.0',
 });
@@ -63,7 +64,7 @@ const assets = new Map(ROOM_ASSETS.map((entry) => [entry.id, entry]));
 const materials = new Map(ROOM_MATERIALS.map((entry) => [entry.id, entry]));
 const paths = new Set([
   'manifest.json', 'PROVENANCE.json', 'LICENSE.txt', 'THREE-LICENSE.txt',
-  ...ROOM_ASSETS.flatMap(({ modelPath, thumbnailPath }) => [modelPath, thumbnailPath]),
+  ...ROOM_ASSETS.flatMap(({ modelPath, thumbnailPath, thumbnailWebpPath }) => [modelPath, thumbnailPath, thumbnailWebpPath]),
   ...['wood', 'fabric', 'oak', 'tile', 'plaster'].flatMap((name) => ['color', 'normal', 'roughness'].map((kind) => `textures/${name}-${kind}.png`)),
 ]);
 

@@ -32,6 +32,16 @@ The default simple workspace keeps the drawing visible, including on narrow touc
 
 The starter's **아파트 샘플 체험** opens a Daechi Raemian Palace reference layout. **샘플** also offers Apgujeong Hyundai 35-pyeong and Dogok Rexle 33A, with connected bedroom, bathroom and balcony openings and naturally open shared spaces. These are original approximations from published plans, not surveyed residences. See [sources, advertised areas and approximation boundaries](docs/REGIONAL_SAMPLES.md).
 
+### Furnished Seoul examples
+
+Choose a Seoul card in the starter, or **샘플 → 3D로 꾸며보기**, to open one of three
+furnished styles. The catalog ships 12 original GLB furniture models, three furniture
+palettes, and seven floor/wall finishes. Select, drag, rotate, replace, and furnish directly
+in 3D; previews commit through the same drawing history and persistence as the 2D editor.
+No per-customer AI generation is required. This release extends the existing Three.js
+renderer, not Pascal's packages or hosted services.
+See the [workflow](docs/SEOUL_ASSET_STUDIO.md) and [asset provenance](docs/asset-library.md).
+
 > Room Studio is a planning and visualization aid, not a substitute for permit, architectural, structural, accessibility, building-services, or construction drawings. Real construction, permitting, and safety decisions require review by qualified architects, engineers, accessibility specialists, and other relevant professionals.
 
 ## See Room Studio in action

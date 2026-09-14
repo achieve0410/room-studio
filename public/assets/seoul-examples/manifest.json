@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "source": "Room Studio 3D canvas",
+  "license": "Apache-2.0",
+  "examples": [
+    {
+      "id": "daechi-palace-11224-public-reconstruction",
+      "name": "대치동 래미안대치팰리스 84.98㎡ 참고 샘플",
+      "styleId": "warm-oak",
+      "sourceHash": "f5f0feb5733c686a82cd5459b2c70369300fa2aa4349860d6a580128e2d59f17",
+      "images": [
+        {
+          "filename": "daechi-dollhouse.webp",
+          "mode": "dollhouse",
+          "width": 1128,
+          "height": 866,
+          "bytes": 58026,
+          "sha256": "cae753e3d6d89dc4dcfcface636bbda48776c18834ae6f6108bebb1db9d58464",
+          "previews": [
+            {
+              "filename": "daechi-dollhouse-160.webp",
+              "width": 160,
+              "height": 123,
+              "bytes": 3810,
+              "sha256": "19c157ddfa315b46f3b65dc2fb0387900b4a3b606bb3a81744be3de1c0cd7ec8"
+            },
+            {
+              "filename": "daechi-dollhouse-320.webp",
+              "width": 320,
+              "height": 246,
+              "bytes": 9108,
+              "sha256": "936ea34f12740c3dcc233bba4493b5698030cab7bed34344344732a3cac57e2f"
+            },
+            {
+              "filename": "daechi-dollhouse-640.webp",
+              "width": 640,
+              "height": 491,
+              "bytes": 20406,
+              "sha256": "55140dbac9c0f0c8a6ee56f54e5032767015b361b709fd25e0fcfa2d5869826e"
+            }
+          ]
+        },
+        {
+          "filename": "daechi-top.webp",
+          "mode": "top",
+          "width": 1128,
+          "height": 866,
+          "bytes": 32944,
+          "sha256": "e230986e8f46a5623edf501946585606078f51c25498fa821be1c9b5446608cc"
+        }
+      ]
+    },
+    {
+      "id": "apgujeong-hyundai-35-estimated",
+      "name": "압구정 현대 35평형 참고 샘플",
+      "styleId": "walnut",
+      "sourceHash": "f659ca463ec72c6a75014a91e5e80b893fcda5bc58299f7e2d555885d520902d",
+      "images": [
+        {
+          "filename": "apgujeong-dollhouse.webp",
+          "mode": "dollhouse",
+          "width": 1128,
+          "height": 866,
+          "bytes": 59740,
+          "sha256": "b6b8f7af3a1519d1d4ec15f408559306f07f8454d19af6ce875f747f2ec3bdf7",
+          "previews": [
+            {
+              "filename": "apgujeong-dollhouse-160.webp",
+              "width": 160,
+              "height": 123,
+              "bytes": 3994,
+              "sha256": "796398b8d0b2edf8db00b44c13517e742eca13925ea4731c55769562e30bcfee"
+            },
+            {
+              "filename": "apgujeong-dollhouse-320.webp",
+              "width": 320,
+              "height": 246,
+              "bytes": 9274,
+              "sha256": "387aff4ba2490e8c40134a77edec298254a84cf6ec3e5cfeb5181f977b29e998"
+            },
+            {
+              "filename": "apgujeong-dollhouse-640.webp",
+              "width": 640,
+              "height": 491,
+              "bytes": 21926,
+              "sha256": "c24caf18f49c0e948d734761b9a1d2b6ca07b2b7d4d0e29919593f8f5224a695"
+            }
+          ]
+        },
+        {
+          "filename": "apgujeong-top.webp",
+          "mode": "top",
+          "width": 1128,
+          "height": 866,
+          "bytes": 28556,
+          "sha256": "d67b77fc56b55faeb0381c4c07a015fc462fa331f631b6368c1ccdcd08689b12"
+        }
+      ]
+    },
+    {
+      "id": "dogok-rexle-111a",
+      "name": "도곡동 도곡렉슬 33A 참고 샘플",
+      "styleId": "soft-modern",
+      "sourceHash": "6385fb865111bd9358451739d6e2f69b28f3bb1ab9e0da70e414959efb2ac3ad",
+      "images": [
+        {
+          "filename": "dogok-dollhouse.webp",
+          "mode": "dollhouse",
+          "width": 1128,
+          "height": 866,
+          "bytes": 50028,
+          "sha256": "91950ef9f72073b96775fc9eb94eefed4cf234d0e165adba05e281445af37368",
+          "previews": [
+            {
+              "filename": "dogok-dollhouse-160.webp",
+              "width": 160,
+              "height": 123,
+              "bytes": 3130,
+              "sha256": "053360a48f8fd039a66d04d7b692102eb959407c29f572dd342bb98daceb1fb1"
+            },
+            {
+              "filename": "dogok-dollhouse-320.webp",
+              "width": 320,
+              "height": 246,
+              "bytes": 7380,
+              "sha256": "bb4c57000aaaa62286cb94efb48e18180e14a0e264e1523dc659b7900f944d72"
+            },
+            {
+              "filename": "dogok-dollhouse-640.webp",
+              "width": 640,
+              "height": 491,
+              "bytes": 17164,
+              "sha256": "a9066bd55ac8b525e1ed3b187e6286776fd44e4de5ffeac7374e619a01faa88d"
+            }
+          ]
+        },
+        {
+          "filename": "dogok-top.webp",
+          "mode": "top",
+          "width": 1128,
+          "height": 866,
+          "bytes": 28978,
+          "sha256": "f256a1b88d609cb29a99a76f55319ee2964f827e1b01a29df67ce8dcb7d42dd9"
+        }
+      ]
+    }
+  ]
+}

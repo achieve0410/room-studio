@@ -11,6 +11,9 @@ import { parseProjectFile, projectFileName, serializeProjectFile } from './proje
 import { createDecisionReport, decisionReportFileName } from './project-report.js';
 import { createNumericEditTransaction, rankHitCandidates, snapPendingPlacement } from './editor-interactions.js';
 import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS, demoLayoutById } from './demo-layouts.js';
+import { normalizeItemAppearance, normalizeZoneAppearance } from './appearance.js';
+import { ROOM_ASSETS, assetForItem } from './asset-library.js';
+import { renderAssetPreview, renderMaterialControls } from './appearance-ui.js';
 import {
   createComparisonOption,
   geometrySnapshot,
@@ -102,7 +105,32 @@ const furnitureTemplates = [
   { type: 'clothesRackSingle', name: '옷걸이 행거 1단', shape: 'rect', width: 120, depth: 45, height: 170, color: '#747872' },
   { type: 'clothesRackDoubleRow', name: '옷걸이 행거 2단 횡', shape: 'rect', width: 120, depth: 70, height: 170, color: '#747872' },
   { type: 'clothesRackDoubleTier', name: '옷걸이 행거 2단 열', shape: 'rect', width: 120, depth: 45, height: 190, color: '#747872' },
-];
+].map((template) => {
+  const asset = assetForItem(template);
+  if (!asset) return template;
+  return {
+    ...template,
+    name: asset.name,
+    shape: 'roundRect',
+    width: Math.round(asset.dimensions.width * 100),
+    depth: Math.round(asset.dimensions.depth * 100),
+    height: Math.round(asset.dimensions.height * 100),
+    assetId: asset.id,
+    materialId: 'warm-oak',
+  };
+});
+furnitureTemplates.push(...ROOM_ASSETS.filter((asset) => !furnitureTemplates.some((template) => template.assetId === asset.id))
+  .map((asset) => ({
+    type: asset.legacyTypes[0] ?? asset.category.replaceAll('-', '_'),
+    name: asset.name,
+    shape: 'roundRect',
+    width: Math.round(asset.dimensions.width * 100),
+    depth: Math.round(asset.dimensions.depth * 100),
+    height: Math.round(asset.dimensions.height * 100),
+    color: '#c4b8a4',
+    assetId: asset.id,
+    materialId: 'warm-oak',
+  })));
 
 const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const makeZone = (zone) => {
@@ -299,6 +327,7 @@ function normalizeDrawing(saved) {
         depth: numberValue(zone.depth, 300, 100, 1200),
         height: numberValue(zone.height, wallHeight, 100, 600),
         color: normalizeHexColor(zone.color, DEFAULT_ZONE_COLOR),
+        ...normalizeZoneAppearance(zone),
         locked: Boolean(zone.locked),
         walkthroughStart: Boolean(zone.walkthroughStart),
       };
@@ -319,6 +348,7 @@ function normalizeDrawing(saved) {
         elevation: numberValue(item.elevation, 0, 0, 400),
         rotation,
         color: normalizeHexColor(item.color, DEFAULT_ITEM_COLOR),
+        ...normalizeItemAppearance(item),
         locked: Boolean(item.locked),
       };
     });
@@ -450,6 +480,8 @@ let cloudFeedbackTone = '';
 let starterDialogOpen = startsWithoutStoredLayout;
 let demoGalleryOpen = false;
 let pendingDemoId = null;
+let pendingDemo3d = false;
+let active3dCleanup = null;
 let projectDialogOpen = false;
 let projectFileFeedback = '';
 let projectFileFeedbackTone = '';
@@ -561,6 +593,7 @@ function applyProjectDocument({
   dirty = false,
 }) {
   if (ownerId && ownerId !== currentCloudUserId()) return false;
+  active3dCleanup?.();
   clearTimeout(cloudSaveTimer);
   cloudPendingSave = null;
   documentGeneration += 1;
@@ -650,6 +683,56 @@ function setProjectFileFeedback(message, tone = '') {
   if (status) {
     status.textContent = message;
     status.dataset.tone = tone;
+  }
+}
+
+async function open3dEditor() {
+  const openingDocument = documentGeneration;
+  const button = document.querySelector('#open-walkthrough');
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '3D 준비 중…';
+  try {
+    const { openWalkthrough } = await import('./walkthrough3d.js');
+    if (openingDocument !== documentGeneration) return;
+    active3dCleanup = openWalkthrough({
+      zones: state.zones,
+      items: state.items,
+      structures: state.structures,
+      wallHeight: state.wallHeight,
+      focus: state.selection ? { ...state.selection } : null,
+      initialMode: 'dollhouse',
+      getLayout: layoutSnapshot,
+      historyState: () => ({ canUndo: historyPast.length > 0, canRedo: historyFuture.length > 0 }),
+      onEdit(action) {
+        if (action.type === 'add-item') {
+          const item = { ...action.item, id: action.item.id ?? uid('item') };
+          updateState({ items: [...state.items, item], selection: { kind: 'item', id: item.id } });
+        } else if (action.type === 'update-item') {
+          const item = state.items.find((entry) => entry.id === action.id);
+          if (!item || item.locked) throw new Error('잠긴 가구는 변경할 수 없습니다.');
+          updateItem(action.id, action.updates);
+        } else if (action.type === 'update-zone') {
+          const zone = state.zones.find((entry) => entry.id === action.id);
+          if (!zone || zone.locked) throw new Error('잠긴 공간은 변경할 수 없습니다.');
+          updateZone(action.id, action.updates);
+        }
+        return layoutSnapshot();
+      },
+      onUndo() { undo(); return layoutSnapshot(); },
+      onRedo() { redo(); return layoutSnapshot(); },
+      onStructureChange: (id, updates) => updateStructure(id, updates),
+      onClose() {
+        active3dCleanup = null;
+        document.querySelector('#open-walkthrough')?.focus({ preventScroll: true });
+      },
+    });
+  } catch (error) {
+    editorNotice = error.message || '3D 화면을 열지 못했습니다. 도면은 유지됩니다.';
+    render();
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
   }
 }
 
@@ -923,19 +1006,22 @@ function openDemoGallery() {
   starterDialogOpen = false;
   demoGalleryOpen = true;
   pendingDemoId = null;
+  pendingDemo3d = false;
   render();
-  document.querySelector('[data-demo-layout]')?.focus();
+  document.querySelector('[data-demo-close]')?.focus({ preventScroll: true });
 }
 
 function closeDemoGallery() {
   demoGalleryOpen = false;
   pendingDemoId = null;
+  pendingDemo3d = false;
   render();
   document.querySelector('[data-demo-open]')?.focus();
 }
 
-function requestDemoLayout(id) {
+function requestDemoLayout(id, openIn3d = false) {
   if (!demoLayoutById(id)) return;
+  pendingDemo3d = openIn3d;
   if (hasMeaningfulLocalLayout()) {
     pendingDemoId = id;
     render();
@@ -945,7 +1031,7 @@ function requestDemoLayout(id) {
   applyDemoLayout(id);
 }
 
-function applyDemoLayout(id) {
+function applyDemoLayout(id, openIn3d = pendingDemo3d) {
   const demo = demoLayoutById(id);
   if (!demo) return;
   if (!canReplaceCurrentDraft()) return;
@@ -954,9 +1040,11 @@ function applyDemoLayout(id) {
   starterDialogOpen = false;
   demoGalleryOpen = false;
   pendingDemoId = null;
+  pendingDemo3d = false;
   editorNotice = '샘플 도면을 열었습니다.';
   pendingFocus = { kind: 'canvas' };
   render();
+  if (openIn3d) void open3dEditor();
 }
 
 function setCloudFeedback(message, tone = '') {
@@ -1305,7 +1393,7 @@ function updateState(updates, options = {}) {
 function updateZone(id, updates, options = {}) {
   const selected = state.zones.find((zone) => zone.id === id);
   const sharedUpdates = Object.fromEntries(
-    Object.entries(updates).filter(([field]) => ['name', 'type', 'color', 'height'].includes(field)),
+    Object.entries(updates).filter(([field]) => ['name', 'type', 'color', 'height', 'floorMaterialId', 'wallMaterialId'].includes(field)),
   );
   const zones = state.zones.map((zone) => {
     const sameSpace = selected && spaceIdOf(zone) === spaceIdOf(selected);
@@ -3734,6 +3822,7 @@ function renderInspector(entity) {
         <label>공간 높이 <span>cm</span><input type="number" min="100" max="600" step="10" data-zone-field="height" value="${entity.height ?? 240}" /></label>
       </div>
       <label class="color-field">공간 색상<input type="color" data-zone-field="color" value="${entity.color}" /></label>
+      ${renderMaterialControls(entity, 'zone')}
       <div class="space-part-actions">
         <button data-add-zone-part type="button">＋ 이 공간에 조각 추가</button>
         <button class="danger-button" data-delete-zone-part type="button">선택 조각 삭제</button>
@@ -3804,6 +3893,7 @@ function renderInspector(entity) {
       <label>Y 위치 <span>cm</span><input type="number" step="10" data-item-field="y" value="${Math.round(entity.y)}" /></label>
     </div>
     <label class="color-field">가구 색상<input type="color" data-item-field="color" value="${entity.color}" /></label>
+    ${renderMaterialControls(entity, 'item')}
     <div class="rotation-row">
       <label>회전 각도 <span>°</span><input type="number" min="0" max="359" step="1" data-item-field="rotation" value="${Math.round(entity.rotation)}" /></label>
       <button id="rotate-item" type="button">↻ 90° 회전</button>
@@ -3921,14 +4011,21 @@ function renderProjectDialog() {
   </div>`;
 }
 
+function sampleCoverSrcSet(cover) {
+  const base = `${import.meta.env.BASE_URL}assets/seoul-examples/${cover}-dollhouse`;
+  return [...[160, 320, 640].map(width => `${base}-${width}.webp ${width}w`), `${base}.webp 1128w`].join(', ');
+}
+
 function renderStarterDialog() {
   if (!starterDialogOpen) return '';
   return `<div class="cloud-dialog-backdrop" data-start-backdrop>
     <section class="cloud-dialog starter-dialog" role="dialog" aria-modal="true" aria-labelledby="starter-dialog-title">
-      <button class="cloud-dialog-close" data-start-close type="button" aria-label="시작 화면 닫기">×</button>
-      <span class="eyebrow">내 공간, 내 배치</span>
-      <h2 id="starter-dialog-title">방 크기만 알면 시작할 수 있어요</h2>
-      <p>공간을 만들고, 가구를 놓고, 3D로 확인하세요.</p>
+      <header class="starter-heading">
+        <div><span class="eyebrow">내 공간, 내 배치</span>
+        <h2 id="starter-dialog-title">내 공간 꾸미기</h2></div>
+        <button class="cloud-dialog-close" data-start-close type="button" aria-label="시작 화면 닫기">×</button>
+      </header>
+      <p>방 크기를 입력하거나 아파트 예시를 선택하세요.</p>
       <form class="starter-room-form" data-start-room-form>
         <div class="starter-room-preview" aria-hidden="true"><span>내 공간</span><small>가구를 자유롭게 놓아보세요</small></div>
         <div class="starter-room-fields">
@@ -3937,6 +4034,14 @@ function renderStarterDialog() {
           <button class="primary-button" type="submit">이 크기로 시작</button>
         </div>
       </form>
+      <section class="starter-examples" aria-label="서울 아파트 3D 예시">
+        <h3>서울 아파트 3D 예시</h3>
+        <div class="starter-example-grid">${REGIONAL_DEMO_LAYOUTS.map((demo) => `<button type="button" data-start-studio="${demo.id}">
+          <img src="${import.meta.env.BASE_URL}assets/seoul-examples/${demo.assetStyle.cover}-dollhouse.webp" srcset="${sampleCoverSrcSet(demo.assetStyle.cover)}" sizes="(max-width: 792px) calc((100vw - 144px) / 3), (max-width: 900px) 216px, 210px" alt="" width="1128" height="866" fetchpriority="high">
+          <strong>${escapeHtml(demo.region)}</strong><span>${escapeHtml(demo.assetStyle.name)}</span>
+        </button>`).join('')}</div>
+        <p>공개 평면 참고 재구성 · 치수와 가구 배치는 추정입니다.</p>
+      </section>
       <div class="starter-options">
         <button class="starter-option" data-start-sample type="button">
           <b>아파트 샘플 체험</b>
@@ -3967,9 +4072,11 @@ function renderDemoGallery() {
   };
   return `<div class="cloud-dialog-backdrop demo-gallery-backdrop" data-demo-backdrop>
     <section class="cloud-dialog demo-gallery" data-demo-gallery role="dialog" aria-modal="true" aria-labelledby="demo-gallery-title">
-      <button class="cloud-dialog-close" data-demo-close type="button" aria-label="모델 홈 갤러리 닫기">×</button>
-      <span class="eyebrow">아파트 참고 샘플</span>
-      <h2 id="demo-gallery-title">우리 동네 아파트 평면으로 시작하세요</h2>
+      <header class="demo-gallery-heading">
+        <div><span class="eyebrow">서울 아파트 · 사전 제작 에셋</span>
+        <h2 id="demo-gallery-title">아파트 예시</h2></div>
+        <button class="cloud-dialog-close" data-demo-close type="button" aria-label="모델 홈 갤러리 닫기">×</button>
+      </header>
       <p>대치동·압구정동·도곡동의 공개 평면 참고 샘플과 기존 LH 샘플입니다. 열린 거실·주방은 문 없이 연결하며, 치수와 가구 배치는 편집용 추정입니다. 출처 표기 면적은 편집기 구역 면적과 다릅니다.</p>
       <div class="demo-grid">
         ${galleryLayouts.map((demo) => {
@@ -3983,7 +4090,8 @@ function renderDemoGallery() {
     const width = Math.max(...bounds.map((bound) => bound.right)) - left;
     const height = Math.max(...bounds.map((bound) => bound.bottom)) - top;
     const sourceUrl = demo.source.referenceUrl || demo.source.datasetUrl;
-    return `<article class="demo-card" data-demo-card="${demo.id}">
+    return `<article class="demo-card${demo.assetStyle ? ' has-asset-cover' : ''}" data-demo-card="${demo.id}">
+          ${demo.assetStyle ? `<img class="demo-card-cover" data-sample-cover src="${import.meta.env.BASE_URL}assets/seoul-examples/${demo.assetStyle.cover}-dollhouse.webp" srcset="${sampleCoverSrcSet(demo.assetStyle.cover)}" sizes="(max-width: 338px) calc(100vw - 104px), 235px" alt="${escapeHtml(demo.region)} ${escapeHtml(demo.assetStyle.name)} 3D 예시" width="1128" height="866" loading="lazy" decoding="async">` : ''}
           <div class="demo-card-plan" style="--bounds-x:${left};--bounds-y:${top};--bounds-w:${width};--bounds-h:${height}" aria-hidden="true">
             ${demo.zones.map((zone) => `<i style="--x:${zone.x};--y:${zone.y};--w:${zone.width};--d:${zone.depth};--c:${zone.color}"></i>`).join('')}
             ${demo.structures.filter(({ type }) => type === 'door').map(previewDoorMarkup).join('')}
@@ -3991,11 +4099,14 @@ function renderDemoGallery() {
           <span class="demo-area" data-demo-area>${demo.region ? `${escapeHtml(demo.region)} · ` : ''}${escapeHtml(demo.source.planType)}</span>
           ${demo.source.areaLabel ? `<p data-demo-area-label>출처 표기 면적: ${escapeHtml(demo.source.areaLabel)}</p>` : ''}
           <h3>${escapeHtml(demo.name)}</h3>
-          <p data-demo-rooms>${demo.zones.map(({ name }, index) => `<span>${index ? '· ' : ''}${escapeHtml(name)}</span>`).join(' ')}</p>
+          ${demo.assetStyle ? `<div class="demo-asset-style"><strong>${escapeHtml(demo.assetStyle.name)}</strong><p>${escapeHtml(demo.assetStyle.description)}</p><button class="demo-studio-button" data-demo-studio="${demo.id}" type="button">3D로 꾸며보기</button></div>` : ''}
           <dl><div><dt>출처</dt><dd data-demo-source><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(demo.source.attribution)}</a>${demo.source.archiveEntry ? ` · ${escapeHtml(demo.source.archiveEntry)}` : ''}</dd></div></dl>
+          ${demo.assetStyle ? '<p class="sample-scope">참고 평면 재구성 · 치수와 가구 배치는 추정입니다.</p><details class="demo-source-details"><summary>공간 구성·추정 범위 보기</summary>' : ''}
+          <p data-demo-rooms>${demo.zones.map(({ name }, index) => `<span>${index ? '· ' : ''}${escapeHtml(name)}</span>`).join(' ')}</p>
           <p class="demo-geometry-basis" data-demo-geometry>${escapeHtml(demo.source.geometryBasis)}</p>
           <small data-demo-adaptation>${escapeHtml(demo.source.adaptationNotice)}</small>
           <small data-demo-license>${escapeHtml(demo.source.license)}</small>
+          ${demo.assetStyle ? '</details>' : ''}
           <button data-demo-layout="${demo.id}" type="button">이 모델 홈 열기</button>
         </article>`;
   }).join('')}
@@ -4194,8 +4305,8 @@ function render() {
       <section class="furniture-section" id="mobile-panel-furniture" ${mobilePanelAttributes('furniture')}>
         <div class="section-title"><span>03</span><h2>가구 라이브러리</h2></div>
         <div class="furniture-search"><label class="sr-only" for="furniture-search">가구 이름 검색</label><input id="furniture-search" type="search" data-furniture-search placeholder="가구 검색" value="${escapeHtml(furnitureSearch)}"><button type="button" data-furniture-search-clear aria-label="가구 검색 지우기" ${furnitureSearch ? '' : 'hidden'}>지우기</button></div>
-        <p class="section-help">고르고, 도면을 누르면 놓입니다.</p>
-        <div class="furniture-library">${furnitureTemplates.map((template) => `<button class="${placementControlArmed(template.type) ? 'is-placement-armed' : ''}" type="button" data-add-type="${template.type}" aria-pressed="${placementControlArmed(template.type)}" ${template.name.includes(furnitureSearch.trim()) ? '' : 'hidden'}><i class="shape-${template.shape}" style="--item:${template.color}"></i><span><strong>${escapeHtml(template.name)}</strong><small>${template.width} × ${template.depth}cm</small></span><b>＋</b></button>`).join('')}</div>
+        <p class="section-help">실제 3D 모델을 고르고 원하는 곳에 놓으세요.</p>
+        <div class="furniture-library" data-asset-catalog>${furnitureTemplates.map((template) => `<button class="${placementControlArmed(template.type) ? 'is-placement-armed' : ''}" type="button" data-add-type="${template.type}" aria-pressed="${placementControlArmed(template.type)}" ${template.name.includes(furnitureSearch.trim()) ? '' : 'hidden'}>${renderAssetPreview(template)}<span><strong>${escapeHtml(template.name)}</strong><small>${template.width} × ${template.depth}cm</small></span><b>＋</b></button>`).join('')}</div>
         <p class="section-help" data-furniture-empty ${furnitureTemplates.some((template) => template.name.includes(furnitureSearch.trim())) ? 'hidden' : ''}>찾는 가구가 없어요. 아래에서 원하는 크기로 만들어보세요.</p>
       </section>
       <section class="custom-section">
@@ -4329,6 +4440,16 @@ function moveMobileTabFocus(event, currentPanel) {
 }
 
 function bindEvents() {
+  app.querySelectorAll('[data-appearance-field]').forEach((button) => button.addEventListener('click', () => {
+    const entity = selectedEntity();
+    if (!entity || entity.locked) return;
+    const field = button.dataset.appearanceField;
+    const value = button.dataset.appearanceValue;
+    const update = { [field]: value || undefined };
+    if (state.selection.kind === 'item') updateItem(entity.id, update);
+    else if (state.selection.kind === 'zone') updateZone(entity.id, update);
+    app.querySelector(`[data-appearance-field="${field}"][data-appearance-value="${value}"]`)?.focus({ preventScroll: true });
+  }));
   document.querySelector('[data-workspace-mode]')?.addEventListener('click', () => {
     if (numericEdit) commitQuickNumericEdit();
     workspaceMode = workspaceMode === 'simple' ? 'advanced' : 'simple';
@@ -4525,10 +4646,16 @@ function bindEvents() {
   document.querySelectorAll('[data-demo-layout]').forEach((button) => button.addEventListener('click', () => {
     requestDemoLayout(button.dataset.demoLayout);
   }));
+  document.querySelectorAll('[data-demo-studio]').forEach((button) => button.addEventListener('click', () => {
+    requestDemoLayout(button.dataset.demoStudio, true);
+  }));
   document.querySelector('[data-demo-confirm-cancel]')?.addEventListener('click', () => {
+    const id = pendingDemoId;
+    const selector = pendingDemo3d ? 'data-demo-studio' : 'data-demo-layout';
     pendingDemoId = null;
+    pendingDemo3d = false;
     render();
-    document.querySelector('[data-demo-layout]')?.focus();
+    document.querySelector(`[${selector}="${id}"]`)?.focus();
   });
   document.querySelector('[data-demo-confirm-accept]')?.addEventListener('click', () => {
     if (pendingDemoId) applyDemoLayout(pendingDemoId);
@@ -4550,8 +4677,13 @@ function bindEvents() {
     document.querySelector('[data-start-open]')?.focus();
   });
   document.querySelector('[data-start-sample]')?.addEventListener('click', () => {
-    applyDemoLayout(REGIONAL_DEMO_LAYOUTS[0].id);
+    applyDemoLayout(REGIONAL_DEMO_LAYOUTS[0].id, false);
   });
+  document.querySelectorAll('[data-start-studio]').forEach((button) => button.addEventListener('click', () => {
+    starterDialogOpen = false;
+    demoGalleryOpen = true;
+    requestDemoLayout(button.dataset.startStudio, true);
+  }));
   document.querySelector('[data-start-blank]')?.addEventListener('click', () => {
     if (!canReplaceCurrentDraft()) return;
     replaceWithBlankDraft();
@@ -4869,31 +5001,7 @@ function bindEvents() {
     }
     render();
   }));
-  document.querySelector('#open-walkthrough').addEventListener('click', async (event) => {
-    const button = event.currentTarget;
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = '3D 준비 중…';
-    try {
-      const { openWalkthrough } = await import('./walkthrough3d.js');
-      await openWalkthrough({
-        zones: state.zones,
-        items: state.items,
-        structures: state.structures,
-        wallHeight: state.wallHeight,
-        focus: state.selection ? { ...state.selection } : null,
-        initialMode: 'dollhouse',
-        onStructureChange: (id, updates) => updateStructure(id, updates),
-        onClose: () => document.querySelector('#open-walkthrough')?.focus({ preventScroll: true }),
-      });
-    } catch {
-      editorNotice = '3D 화면을 열지 못했습니다. 도면은 유지됩니다. WebGL을 지원하는 브라우저에서 다시 시도해주세요.';
-      render();
-    } finally {
-      button.disabled = false;
-      button.textContent = originalText;
-    }
-  });
+  document.querySelector('#open-walkthrough').addEventListener('click', open3dEditor);
 
   document.querySelectorAll('#plan-canvas [data-zone-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'zone', node.dataset.zoneId)));
   document.querySelectorAll('#plan-canvas [data-item-id]').forEach((node) => node.addEventListener('pointerdown', (event) => startEntityPress(event, 'item', node.dataset.itemId)));
