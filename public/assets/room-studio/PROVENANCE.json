@@ -15,7 +15,7 @@
     },
     {
       "path": "scripts/build-room-assets-geometry.mjs",
-      "sha256": "b9fa975b9b4188e4033cf2a27429fe0c14a0790a0a7183ce35cbf4dd72d891aa"
+      "sha256": "158a607a8a325d9b10e8735ec99b8904e9820c7b8773716753eaa3305e6e00fe"
     },
     {
       "path": "scripts/build-room-assets-render.mjs",
@@ -205,14 +205,14 @@
       "id": "seoul-sofa",
       "path": "models/seoul-sofa.glb",
       "bytes": 293552,
-      "sha256": "ba24b61980f6b50effb5b6942a0b5f8364e5cdcdce8306854c10d48d82a3f415",
+      "sha256": "63797165bd307242ee17ce5b95d96a369924421dbffcf32b886a4548449d6f05",
       "triangles": 11308
     },
     {
       "id": "seoul-bed",
       "path": "models/seoul-bed.glb",
       "bytes": 436460,
-      "sha256": "1a81b81649c0430694265926b616bc0625324e584b297eebffd7a1fcba8d6085",
+      "sha256": "8ad8fcfa6d1d381340f9aace723f1dc9be3ce2be4c4d20afd072cbf67410570a",
       "triangles": 17668
     },
     {
@@ -268,7 +268,7 @@
       "id": "seoul-plant",
       "path": "models/seoul-plant.glb",
       "bytes": 196432,
-      "sha256": "a9afdd855002d2a2b557581d4455e746656b057cd6830ba4f6fbb5541b084dee",
+      "sha256": "9713cd9795b0ef8d36609f3a53d9c86b5bd9adab3216bcd1d16ba2769d805a00",
       "triangles": 6976
     },
     {
@@ -282,7 +282,7 @@
       "id": "seoul-rug",
       "path": "models/seoul-rug.glb",
       "bytes": 193700,
-      "sha256": "6a716d64ad73e36c5fab6042f9924e5ca6438ec287e6304bb806b79973444c15",
+      "sha256": "82d9e0971a7b56f88ebc036928b25b9172492b8cceb2fbe1edc8f554d0baed32",
       "triangles": 6660
     }
   ],
