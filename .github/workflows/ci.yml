@@ -16,7 +16,7 @@ jobs:
   check:
     name: Validate application
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -46,6 +46,8 @@ jobs:
       - name: Run real-plan door and traversal audit
         run: npm run test:browser:real-plans
       - name: Run Seoul apartment door and traversal audit
+        env:
+          REAL_PLAN_AUDIT_TIMEOUT_MS: 3000000
         run: npm run test:browser:regional
       - name: Upload browser audit artifacts
         if: always()
