@@ -1,0 +1,278 @@
+{
+  "version": 1,
+  "author": "Room Studio contributors",
+  "license": "Apache-2.0",
+  "attribution": "Original Room Studio Seoul collection. No vendor affiliation or replica claim.",
+  "externalAssets": [],
+  "externalImages": [],
+  "aiGeneratedImages": false,
+  "method": "Original code-authored rounded joinery, superellipsoid upholstery, quilt drapes, bentwood shells, turned profiles, pleated shades, and curved botanical surfaces. Analytic tileable PBR textures. No external downloads.",
+  "sourceLicense": "LICENSE.txt",
+  "sources": [
+    {
+      "path": "scripts/build-room-assets.mjs",
+      "sha256": "e34d8f3e3ead61666ad08d5a62beea7b3d40396210d1f462576e1501a3d4b871"
+    },
+    {
+      "path": "scripts/build-room-assets-geometry.mjs",
+      "sha256": "b9fa975b9b4188e4033cf2a27429fe0c14a0790a0a7183ce35cbf4dd72d891aa"
+    },
+    {
+      "path": "src/asset-library.js",
+      "sha256": "a9aa8d4a9e6ab6de30970c0c11d54d95b09e89d77e618daf31087eeefd1cf632"
+    }
+  ],
+  "generatorDependencies": [
+    {
+      "name": "three",
+      "version": "0.185.1",
+      "license": "MIT",
+      "use": "Geometry algorithms; no third-party model or image content"
+    }
+  ],
+  "units": "meters",
+  "origin": "bottom-center",
+  "axes": {
+    "up": "+Y",
+    "front": "+Z"
+  },
+  "textures": [
+    {
+      "path": "textures/wood-color.png",
+      "bytes": 46092,
+      "sha256": "1f6695bc08bac217352068fc7d08ecf797e27e07a776fc0f2332d82f616c55c6",
+      "width": 256,
+      "height": 256,
+      "kind": "color",
+      "colorSpace": "sRGB",
+      "method": "Periodic deterministic wood field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/wood-normal.png",
+      "bytes": 31587,
+      "sha256": "1c9ca52fee28af4b1b105c6164df95c71cecad5ac65d99ac9dd705f134f1ae04",
+      "width": 256,
+      "height": 256,
+      "kind": "normal",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic wood field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/wood-roughness.png",
+      "bytes": 18519,
+      "sha256": "682f026dd84ff74db534d79d50cd8e79d23883e0b601aaecd8734968162e6187",
+      "width": 256,
+      "height": 256,
+      "kind": "roughness",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic wood field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/fabric-color.png",
+      "bytes": 25715,
+      "sha256": "d2ecc12d18e5eacb4d83ba0a62b81921e5d0bc6ecd9a927a9d880482a9d9300b",
+      "width": 256,
+      "height": 256,
+      "kind": "color",
+      "colorSpace": "sRGB",
+      "method": "Periodic deterministic fabric field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/fabric-normal.png",
+      "bytes": 2129,
+      "sha256": "3b59e7f94cc77a82e5f7b7172b4b339daa99c941b5b2fb0e0b70928dd7fbb06e",
+      "width": 256,
+      "height": 256,
+      "kind": "normal",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic fabric field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/fabric-roughness.png",
+      "bytes": 32225,
+      "sha256": "0e621f429905949d8c6706e834e44f93805e16d84b3a33d645c6f8df3eebefd7",
+      "width": 256,
+      "height": 256,
+      "kind": "roughness",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic fabric field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/oak-color.png",
+      "bytes": 48665,
+      "sha256": "b3505a774581c295649508ea2c38354b4eb0d8df3d3840e27a1c5cfad4d209ad",
+      "width": 256,
+      "height": 256,
+      "kind": "color",
+      "colorSpace": "sRGB",
+      "method": "Periodic deterministic oak field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/oak-normal.png",
+      "bytes": 36126,
+      "sha256": "fb16e39203ef89bf3f3ad6b6adcc4ad5d95b277b533e629678f4a5a101938bf1",
+      "width": 256,
+      "height": 256,
+      "kind": "normal",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic oak field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/oak-roughness.png",
+      "bytes": 20448,
+      "sha256": "54447eb05f98f4955507b3f83b8eafea4eb6d355fe60bc326dd6b433f1d283fb",
+      "width": 256,
+      "height": 256,
+      "kind": "roughness",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic oak field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/tile-color.png",
+      "bytes": 37058,
+      "sha256": "69f89d5e5222e9d4f0c491b2a257526416b61a20fa69600f13463fe95342d0e8",
+      "width": 256,
+      "height": 256,
+      "kind": "color",
+      "colorSpace": "sRGB",
+      "method": "Periodic deterministic tile field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/tile-normal.png",
+      "bytes": 90134,
+      "sha256": "52698fd451491065c8b879074f0de3e6909e1abe4ef2bf638e0c8329b81bc994",
+      "width": 256,
+      "height": 256,
+      "kind": "normal",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic tile field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/tile-roughness.png",
+      "bytes": 37752,
+      "sha256": "95737e632a157843ea7f0931fa878ec0fb484c49d9dc5bd879779560aad8f362",
+      "width": 256,
+      "height": 256,
+      "kind": "roughness",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic tile field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/plaster-color.png",
+      "bytes": 28956,
+      "sha256": "105ddef42c6a3bdbe21b15e7f03a6f183fa3ca015266bd7e7679e0ef90476b79",
+      "width": 256,
+      "height": 256,
+      "kind": "color",
+      "colorSpace": "sRGB",
+      "method": "Periodic deterministic plaster field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/plaster-normal.png",
+      "bytes": 109653,
+      "sha256": "cc5f7c3cd75d098be0a4cd1127fa88457d4889c542a7635cff9953d5712037f9",
+      "width": 256,
+      "height": 256,
+      "kind": "normal",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic plaster field; seed-free analytic generation"
+    },
+    {
+      "path": "textures/plaster-roughness.png",
+      "bytes": 28956,
+      "sha256": "105ddef42c6a3bdbe21b15e7f03a6f183fa3ca015266bd7e7679e0ef90476b79",
+      "width": 256,
+      "height": 256,
+      "kind": "roughness",
+      "colorSpace": "linear",
+      "method": "Periodic deterministic plaster field; seed-free analytic generation"
+    }
+  ],
+  "models": [
+    {
+      "id": "seoul-sofa",
+      "path": "models/seoul-sofa.glb",
+      "bytes": 293552,
+      "sha256": "ba24b61980f6b50effb5b6942a0b5f8364e5cdcdce8306854c10d48d82a3f415",
+      "triangles": 11308
+    },
+    {
+      "id": "seoul-bed",
+      "path": "models/seoul-bed.glb",
+      "bytes": 436460,
+      "sha256": "1a81b81649c0430694265926b616bc0625324e584b297eebffd7a1fcba8d6085",
+      "triangles": 17668
+    },
+    {
+      "id": "seoul-dining-table",
+      "path": "models/seoul-dining-table.glb",
+      "bytes": 99684,
+      "sha256": "3a7cfb671999c5f285504a5ae6895ca7e8854c4d603ec9a9b98a27cce95346b2",
+      "triangles": 1640
+    },
+    {
+      "id": "seoul-dining-chair",
+      "path": "models/seoul-dining-chair.glb",
+      "bytes": 82964,
+      "sha256": "a52ba0d185940c885958716d4e72da7a9d46042123169612eaf2a38ea328df54",
+      "triangles": 2420
+    },
+    {
+      "id": "seoul-desk",
+      "path": "models/seoul-desk.glb",
+      "bytes": 81208,
+      "sha256": "e01aa4c57042a8f3613857af8e0c6ad8f0b8ed31a1237ab1d41962903601e942",
+      "triangles": 2376
+    },
+    {
+      "id": "seoul-coffee-table",
+      "path": "models/seoul-coffee-table.glb",
+      "bytes": 227904,
+      "sha256": "cbd0cac494b0c4f7fbcf0e95cfb861eb5434cb367ffcb0671690550a058e0d30",
+      "triangles": 4028
+    },
+    {
+      "id": "seoul-side-table",
+      "path": "models/seoul-side-table.glb",
+      "bytes": 42264,
+      "sha256": "9985eea097da7366d7df3767b1a5171ccceb970cc7dc864405671093ca2eb85b",
+      "triangles": 1536
+    },
+    {
+      "id": "seoul-wardrobe",
+      "path": "models/seoul-wardrobe.glb",
+      "bytes": 111428,
+      "sha256": "8042abc0a155a1703301f181f098215ba84093b9dcc4b5547eb1916036dc0f79",
+      "triangles": 4328
+    },
+    {
+      "id": "seoul-tv-console",
+      "path": "models/seoul-tv-console.glb",
+      "bytes": 398700,
+      "sha256": "6cd4185e4eeb96ef2fd6be0b93a94c71db7d80d63ab8ee410dbca99b2a70d252",
+      "triangles": 16884
+    },
+    {
+      "id": "seoul-plant",
+      "path": "models/seoul-plant.glb",
+      "bytes": 196432,
+      "sha256": "a9afdd855002d2a2b557581d4455e746656b057cd6830ba4f6fbb5541b084dee",
+      "triangles": 6976
+    },
+    {
+      "id": "seoul-floor-lamp",
+      "path": "models/seoul-floor-lamp.glb",
+      "bytes": 102756,
+      "sha256": "5ea9efbad16a37ca3eedd7a1f8305792c7437c87b075d6e3a5c9d2ffc125e3df",
+      "triangles": 3312
+    },
+    {
+      "id": "seoul-rug",
+      "path": "models/seoul-rug.glb",
+      "bytes": 193700,
+      "sha256": "6a716d64ad73e36c5fab6042f9924e5ca6438ec287e6304bb806b79973444c15",
+      "triangles": 6660
+    }
+  ],
+  "thumbnailMethod": "Real WebGL renders of shipped GLB models, generated with --render; not a substitute for geometry. Rendered thumbnails may differ slightly between GPU/Chrome versions."
+}
