@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   plans:
-    name: Select Seoul examples
+    name: Select every plan example
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -28,10 +28,18 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
-      - name: Select every canonical Seoul example
+      - name: Select every canonical plan example
         id: matrix
         run: |
-          node --input-type=module -e 'import { REGIONAL_DEMO_LAYOUTS } from "./src/demo-layouts.js"; if (REGIONAL_DEMO_LAYOUTS.length !== 3) throw new Error("Expected three Seoul examples"); console.log("plans=" + JSON.stringify(REGIONAL_DEMO_LAYOUTS.map(({ id }) => id)));' >> "$GITHUB_OUTPUT"
+          node --input-type=module -e '
+            import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from "./src/demo-layouts.js";
+            if (DEMO_LAYOUTS.length !== 3 || REGIONAL_DEMO_LAYOUTS.length !== 3) throw new Error("Expected three LH and three Seoul examples");
+            const plans = [
+              ...DEMO_LAYOUTS.map(({ id }) => ({ id, script: "test:browser:real-plans" })),
+              ...REGIONAL_DEMO_LAYOUTS.map(({ id }) => ({ id, script: "test:browser:regional" })),
+            ];
+            console.log("plans=" + JSON.stringify(plans));
+          ' >> "$GITHUB_OUTPUT"
 
   core:
     name: Validate core application
@@ -63,8 +71,6 @@ jobs:
         run: npm run test:browser:assets
       - name: Run consultation and recovery audit
         run: npm run test:browser:consultation
-      - name: Run real-plan door and traversal audit
-        run: npm run test:browser:real-plans
       - name: Upload browser audit artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -94,14 +100,6 @@ jobs:
             .omx/artifacts/studio3d/
           if-no-files-found: warn
           retention-days: 7
-      - name: Upload real-plan browser artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: real-plan-browser-audit-${{ github.run_attempt }}
-          path: .omx/artifacts/real-plan-navigation/
-          if-no-files-found: warn
-          retention-days: 7
       - name: Upload consultation browser artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -113,15 +111,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  regional:
-    name: Seoul tour (${{ matrix.plan }})
+  tours:
+    name: Floor-plan tour (${{ matrix.id }})
     needs: plans
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
-        plan: ${{ fromJSON(needs.plans.outputs.plans) }}
+        include: ${{ fromJSON(needs.plans.outputs.plans) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -142,21 +140,24 @@ jobs:
         run: npm run build -- --base=./
       - name: Run complete example visibility, responsive and traversal audit
         env:
-          REAL_PLAN_AUDIT_ID: ${{ matrix.plan }}
+          REAL_PLAN_AUDIT_ID: ${{ matrix.id }}
           REAL_PLAN_AUDIT_TIMEOUT_MS: 3000000
-        run: npm run test:browser:regional
+          AUDIT_SCRIPT: ${{ matrix.script }}
+        run: npm run "$AUDIT_SCRIPT"
       - name: Upload this example's browser artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: regional-${{ matrix.plan }}-${{ github.run_attempt }}
-          path: .omx/artifacts/regional-navigation/
+          name: plan-${{ matrix.id }}-${{ github.run_attempt }}
+          path: |
+            .omx/artifacts/real-plan-navigation/
+            .omx/artifacts/regional-navigation/
           if-no-files-found: error
           retention-days: 7
 
   check:
     name: Validate application
-    needs: [plans, core, regional]
+    needs: [plans, core, tours]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -165,8 +166,8 @@ jobs:
         env:
           PLANS_RESULT: ${{ needs.plans.result }}
           CORE_RESULT: ${{ needs.core.result }}
-          REGIONAL_RESULT: ${{ needs.regional.result }}
+          TOURS_RESULT: ${{ needs.tours.result }}
         run: |
           test "$PLANS_RESULT" = success
           test "$CORE_RESULT" = success
-          test "$REGIONAL_RESULT" = success
+          test "$TOURS_RESULT" = success
