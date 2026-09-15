@@ -79,13 +79,19 @@ try {
   const address = previewServer.httpServer.address();
   if (!address || typeof address === 'string') throw new Error('Vite preview did not expose a TCP port');
   const previewUrl = `http://127.0.0.1:${address.port}/`;
-  const audits = await Promise.allSettled([
-    run('.omo/evidence/real-plan-navigation/door-visibility-qa.mjs', previewUrl, join(outputRoot, 'visibility')),
-    run('.omo/evidence/real-plan-navigation/responsive-qa.mjs', previewUrl, join(outputRoot, 'responsive')),
-    run('.omo/evidence/real-plan-navigation/browser-qa.mjs', previewUrl, join(outputRoot, 'traversal')),
-  ]);
-  const rejected = audits.find(({ status }) => status === 'rejected');
-  if (rejected) throw rejected.reason;
+  // Software-rendered Chrome instances must not compete within one runner.
+  // Still run every audit and preserve the first failure.
+  for (const [script, directory] of [
+    ['.omo/evidence/real-plan-navigation/door-visibility-qa.mjs', 'visibility'],
+    ['.omo/evidence/real-plan-navigation/responsive-qa.mjs', 'responsive'],
+    ['.omo/evidence/real-plan-navigation/browser-qa.mjs', 'traversal'],
+  ]) {
+    try {
+      await run(script, previewUrl, join(outputRoot, directory));
+    } catch (error) {
+      failure ??= error;
+    }
+  }
 } catch (error) {
   failure = error;
 } finally {

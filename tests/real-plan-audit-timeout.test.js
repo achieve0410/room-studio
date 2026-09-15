@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import process from 'node:process';
+import { randomUUID } from 'node:crypto';
 
 test('real-plan runner terminates an audit child at its deadline', { timeout: 5_000 }, async () => {
   const outputRoot = '.omx/artifacts/real-plan-audit-timeout-test';
@@ -63,3 +64,30 @@ test('real-plan runner terminates an audit child at its deadline', { timeout: 5_
     await rm(sentinel, { force: true });
   }
 });
+
+for (const failFirst of [false, true]) {
+  test(`real-plan runner serializes every audit${failFirst ? ' after a failure' : ''}`, { timeout: 5_000 }, async (context) => {
+    const outputRoot = `.omx/artifacts/real-plan-runner-test-${randomUUID()}`;
+    const child = spawn(process.execPath, [
+      '--experimental-test-module-mocks',
+      'tests/fixtures/real-plan-runner-process.mjs',
+      outputRoot,
+      failFirst ? 'fail-first' : 'success',
+    ], { stdio: ['ignore', 'pipe', 'pipe'], signal: context.signal });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    const code = await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', resolve);
+    });
+    assert.equal(code, 0, stderr);
+    const result = JSON.parse(stdout);
+    assert.equal(result.maxActive, 1, 'Independent audits must not compete for a software-rendered browser');
+    assert.deepEqual(result.scripts, ['door-visibility-qa.mjs', 'responsive-qa.mjs', 'browser-qa.mjs']);
+    assert.equal(result.failed, failFirst);
+    assert.equal(result.previewClosed, true);
+    assert.equal(result.profileRemoved, true);
+  });
+}
