@@ -4,7 +4,7 @@
 
 Room Studio is a single-page Vite application built with vanilla JavaScript and CSS.
 
-- `src/main.js`: 2D editor state, floor-plan backgrounds, dimensions, rendering, selection, gestures, history, and account UI.
+- `src/main.js`: space-only 2D editing, floor-plan backgrounds, dimensions, shared document/history, account UI, and the 3D persistence bridge.
 - `src/geometry.js`: pure geometry, snapping, room union, openings, collision, and resize helpers.
 - `src/layout-tools.js`: pure calibration, measurement formatting, and clipboard duplication helpers.
 - `src/project-file.js`: bounded, versioned portable drawing serialization and parsing without cloud ownership metadata.
@@ -14,6 +14,7 @@ Room Studio is a single-page Vite application built with vanilla JavaScript and 
 - `src/plan-svg.js`: static SVG plans used by comparison and the standalone client report.
 - `src/project-report.js`: branded client documents with option-specific notes, drawings, and warnings.
 - `src/walkthrough3d.js`: lazily loaded Three.js first-person, dollhouse, and overhead renderer with scene snapshot controls.
+- `src/studio3d-edit.js` and `src/studio3d-panel.js`: disposable detail-edit previews and the furniture/structure/material inspector. Confirmed actions return through `main.js` to the same document and history used by 2D.
 - `src/cloud-store.js`: lazily loaded Supabase adapter.
 - `supabase/functions/delete-account/`: authenticated server-side account deletion; the service-role key never enters the browser.
 - `supabase/migrations/`: optional database schema, RLS, and transactional project persistence.

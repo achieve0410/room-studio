@@ -8,6 +8,68 @@ import { capture, evaluate, launchChrome, setViewport } from '../.omo/evidence/r
 const outputDirectory = resolve('.omx/artifacts/simple-gestures', new Date().toISOString().replaceAll(':', '-'));
 await mkdir(outputDirectory, { recursive: true });
 const receipt = { outputDirectory, scenarios: [], screenshots: [], errors: [] };
+receipt.scenarioMapping = [
+  {
+    "old": "fresh-mobile-mode-toggle",
+    "new": "fresh-mobile-mode-toggle"
+  },
+  {
+    "old": "simple-tap-no-modal",
+    "new": "simple-tap-no-modal"
+  },
+  {
+    "old": "simple-first-touch-drag-and-one-undo",
+    "new": "simple-first-touch-drag-and-one-undo"
+  },
+  {
+    "old": "simple-furniture-touch-over-selected-zone",
+    "new": "simple-readonly-furniture-over-selected-space"
+  },
+  {
+    "old": "simple-first-touch-overlapping-furniture",
+    "new": "simple-overlapping-readonly-furniture-and-spaces"
+  },
+  {
+    "old": "simple-pointer-cancel-rollback",
+    "new": "simple-pointer-cancel-rollback"
+  },
+  {
+    "old": "simple-pinch-rolls-back-edit",
+    "new": "simple-pinch-rolls-back-edit"
+  },
+  {
+    "old": "simple-blank-pan-and-cancel",
+    "new": "simple-blank-pan-and-cancel"
+  },
+  {
+    "old": "simple-blank-pinch-and-release",
+    "new": "simple-blank-pinch-and-release"
+  },
+  {
+    "old": "simple-locked-and-deliberate-structure-movement",
+    "new": "simple-locked-space-and-readonly-details"
+  },
+  {
+    "old": "advanced-legacy-tap-and-drag",
+    "new": "advanced-space-tap-menu-and-selected-drag"
+  },
+  {
+    "old": "advanced-long-press-retains-real-handler",
+    "new": "advanced-explicit-move-replaces-retired-hold"
+  },
+  {
+    "old": "simple-touch-structure-rotation-and-undo",
+    "new": "simple-space-size-jitter-and-one-step-undo"
+  },
+  {
+    "old": "simple-small-selected-furniture-remains-draggable",
+    "new": "simple-small-selected-space-remains-draggable"
+  },
+  {
+    "old": "simple-wide-touch-tap-and-first-drag",
+    "new": "simple-wide-touch-tap-and-first-drag"
+  }
+];
 const fixture = {
   zones: [{ id: 'room', name: 'Gesture room', x: 0, y: 0, width: 600, depth: 500 }],
   items: [
@@ -45,19 +107,6 @@ try {
       transform(source, id) {
         if (id.split('?')[0] !== resolve('src/main.js')) return;
         return `${source}
-        const auditLongPressTimers = new Map();
-        const auditNativeSetTimeout = window.setTimeout.bind(window);
-        const auditNativeClearTimeout = window.clearTimeout.bind(window);
-        let auditTimerId = -1;
-        window.setTimeout = (callback, delay, ...args) => {
-          if (callback !== beginLongPressDrag) return auditNativeSetTimeout(callback, delay, ...args);
-          const id = auditTimerId--;
-          auditLongPressTimers.set(id, () => callback(...args));
-          return id;
-        };
-        window.clearTimeout = (id) => {
-          if (!auditLongPressTimers.delete(id)) auditNativeClearTimeout(id);
-        };
         window.__simpleGestureAudit = {
           reset(layout) {
             if (!applyProjectDocument({ projectName: 'Touch gesture audit', layout })) throw new Error('Fixture load rejected');
@@ -68,11 +117,6 @@ try {
             window.__simpleGestureEvents = [];
             render();
           },
-          advanceLongPress() {
-            const [id, callback] = auditLongPressTimers.entries().next().value;
-            auditLongPressTimers.delete(id);
-            callback();
-          },
           snapshot() {
             return {
               mode: workspaceMode, renderedMode: document.querySelector('.workspace')?.dataset.mode,
@@ -80,7 +124,6 @@ try {
               layout: layoutSnapshot(), selection: state.selection,
               keys: [...selectionKeys], history: historyPast.length, redo: historyFuture.length,
               gesture: gestureMode, contacts: activePointers.size, pressing: Boolean(entityPress),
-              pendingLongPress: auditLongPressTimers.size,
               dragging: Boolean(drag), moved: Boolean(drag?.hasMoved), moveArmed: mobileMoveArmed,
               menu: mobileContextMenu, menuVisible: Boolean(document.querySelector('.mobile-context-menu')),
               focusedAction: document.activeElement?.dataset?.contextAction ?? null,
@@ -125,7 +168,7 @@ try {
   await setViewport(cdp, 390, 844);
   await bounded(browser.navigate(receipt.url), 'Application navigation');
   assert.equal(await page('window.__simpleGestureAudit.snapshot().mode'), 'simple', 'simple is the default workspace');
-  receipt.clock = 'Only application long-press callbacks are controlled; native Chrome input and compositor clocks remain real';
+  receipt.clock = 'Native application, Chrome input and compositor clocks; fixture reset and read-only observations only';
   const snapshot = () => page('window.__simpleGestureAudit.snapshot()');
   const frame = () => page('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   const reset = async (mode = 'simple', layout = fixture) => {
@@ -135,7 +178,7 @@ try {
     const result = await snapshot();
     assert.equal(result.mode, mode);
     assert.equal(result.renderedMode, mode);
-    assert.equal(result.pendingLongPress, 0, 'reset cancels every pending long press');
+    assert.equal(result.pressing, false, 'reset cancels the previous press');
     return result;
   };
   const screenshot = async (name) => {
@@ -154,6 +197,23 @@ try {
     if (!p) throw new Error('Obscured target: ' + ${JSON.stringify(selector)});
     return p;
   })()`);
+  const readonlyPoint = selector => page(`(() => {
+    const node = document.querySelector(${JSON.stringify(selector)});
+    if (!node) throw new Error('Missing rendered reference: ' + ${JSON.stringify(selector)});
+    const bounds = node.getBoundingClientRect();
+    if (!bounds.width || !bounds.height || getComputedStyle(node).display === 'none') throw new Error('Reference is hidden');
+    const p = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    if (!document.elementFromPoint(p.x, p.y)?.closest('#plan-canvas')) throw new Error('Reference obscured');
+    if (node.contains(document.elementFromPoint(p.x, p.y))) throw new Error('Read-only reference intercepts space input');
+    return p;
+  })()`);
+  const key = async (key, code, modifiers = 0) => {
+    await arm('keydown');
+    for (const type of ['keyDown', 'keyUp']) await cdp.send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code, modifiers });
+    assert.equal((await page('window.__gestureSignal')).trusted, true);
+    await frame();
+    return snapshot();
+  };
   const blank = () => page(`(() => {
     const bounds = document.querySelector('#plan-canvas').getBoundingClientRect();
     for (let y = bounds.top + 25; y < bounds.bottom - 50; y += 10) {
@@ -236,11 +296,16 @@ try {
     assert.deepEqual(after.keys, before.keys, 'selection set rolls back');
     assert.equal(after.moveArmed, before.moveArmed, 'Move mode rolls back');
     assert.equal(after.dragging, false);
-    assert.equal(after.pendingLongPress, before.pendingLongPress, 'canceled gesture does not leave a hold callback');
+    assert.equal(after.pressing, false, 'canceled gesture does not leave a pending press');
   };
   const scenario = async (name, run) => {
     try {
       const evidence = await run();
+      if (evidence?.before) {
+        const after = await snapshot();
+        assert.deepEqual(after.layout.items, evidence.before.layout.items, '2D never mutates furniture');
+        assert.deepEqual(after.layout.structures, evidence.before.layout.structures, '2D never mutates structures');
+      }
       await screenshot(name);
       receipt.scenarios.push({ name, pass: true, evidence, events: await page('window.__simpleGestureEvents.map(({ final, ...entry }) => ({ ...entry, ...final() }))') });
       console.log(`PASS ${name}`);
@@ -267,13 +332,13 @@ try {
 
   await scenario('simple-tap-no-modal', async () => {
     const before = await reset();
-    const after = await tap('[data-item-id="chair"]');
+    const after = await tap('[data-zone-id="room"]');
     unchanged(after, before);
-    assert.deepEqual(after.selection, { kind: 'item', id: 'chair' });
+    assert.deepEqual(after.selection, { kind: 'zone', id: 'room' });
     assert.equal(after.menu, null, 'simple tap must not set mobileContextMenu');
     assert.equal(after.menuVisible, false);
     assert.equal(after.selectionBar, true, 'actual simple UI renders its nonmodal selection action bar');
-    const start = await point('[data-item-id="chair"]');
+    const start = await point('[data-zone-id="room"]');
     await down(start);
     await move({ x: start.x + 3, y: start.y + 2 });
     const jitter = await up();
@@ -284,21 +349,21 @@ try {
 
   await scenario('simple-first-touch-drag-and-one-undo', async () => {
     const before = await reset();
-    const start = await point('[data-item-id="chair"]');
+    const start = await point('[data-zone-id="room"]');
     const pressed = await down(start);
     assert.equal(pressed.pressing, true);
     assert.equal(pressed.dragging, false);
     assert.equal(pressed.moveArmed, false);
     const preview = await move({ x: start.x + 48, y: start.y + 27 });
-    assert.equal(preview.dragging, true, 'unselected furniture must drag on its first touch past slop');
+    assert.equal(preview.dragging, true, 'unselected space must drag on its first touch past slop');
     assert.equal(preview.moved, true);
-    assert.notDeepEqual(preview.layout.items[0], before.layout.items[0]);
+    assert.notDeepEqual(preview.layout.zones[0], before.layout.zones[0]);
     assert.equal(preview.history, 0);
     assert.equal(preview.storage, before.storage);
     const committed = await up();
     assert.equal(committed.history, 1, 'one completed drag creates exactly one undo step');
     assert.equal(committed.menu, null);
-    assert.notDeepEqual(committed.layout.items[0], before.layout.items[0]);
+    assert.notDeepEqual(committed.layout.zones[0], before.layout.zones[0]);
     await screenshot('simple-first-touch-drag-committed');
     await tap('#undo-action');
     const undone = await snapshot();
@@ -308,33 +373,37 @@ try {
     return { before, preview, committed, undone };
   });
 
-  await scenario('simple-furniture-touch-over-selected-zone', async () => {
+  await scenario('simple-readonly-furniture-over-selected-space', async () => {
     const before = await reset();
     await tap('[data-zone-id="room"]');
     const selectedRoom = await snapshot();
     assert.deepEqual(selectedRoom.selection, { kind: 'zone', id: 'room' });
-    assert.equal(selectedRoom.menu, null);
-    const start = await point('[data-item-id="chair"]');
+    const start = await readonlyPoint('[data-item-id="chair"]');
     await down(start);
     const preview = await move({ x: start.x + 42, y: start.y + 23 });
-    assert.deepEqual(preview.layout.zones, before.layout.zones, 'touching furniture must not drag the selected room below it');
-    assert.notDeepEqual(preview.layout.items[0], before.layout.items[0]);
-    assert.deepEqual(preview.selection, { kind: 'item', id: 'chair' });
+    assert.notDeepEqual(preview.layout.zones, before.layout.zones, 'visible furniture does not block the space below it');
+    assert.deepEqual(preview.layout.items, before.layout.items, 'furniture remains read-only during space edits');
+    assert.deepEqual(preview.layout.structures, before.layout.structures);
+    assert.deepEqual(preview.selection, { kind: 'zone', id: 'room' });
+    assert.equal(await page('!!document.querySelector("[data-overlap-picker], [data-rotate-handle], [data-item-field]")'), false);
     const canceled = await touch('touchCancel', [], 'pointercancel');
     rolledBack(canceled, selectedRoom);
     return { selectedRoom, preview, canceled };
   });
 
-  await scenario('simple-first-touch-overlapping-furniture', async () => {
+  await scenario('simple-overlapping-readonly-furniture-and-spaces', async () => {
     const layout = structuredClone(fixture);
     layout.items.unshift({ ...layout.items[0], id: 'underlay', name: 'Lower furniture', width: 240, depth: 220 });
+    layout.zones.push({ ...layout.zones[0], id: 'foreground', name: 'Foreground space', x: 170, y: 160, width: 220, depth: 190 });
     const before = await reset('simple', layout);
-    const start = await point('[data-item-id="chair"]');
+    const start = await readonlyPoint('[data-item-id="chair"]');
     await down(start);
     const preview = await move({ x: start.x + 42, y: start.y + 23 });
-    assert.deepEqual(preview.selection, { kind: 'item', id: 'chair' });
-    assert.deepEqual(preview.layout.items[0], before.layout.items[0], 'lower furniture stays put');
-    assert.notDeepEqual(preview.layout.items[1], before.layout.items[1], 'touched foreground furniture moves without a picker');
+    assert.deepEqual(preview.selection, { kind: 'zone', id: 'foreground' });
+    assert.deepEqual(preview.layout.zones[0], before.layout.zones[0], 'lower space stays put');
+    assert.notDeepEqual(preview.layout.zones[1], before.layout.zones[1], 'foreground space moves on first touch without a picker');
+    assert.deepEqual(preview.layout.items, before.layout.items, 'both furniture layers remain unchanged');
+    assert.equal(await page('!!document.querySelector("[data-overlap-picker], .overlap-picker")'), false);
     const canceled = await touch('touchCancel', [], 'pointercancel');
     rolledBack(canceled, before);
     return { before, preview, canceled };
@@ -342,7 +411,7 @@ try {
 
   await scenario('simple-pointer-cancel-rollback', async () => {
     const before = await reset();
-    const start = await point('[data-item-id="chair"]');
+    const start = await point('[data-zone-id="room"]');
     await down(start);
     const preview = await move({ x: start.x + 42, y: start.y + 23 });
     assert.equal(preview.moved, true);
@@ -355,7 +424,7 @@ try {
 
   await scenario('simple-pinch-rolls-back-edit', async () => {
     const before = await reset();
-    const start = await point('[data-item-id="chair"]');
+    const start = await point('[data-zone-id="room"]');
     const end = { x: start.x + 44, y: start.y + 25 };
     const second = await blank();
     await down(start);
@@ -418,41 +487,44 @@ try {
     return { before, pinching, zoomed, released };
   });
 
-  await scenario('simple-locked-and-deliberate-structure-movement', async () => {
-    const before = await reset();
-    const locked = await tap('[data-item-id="locked"]');
+  await scenario('simple-locked-space-and-readonly-details', async () => {
+    const layout = structuredClone(fixture);
+    layout.zones[0].locked = true;
+    const before = await reset('simple', layout);
+    const locked = await tap('[data-zone-id="room"]');
     unchanged(locked, before);
-    assert.deepEqual(locked.selection, { kind: 'item', id: 'locked' });
+    assert.deepEqual(locked.selection, { kind: 'zone', id: 'room' });
     assert.equal(locked.menu, null);
-    for (const selector of ['[data-structure-id="wall"]', '[data-zone-id="room"]']) {
-      const origin = await reset();
-      const start = await point(selector);
+    for (const selector of ['[data-item-id="locked"]', '[data-item-id="chair"]', '[data-structure-id="wall"]']) {
+      const start = await readonlyPoint(selector);
       await down(start);
       await move({ x: start.x + 36, y: start.y + 25 });
       const after = await up();
-      unchanged(after, origin);
-      assert.equal(after.selection, null, 'unselected zones and walls retain deliberate movement');
+      unchanged(after, before);
+      assert.deepEqual(after.selection, { kind: 'zone', id: 'room' });
     }
+    assert.equal(await page('document.querySelector("[data-simple-action=delete]").disabled'), true);
+    assert.equal(await page('!!document.querySelector("[data-structure-rotate], [data-resize-handle], [data-simple-action=rotate], [data-simple-action=opening]")'), false);
     return { before, locked, after: await snapshot() };
   });
 
-  await scenario('advanced-legacy-tap-and-drag', async () => {
+  await scenario('advanced-space-tap-menu-and-selected-drag', async () => {
     const before = await reset('advanced');
-    const start = await point('[data-item-id="chair"]');
+    const start = await point('[data-zone-id="room"]');
     await down(start);
     await move({ x: start.x + 44, y: start.y + 25 });
     const quickSwipe = await up();
     unchanged(quickSwipe, before);
     assert.equal(quickSwipe.selection, null, 'advanced unselected quick swipe remains non-editing');
-    const tapped = await tap('[data-item-id="chair"]');
+    const tapped = await tap('[data-zone-id="room"]');
     unchanged(tapped, before);
-    assert.deepEqual(tapped.selection, { kind: 'item', id: 'chair' });
-    assert.deepEqual(tapped.menu, { kind: 'item', id: 'chair' });
+    assert.deepEqual(tapped.selection, { kind: 'zone', id: 'room' });
+    assert.deepEqual(tapped.menu, { kind: 'zone', id: 'room' });
     assert.equal(tapped.menuVisible, true);
     assert.equal(tapped.focusedAction, 'move');
     await screenshot('advanced-legacy-action-menu');
     await tap('[data-context-close]');
-    const selectedStart = await point('[data-item-id="chair"]');
+    const selectedStart = await point('[data-zone-id="room"]');
     await down(selectedStart);
     const selectedPreview = await move({ x: selectedStart.x + 40, y: selectedStart.y + 22 });
     assert.equal(selectedPreview.moved, true, 'advanced selected direct drag remains available');
@@ -461,83 +533,155 @@ try {
     return { before, quickSwipe, tapped, selectedPreview, committed };
   });
 
-  await scenario('advanced-long-press-retains-real-handler', async () => {
+  await scenario('advanced-explicit-move-replaces-retired-hold', async () => {
     const before = await reset('advanced');
-    const start = await point('[data-item-id="chair"]');
+    await tap('[data-zone-id="room"]');
+    const armed = await tap('[data-context-action="move"]');
+    assert.equal(armed.moveArmed, true, 'advanced has a visible alternative to the retired long press');
+    assert.equal(armed.menu, null);
+    const start = await point('[data-zone-id="room"]');
     const pressed = await down(start);
-    assert.equal(pressed.pendingLongPress, 1);
-    assert.equal(pressed.dragging, false);
-    await page('window.__simpleGestureAudit.advanceLongPress()');
-    const held = await snapshot();
-    assert.equal(held.dragging, true, 'advancing the hold runs the original gesture handler');
-    assert.equal(held.pendingLongPress, 0);
+    assert.equal(pressed.dragging, true, 'explicit Move starts the original drag transaction without a hold');
     await move({ x: start.x + 40, y: start.y + 22 });
     const committed = await up();
     assert.equal(committed.history, 1);
-    assert.notDeepEqual(committed.layout.items[0], before.layout.items[0]);
-    return { before, pressed, held, committed };
+    assert.notDeepEqual(committed.layout.zones[0], before.layout.zones[0]);
+    assert.deepEqual(committed.layout.items, before.layout.items);
+    assert.deepEqual(committed.layout.structures, before.layout.structures);
+    const undone = await tap('#undo-action');
+    assert.deepEqual(undone.layout, before.layout);
+    return { before, armed, pressed, committed, undone };
   });
 
-  await scenario('simple-touch-structure-rotation-and-undo', async () => {
+  await scenario('simple-space-size-jitter-and-one-step-undo', async () => {
     const before = await reset();
-    await tap('[data-structure-id="wall"]');
+    await tap('[data-zone-id="room"]');
     await tap('[data-simple-action="size"]');
-    const rotated = await tap('[data-structure-rotate="wall"]');
-    assert.equal(rotated.layout.structures[0].orientation, 'vertical');
-    assert.equal(rotated.history, 1);
-    const jittered = await tap('[data-structure-rotate="wall"]', { x: 3, y: 2 });
-    assert.equal(jittered.layout.structures[0].orientation, 'horizontal', 'small finger jitter remains a button tap');
-    assert.equal(jittered.history, 2);
-    const firstUndo = await tap('#undo-action');
-    assert.deepEqual(firstUndo.layout, rotated.layout);
+    assert.equal(await page('!!document.querySelector("[data-resize-kind=item], [data-structure-rotate], [data-rotate-handle]")'), false,
+      'furniture and structure handles are retired in both 2D modes; 3D rotation is covered by the workflow suite');
+    const handle = await point('.resize-handle[data-resize-handle="se"]');
+    await down(handle);
+    await move({ x: handle.x + 18, y: handle.y + 18 });
+    const resized = await up();
+    assert.notEqual(resized.layout.zones[0].width, before.layout.zones[0].width);
+    assert.notEqual(resized.layout.zones[0].depth, before.layout.zones[0].depth);
+    assert.deepEqual(resized.layout.items, before.layout.items);
+    assert.deepEqual(resized.layout.structures, before.layout.structures);
+    assert.equal(resized.history, 1);
+    await tap('[data-simple-action="size"]', { x: 3, y: 2 });
+    assert.equal(await page('!!document.querySelector("[data-resize-handle]")'), false, 'small finger jitter activates size disclosure once');
     const undone = await tap('#undo-action');
     assert.deepEqual(undone.layout, before.layout);
     assert.equal(undone.history, 0);
-    return { before, rotated, jittered, firstUndo, undone };
+    return { before, resized, undone };
   });
 
-  await scenario('simple-small-selected-furniture-remains-draggable', async () => {
+  await scenario('simple-small-selected-space-remains-draggable', async () => {
     await setViewport(cdp, 320, 568);
     const before = await reset('simple', {
       ...fixture,
-      zones: [{ ...fixture.zones[0], width: 400, depth: 300 }],
-      items: [{ ...fixture.items[0], x: 200, y: 150, width: 100, depth: 70 }],
-      structures: [],
+      zones: [fixture.zones[0], { ...fixture.zones[0], id: 'small', x: 200, y: 150, width: 100, depth: 100 }],
     });
-    await tap('[data-item-id="chair"]');
-    const start = await point('[data-item-id="chair"]');
+    await tap('[data-zone-id="small"]');
+    assert.equal(await page('!!document.querySelector("[data-resize-handle]")'), false);
+    const start = await point('[data-zone-id="small"]');
     await down(start);
     const preview = await move({ x: start.x + 30, y: start.y + 15 });
-    assert.equal(preview.dragging, true, 'small selected furniture exposes its body instead of overlapping resize handles');
+    assert.equal(preview.dragging, true, 'small selected space exposes its body instead of overlapping resize handles');
     const committed = await up();
-    assert.equal(committed.layout.items[0].width, 100);
-    assert.equal(committed.layout.items[0].depth, 70);
-    assert.notEqual(committed.layout.items[0].x, before.layout.items[0].x);
+    assert.equal(committed.layout.zones[1].width, 100);
+    assert.equal(committed.layout.zones[1].depth, 100);
+    assert.notEqual(committed.layout.zones[1].x, before.layout.zones[1].x);
+    assert.deepEqual(committed.layout.items, before.layout.items);
     await tap('[data-simple-action="size"]');
-    assert.equal(await page('!!document.querySelector("[data-resize-handle]")'), true, 'size action explicitly reveals resize handles');
+    assert.equal(await page('!!document.querySelector("[data-resize-kind=zone]")'), true);
+    assert.equal(await page('!!document.querySelector("[data-resize-kind=item], [data-rotate-handle]")'), false);
     return { before, preview, committed };
   });
 
   await scenario('simple-wide-touch-tap-and-first-drag', async () => {
     await setViewport(cdp, 1100, 900);
     const before = await reset();
-    const tapped = await tap('[data-item-id="chair"]');
+    const tapped = await tap('[data-zone-id="room"]');
     unchanged(tapped, before);
     assert.equal(tapped.menu, null);
     assert.equal(tapped.selectionBar, true);
     await tap('[data-simple-action="clear"]');
     const unselected = await snapshot();
     assert.equal(unselected.selection, null);
-    const start = await point('[data-item-id="chair"]');
+    const start = await point('[data-zone-id="room"]');
     const pressed = await down(start);
     assert.equal(pressed.pressing, true, 'wide touch uses the same slop-aware press path');
     assert.equal(pressed.dragging, false);
     await move({ x: start.x + 48, y: start.y + 27 });
     const committed = await up();
-    assert.notDeepEqual(committed.layout.items[0], before.layout.items[0]);
+    assert.notDeepEqual(committed.layout.zones[0], before.layout.zones[0]);
     assert.equal(committed.history, 1);
     assert.equal(committed.menu, null);
     return { before, tapped, committed };
+  });
+
+  await scenario('simple-multiselect-spaces-and-keyboard-dimensions', async () => {
+    await setViewport(cdp, 390, 844);
+    const layout = structuredClone(fixture);
+    layout.zones.push({ ...layout.zones[0], id: 'second', x: 620, width: 300 });
+    layout.dimensions = [{ id: 'dimension', name: 'Measured span', x1: 40, y1: 60, x2: 240, y2: 60, locked: false }];
+    const before = await reset('simple', layout);
+    await tap('[data-zone-id="room"]');
+    await tap('[data-simple-action="multi"]');
+    const selected = await tap('[data-zone-id="second"]');
+    assert.equal(selected.keys.length, 2);
+    assert.equal(selected.menu, null);
+    const start = await point('[data-zone-id="second"]');
+    await down(start);
+    await move({ x: start.x + 25, y: start.y + 18 });
+    const committed = await up();
+    const deltas = committed.layout.zones.map((zone, index) => [zone.x - before.layout.zones[index].x, zone.y - before.layout.zones[index].y]);
+    assert.deepEqual(deltas[0], deltas[1], 'selected spaces move as one group');
+    assert.notDeepEqual(deltas[0], [0, 0]);
+    assert.equal(committed.history, 1);
+    await tap('#undo-action');
+    await tap('[data-simple-action="clear"]');
+    await tap('[data-dimension-id="dimension"]');
+    const dimensionSelected = await snapshot();
+    assert.deepEqual(dimensionSelected.selection, { kind: 'dimension', id: 'dimension' });
+    assert.equal(dimensionSelected.menu, null, 'simple dimension selection is nonmodal');
+    await page('document.querySelector("#plan-canvas").focus()');
+    const moved = await key('ArrowRight', 39);
+    assert.equal(moved.layout.dimensions[0].x1, before.layout.dimensions[0].x1 + 1);
+    assert.equal(moved.layout.dimensions[0].x2, before.layout.dimensions[0].x2 + 1);
+    const shifted = await key('ArrowDown', 40, 8);
+    assert.equal(shifted.layout.dimensions[0].y1, before.layout.dimensions[0].y1 + 40);
+    assert.equal(shifted.layout.dimensions[0].y2, before.layout.dimensions[0].y2 + 40);
+    await tap('#undo-action');
+    const undone = await tap('#undo-action');
+    assert.deepEqual(undone.layout, before.layout);
+    return { before, selected, committed, dimensionSelected, moved, shifted, undone };
+  });
+
+  await scenario('advanced-readonly-detail-boundary-and-field-isolation', async () => {
+    await setViewport(cdp, 390, 844);
+    const before = await reset('advanced');
+    for (const selector of ['[data-item-id="chair"]', '[data-item-id="locked"]', '[data-structure-id="wall"]']) {
+      const start = await readonlyPoint(selector);
+      await down(start);
+      await move({ x: start.x + 36, y: start.y + 25 });
+      const swiped = await up();
+      unchanged(swiped, before);
+      assert.equal(swiped.selection, null, 'advanced mode does not restore a hidden detail editing path');
+    }
+    await tap('[data-zone-id="room"]');
+    await tap('[data-context-action="details"]');
+    const pointInField = await point('[data-zone-field="name"]');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...pointInField }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await frame();
+    assert.equal(await page('document.activeElement.matches("[data-zone-field=name]")'), true);
+    const fieldBefore = await snapshot();
+    const after = await key('ArrowRight', 39);
+    unchanged(after, fieldBefore);
+    assert.equal(await page('!!document.querySelector("[data-item-field], [data-structure-field], [data-add-type], [data-furniture-search]")'), false);
+    return { before, after };
   });
 
   assert.deepEqual(receipt.errors, [], 'no browser exceptions');

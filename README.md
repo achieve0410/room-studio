@@ -23,10 +23,10 @@ Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines 
 ### Arrange a room
 
 1. Enter the room's width and depth in centimeters, then choose **이 크기로 시작**.
-2. Search for furniture, choose it, and tap the desired position on the plan. Drag its body to move it; use **크기** or **회전** in the selection bar to adjust it. Undo keeps an existing object selected.
-3. Choose **3D 미리보기** to check the result. View modes stay visible; ceiling, wall presentation, focus and PNG controls are under **도구 더보기**.
+2. Define rooms, living areas, and bathrooms in 2D. Move, resize, and combine space parts to establish the overall shape.
+3. Open 3D editing to place furniture and doors, adjust their position, rotation, and size, then apply or cancel the preview. Choose **걸어보기** to walk through the result.
 
-The default simple workspace keeps the drawing visible, including on narrow touchscreens. **정밀 도구** opens the full editor without changing the drawing. Client notes, A/B comparison and proposals are under **배치 비교 · 상담 · 제안서**. Use **파일** to move work between browsers; existing local work reopens automatically.
+The 2D workspace defines spaces; furniture and opening symbols are read-only context. Furniture, doors, windows, and manual walls are edited in 3D. Client notes, A/B comparison and proposals are under **배치 비교 · 상담 · 제안서**. Use **파일** to move work between browsers; existing local work reopens automatically.
 
 ### Regional apartment references
 
@@ -44,29 +44,6 @@ See the [workflow](docs/SEOUL_ASSET_STUDIO.md) and [asset provenance](docs/asset
 
 > Room Studio is a planning and visualization aid, not a substitute for permit, architectural, structural, accessibility, building-services, or construction drawings. Real construction, permitting, and safety decisions require review by qualified architects, engineers, accessibility specialists, and other relevant professionals.
 
-## See Room Studio in action
-
-These screenshots document the earlier precision editor and walkthrough, not the new default simple workspace. Select any image to open it at full resolution.
-
-### 1. Edit directly on the floor plan
-
-[![Room Studio desktop 2D editor showing direct resize and rotation handles](docs/images/room-studio-2d.png)](docs/images/room-studio-2d.png)
-
-Visible resize handles, continuous rotation, live dimensions, snapping guides, multi-selection, and exact property fields keep editing close to the canvas.
-
-### 2. Walk through the same design in 3D
-
-[![Room Studio first-person 3D walkthrough with an interactive sliding window, custom furniture label, and minimap](docs/images/room-studio-3d.png)](docs/images/room-studio-3d.png)
-
-Doors and sash windows remain interactive while furniture, labels, collision boundaries, room transitions, and the live minimap reflect the plan.
-
-### 3. Keep editing and exploring on mobile
-
-| Direct touch editing | Multi-selection | 3D joystick walkthrough |
-| --- | --- | --- |
-| <a href="docs/images/room-studio-mobile-edit.png"><img src="docs/images/room-studio-mobile-edit.png" alt="Room Studio mobile direct-edit action sheet and resize handles" width="260"></a> | <a href="docs/images/room-studio-mobile.png"><img src="docs/images/room-studio-mobile.png" alt="Room Studio mobile multi-selection boundary and group actions" width="260"></a> | <a href="docs/images/room-studio-mobile-3d.png"><img src="docs/images/room-studio-mobile-3d.png" alt="Room Studio mobile 3D walkthrough with joystick and minimap" width="260"></a> |
-| Tap a selected object to expose move, rotate, group, and delete actions. | Select several spaces or objects and transform them as one group. | Move with the left joystick, look around on the right, and follow the live plan. |
-
 ## Live demo
 
 Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). The demo has no Supabase configuration or login: drawings remain in that browser's `localStorage`, and clearing site data removes them. Do not enter a private or security-sensitive floor plan.
@@ -77,10 +54,10 @@ Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). 
 - Compose L-shaped and other orthogonal spaces from multiple rectangular parts.
 - Import a PNG or JPG floor plan, calibrate it from two known points, and control its opacity or movement lock.
 - Add persistent distance dimensions and enter exact wall lengths in centimeters.
-- Move, resize, continuously rotate, group, align, and multi-select with on-canvas handles and live transform feedback.
+- Move, resize, align, and combine spaces in 2D; place and transform furniture in 3D.
 - Duplicate, copy, paste, lock, and nudge selected objects in 1 cm keyboard increments.
 - Edit room ceiling height and furniture elevation to validate vertical fit.
-- Use swing doors, two-panel bypass sliding doors, and sash-style sliding windows in both 2D and 3D.
+- Create and edit swing doors, two-panel bypass sliding doors, and sash windows in 3D, with read-only symbols in 2D.
 - Switch between collision-aware first-person, dollhouse, and top-down 3D views; hide ceilings, focus the current selection, or save the current scene as PNG.
 - Work with mouse and keyboard or mobile touch, pinch zoom, resize handles, and a virtual joystick.
 - Keep drawings in local browser storage, or optionally sync user-owned projects through Supabase Auth and Postgres RLS.
@@ -117,6 +94,7 @@ The core editor works without any cloud configuration and stores the current dra
 npm run check
 npm run test:browser:mobile
 npm run test:browser:simple
+npm run test:browser:spaces
 npm run test:browser:consultation
 ```
 

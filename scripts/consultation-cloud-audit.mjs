@@ -1,29 +1,30 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createServer as createNetServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
+import { chromium } from 'playwright-core';
 import { normalizeConsultation } from '../src/consultation.js';
 import {
   capture, evaluate, launchChrome, setViewport,
 } from '../.omo/evidence/room-studio-improvements/browser-qa-lib.mjs';
 
-const baseline = process.env.AUDIT_BASELINE === '1';
 const mobile = process.argv.includes('--mobile');
 const root = resolve('.');
 const mainPath = resolve('src/main.js');
 const virtualId = '\0consultation-cloud-fixture';
-const originalMain = baseline
-  ? execFileSync('git', ['show', 'HEAD:src/main.js'], { encoding: 'utf8' })
-  : null;
 const outputDirectory = resolve(
   '.omx/artifacts/consultation-cloud',
   `${new Date().toISOString().replaceAll(':', '-')}-${randomUUID()}`,
 );
 const receipt = {
-  baseline, mobile, outputDirectory, actions: [], scenarios: [], screenshots: [], errors: [],
+  mobile, outputDirectory, actions: [], scenarios: [], screenshots: [], errors: [],
+  scenarioMap: [
+    { scenarios: [5, 6], before: 'manual save of seeded remote furniture', after: 'real 3D numeric move and Apply trigger the real autosave; only its Supabase response is held' },
+    { scenarios: [6], before: 'account switch with an open 3D preview', after: 'account switch with a selected furniture edit pending in the real 3D inspector' },
+    { scenarios: [1, 2, 3, 4, 7, 8, 9, 10], after: 'existing restoration, protection, privacy and late-response cases retained; no legacy editor or frozen persistence timer' },
+  ],
 };
 const ACTIVE = 'room-studio-layout-v2';
 const RECOVERY = 'room-studio-recovery-v1';
@@ -67,8 +68,6 @@ function installFixture(configuration) {
   const subscribers = new Set();
   const controls = new Map();
   const failures = new Map();
-  const autosaves = new Map();
-  let nextTimer = -1;
   let nextProject = 1;
   let user = { id: configuration.owner, user_metadata: { full_name: 'Fixture A' } };
   const records = new Map([[configuration.projectId, {
@@ -93,18 +92,6 @@ function installFixture(configuration) {
     };
     channel.port2.postMessage(null);
   });
-  const nativeSetTimeout = window.setTimeout.bind(window);
-  const nativeClearTimeout = window.clearTimeout.bind(window);
-  window.setTimeout = (callback, delay, ...args) => {
-    if (delay !== 1200) return nativeSetTimeout(callback, delay, ...args);
-    const id = nextTimer--;
-    autosaves.set(id, () => callback(...args));
-    return id;
-  };
-  window.clearTimeout = (id) => {
-    if (autosaves.delete(id)) return;
-    nativeClearTimeout(id);
-  };
   async function respond(kind, operation) {
     const control = controls.get(kind);
     if (control) {
@@ -227,12 +214,6 @@ function installFixture(configuration) {
       for (const callback of subscribers) callback('SIGNED_IN', session());
       await checkpoint();
     },
-    async drainAutosaves() {
-      const pending = [...autosaves.values()];
-      autosaves.clear();
-      for (const callback of pending) callback();
-      await checkpoint();
-    },
   };
   if (window.__holdLoginList) window.__cloudFixture.hold('list');
 }
@@ -275,10 +256,11 @@ try {
         }
       },
       load(id) { if (id === virtualId) return fixtureSource; },
-      transform(_source, id) {
-        if (baseline && id.split('?')[0] === mainPath) {
-          return { code: originalMain, map: null };
-        }
+      transform(source, id) {
+        if (id.split('?')[0] !== mainPath) return;
+        // Read-only scheduling observation. The actual editor, timer, 3D edit,
+        // local store and cloud adapter all execute without replacements.
+        return { code: `${source}\nwindow.__cloudAuditAutosaveScheduled = () => cloudSaveTimer !== null;`, map: null };
       },
     }],
   });
@@ -292,6 +274,8 @@ try {
           : '/usr/bin/google-chrome'),
   );
   const { cdp } = browser;
+  const connection = await chromium.connectOverCDP(`http://${new URL(cdp.socket.url).host}`);
+  const editor = connection.contexts()[0].pages()[0];
   const page = (expression) => evaluate(cdp, expression);
   const fixture = (expression) => page(`window.__cloudFixture.${expression}`);
   const stored = (key = ACTIVE) => page(`JSON.parse(localStorage.getItem(${JSON.stringify(key)}))`);
@@ -348,7 +332,6 @@ try {
         }, 15000);
         check();
       });
-      window.__cloudAuditWait.catch(() => {});
       return true;
     })()`);
   }
@@ -360,7 +343,7 @@ try {
       if (!element || element.disabled || element.closest('[inert]')) {
         throw new Error('Unavailable control: ' + ${JSON.stringify(selector)});
       }
-      element.scrollIntoView({ block: 'center' });
+      element.scrollIntoView({ block: 'center', behavior: 'instant' });
       const rect = element.getBoundingClientRect();
       const point = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
       if (!element.contains(document.elementFromPoint(point.x, point.y))) {
@@ -423,9 +406,37 @@ try {
       : `window.__cloudFixture?.calls.some(call => call.kind === 'authSubscribed')`);
     await wait();
     await fixture('checkpoint()');
-    if (!baseline) {
-      await click('[data-workspace-mode]', `document.querySelector('.workspace')?.dataset.mode === 'advanced'`);
+    await click('[data-workspace-mode]', `document.querySelector('.workspace')?.dataset.mode === 'advanced'`);
+  }
+  const studioReady = `document.querySelector('[data-walkthrough]')?.dataset.studioReady === 'true'
+    && document.querySelector('[data-walkthrough]')?.dataset.assetState === 'ready'`;
+  async function openStudio() {
+    await click('#open-walkthrough', studioReady);
+    assert.equal(await page('document.querySelector("#app").inert'), true);
+    if (await page('document.querySelector(".studio3d-body").hidden')) {
+      await click('[data-studio-toggle]', `!document.querySelector('.studio3d-body').hidden`);
     }
+    await editor.locator('[data-studio-target]').selectOption('item:audit-sofa', { timeout: 15000 });
+    receipt.actions.push({ scenario, select: '[data-studio-target]', value: 'item:audit-sofa' });
+    assert.equal(await page('document.querySelector(".studio3d-shell").dataset.selectionId'), 'audit-sofa');
+  }
+  async function previewMove() {
+    const before = await stored();
+    await openStudio();
+    await click('[data-studio-value="x"]');
+    await page('document.querySelector("[data-studio-value=x]").select()');
+    await cdp.send('Input.insertText', { text: String(before.items[0].x + 1) });
+    await arm(`document.querySelector('.studio3d-shell').dataset.pending === 'true' && ${studioReady}`);
+    for (const type of ['keyDown', 'keyUp']) {
+      await cdp.send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    }
+    await wait();
+    assert.deepEqual(await stored(), before, 'A pending 3D preview cannot mutate local persistence');
+    return before;
+  }
+  async function closeStudio() {
+    await click('[data-walkthrough-exit]', `!${visible('[data-walkthrough]')}`);
+    assert.equal(await page('document.querySelector("#app").inert'), false);
   }
   async function openCloud() {
     await click('[data-cloud-open]', visible('[data-cloud-project-name]'));
@@ -433,6 +444,9 @@ try {
   function sameContent(actual, expected = cached) {
     assert.deepEqual(actual.zones, expected.zones, `${scenario}: zones`);
     assert.deepEqual(actual.items, expected.items, `${scenario}: items`);
+    for (const field of ['structures', 'dimensions', 'backgroundPlan', 'wallHeight']) {
+      assert.deepEqual(actual[field], expected[field], `${scenario}: ${field}`);
+    }
     assert.deepEqual(actual.consultation, expected.consultation, `${scenario}: consultation`);
   }
   async function originalIntact() {
@@ -461,7 +475,6 @@ try {
 
   scenario = '1 dirty owner draft restoration';
   await reset();
-  // This is deliberately the first behavioral assertion in the baseline run.
   assert.equal((await stored()).items[0].x, localLayout.items[0].x,
     'Scenario 1: auth restoration overwrote dirty local geometry');
   await originalIntact();
@@ -469,7 +482,7 @@ try {
   await openCloud();
   assert.equal(await page(visible('[data-cloud-recovery]')), true);
   assert.equal(await page(visible('[data-cloud-copy]')), true);
-  await fixture('drainAutosaves()');
+  assert.equal(await page('window.__cloudAuditAutosaveScheduled()'), false, 'Conflict must not even schedule an automatic upload');
   assert.deepEqual(await rpcCalls(), [], 'Conflict must not automatically save stale data');
   await pass('01-restored-conflict');
 
@@ -549,13 +562,25 @@ try {
     await reset();
     await openCloud();
     await click('[data-cloud-reload]', `!${visible('[data-cloud-backdrop]')}`);
-    await openCloud();
     await fixture('hold("rpc")');
-    await click('[data-cloud-save]', 'window.__cloudFixture.entered("rpc")');
+    const beforeEdit = await previewMove();
+    // Subscribe before Apply; await the actual debounce's RPC instead of
+    // freezing, flushing or sleeping through application persistence timers.
+    await click('[data-studio-apply]', 'window.__cloudFixture.entered("rpc")');
+    const edited = await stored();
+    assert.deepEqual(edited.items, beforeEdit.items.map(item => ({ ...item, x: item.x + 1 })));
+    assert.deepEqual(edited.consultation, beforeEdit.consultation);
+    await shot(`3d-committed-${scenario.slice(0, 1)}`);
+    await closeStudio();
+    await openCloud();
     const calls = await rpcCalls();
     assert.equal(calls.length, 1);
     assert.equal(calls[0].args.p_project_id, projectId);
     assert.equal(calls[0].args.p_expected_revision, 4);
+    sameContent(calls[0].args.p_layout_json, edited);
+    for (const field of ['draftMetadata', 'ownerId', 'projectId', 'baseRevision']) {
+      assert.equal(Object.hasOwn(calls[0].args.p_layout_json, field), false, 'Cloud layout must exclude local/account metadata');
+    }
   }
 
   scenario = '5 stale save cannot replace new local draft';
@@ -579,7 +604,7 @@ try {
   await beginNormalPendingSave();
   await click('[data-cloud-close]', `!${visible('[data-cloud-backdrop]')}`);
   assert.ok(await stored(RECOVERY), 'Owner A recovery must exist before switching');
-  await click('#open-walkthrough', `document.querySelector('[data-walkthrough]')?.dataset.studioReady === 'true'`);
+  await previewMove();
   await fixture(`switchUser(${JSON.stringify(secondOwner)})`);
   // Check before releasing the old response: account isolation cannot wait on it.
   assert.equal(await page(visible('[data-walkthrough]')), false,
@@ -678,14 +703,39 @@ try {
     await page(`document.querySelector('[name="projectName"]').value = ${JSON.stringify(`NEW-${kind}`)};
       document.querySelector('[name="clientName"]').value = 'NEW-CUSTOMER';
       document.querySelector('[name="requirements"]').value = 'NEW-REQUIREMENTS';`);
+    // Release at the submitted-state transition and capture at auth completion.
+    // A later intentional autosave must not race the test driver's CDP round trips.
+    await page(`window.__loginCompletion = new Promise((resolveLogin, reject) => {
+      let changedDuringLogin;
+      const readDraft = () => JSON.parse(localStorage.getItem(${JSON.stringify(ACTIVE)}));
+      const cleanup = () => {
+        observer.disconnect();
+        window.removeEventListener('cloud-fixture-change', completed);
+        clearTimeout(timeout);
+      };
+      const fail = error => { cleanup(); reject(error); };
+      const completed = () => {
+        if (!window.__cloudFixture.calls.some(call => call.kind === 'authSubscribed')) return;
+        const result = { before: changedDuringLogin, after: readDraft(),
+          heading: document.querySelector('h1').textContent,
+          rpc: structuredClone(window.__cloudFixture.calls.filter(call => call.kind === 'rpc')) };
+        cleanup(); resolveLogin(result);
+      };
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('[data-consultation-form]')) return;
+        observer.disconnect();
+        changedDuringLogin = readDraft();
+        window.addEventListener('cloud-fixture-change', completed);
+        window.__cloudFixture.release('list').catch(fail);
+      });
+      const timeout = setTimeout(() => fail(new Error('Submitted consultation did not complete login')), 15000);
+      observer.observe(document, { childList: true, subtree: true });
+    }); true`);
     await click('[data-consultation-form] [type="submit"]', `!${visible('[data-consultation-backdrop]')}`);
-    const changedDuringLogin = await stored();
-    await arm(`window.__cloudFixture.calls.some(call => call.kind === 'authSubscribed')`);
-    await fixture('release("list")');
-    await wait();
-    assert.deepEqual(await stored(), changedDuringLogin, 'A late login list must preserve newer documents and edits');
-    assert.equal(await page('document.querySelector("h1").textContent'), `NEW-${kind}`);
-    assert.deepEqual(await rpcCalls(), [], 'Login restoration must not silently upload the preserved edit');
+    const completion = await page('window.__loginCompletion');
+    assert.deepEqual(completion.after, completion.before, 'A late login list must preserve newer documents and edits');
+    assert.equal(completion.heading, `NEW-${kind}`);
+    assert.deepEqual(completion.rpc, [], 'Login restoration must not silently upload the preserved edit');
     await pass(`10-login-${kind}`);
   }
 
