@@ -102,12 +102,6 @@ const applyPrepared = (layout, action) => {
   };
 };
 
-/** Shared action semantics; the host still owns validation, history and persistence. */
-export function applyStudioEditAction(layout, action) {
-  const prepared = prepareAction(layout, action);
-  return prepared ? applyPrepared(layout, prepared) : layout;
-}
-
 /** Drafts are disposable; the caller alone owns history, validation and persistence. */
 export function createStudioEditSession({ layout, getLayout, onEdit, onPreview = () => {} }) {
   let baseline = copy(layout);
