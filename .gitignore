@@ -7,6 +7,7 @@ pem/
 .room-studio/
 venv/
 .DS_Store
+삭제/
 *.log
 .env*
 !.env.example
