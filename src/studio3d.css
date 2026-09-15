@@ -10,6 +10,7 @@
   width: auto;
 }
 .studio3d-shell {
+  box-sizing: border-box;
   position: absolute;
   z-index: 6;
   top: calc(134px + env(safe-area-inset-top));
@@ -74,6 +75,9 @@
   font-weight: 700;
 }
 .studio3d-body {
+  flex: 1 1 auto;
+  grid-auto-rows: max-content;
+  align-content: start;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -86,7 +90,8 @@
   gap: 4px;
   color: var(--muted);
 }
-.studio3d-field select {
+.studio3d-field select,
+.studio3d-field input {
   width: 100%;
   padding: 8px;
 }
@@ -102,15 +107,17 @@
 }
 .studio3d-coordinates {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 .studio3d-coordinates label {
   display: grid;
   gap: 4px;
   color: var(--muted);
 }
-.studio3d-coordinates input {
+.studio3d-coordinates input,
+.studio3d-coordinates select {
+  box-sizing: border-box;
   width: 100%;
   padding: 4px;
   font-variant-numeric: tabular-nums;
@@ -123,9 +130,19 @@
 }
 .studio3d-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
 }
+.studio3d-tabs button { padding: 4px; }
+.studio3d-entity-actions,
+.studio3d-nudges[data-studio-opening-tools] {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 8px;
+}
+.studio3d-entity-actions [data-studio-delete] { color: var(--error, var(--accent)); }
+.studio3d-shell [data-studio-wall-field] { margin-top: 8px; }
 .studio3d-swatches {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -231,7 +248,7 @@
 @media (max-width: 900px), (max-height: 600px) {
   .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
     right: 0;
-    bottom: 156px;
+    bottom: calc(var(--studio-panel-height, 140px) + 16px + env(safe-area-inset-bottom));
   }
   .studio3d-shell {
     top: auto;
@@ -239,7 +256,7 @@
     right: 12px;
     bottom: calc(8px + env(safe-area-inset-bottom));
     width: auto;
-    max-height: min(48dvh, 420px);
+    max-height: min(48dvh, calc(100dvh - 300px));
     padding: 8px;
     gap: 4px;
   }
@@ -252,28 +269,41 @@
     font-size: 16px;
   }
   .studio3d-catalog {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .studio3d-selection {
     font-size: 12px;
     min-height: 18px;
   }
   .studio3d-shell.is-expanded {
-    max-height: 48dvh;
+    max-height: min(48dvh, calc(100dvh - 300px));
   }
   .walkthrough-overlay.has-studio3d.is-overview .walkthrough-status {
     display: none;
   }
 }
-@media (max-height: 450px) {
+@media (max-height: 600px) and (orientation: landscape) {
+  .walkthrough-overlay.has-studio3d { --asset-panel-width: min(42vw, 288px); }
   .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
-    right: 240px;
+    right: calc(var(--asset-panel-width) + 24px);
     bottom: 0;
   }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-hud {
+    right: calc(var(--asset-panel-width) + 24px);
+  }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-view-tools {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-view-tools button { min-width: 44px; padding: 0 4px; }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-more-panel { max-width: 100%; }
   .studio3d-shell {
-    top: 134px;
+    top: 8px;
     left: auto;
-    width: 228px;
+    width: var(--asset-panel-width);
     max-height: none;
     bottom: 8px;
   }

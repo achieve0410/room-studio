@@ -9,9 +9,14 @@ import { DEMO_LAYOUTS } from '../src/demo-layouts.js';
 import { capture, evaluate, launchChrome } from '../.omo/evidence/room-studio-improvements/browser-qa-lib.mjs';
 
 const output = resolve(process.env.SIMPLE_3D_OUTPUT ?? join('.omx/artifacts/simple-3d', new Date().toISOString().replaceAll(':', '-')));
-const touchFollowupOnly = process.argv.includes('--touch-followup-only');
+assert.equal(process.argv.includes('--touch-followup-only'), false, 'The required gate always runs every production viewport');
 await mkdir(join(output, 'downloads'), { recursive: true });
-const receipt = { output, surface: 'real editor entry; QA-profile touch regression and production-profile scene matrix', viewports: [], screenshots: [], errors: [] };
+const receipt = { output, surface: 'space-only editor entry; QA-profile touch regression and native-clock production-profile scene matrix', scenarioMapping: {
+  selection: '2D furniture selection -> 2D space selection; furniture/structure controls explicitly absent',
+  openingActivations: 'unchanged real 3D door/window raycast, touch/keyboard/mouse and persisted callbacks',
+  productionMatrix: 'unchanged four viewports, native clocks, focus/keyboard isolation, camera fit, PNG equality and actual GPU disposal',
+  touchFollowup: 'unchanged single native post-look tap, real camera and trace',
+}, viewports: [], screenshots: [], errors: [] };
 const bounded = (promise, label) => {
   let timer;
   return Promise.race([promise, new Promise((_, reject) => {
@@ -67,7 +72,7 @@ try {
     return {
       destroyed, connected: overlay.isConnected, navigationActive, viewMode, ceilingsVisible, keys: [...keys],
       ceilingVisibility: ceilingObjects.map(object => object.visible),
-      target: overviewTarget, selectedTarget: selectedFocusTarget,
+      target: overviewTarget, selectedTarget: selectedFocusTarget, selection: focus,
       bounds: [bounds.min.toArray(), bounds.max.toArray()], corners,
       camera: { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), projection: camera.projectionMatrix.toArray(), aspect: camera.aspect },
       structure: sceneStructures, walls: interiorWalls, leaves: doorLeafSegments,
@@ -145,22 +150,25 @@ ${anchor}`);
     if (!target) throw new Error('Missing target: ' + ${JSON.stringify(selector)});
     const rect = target.getBoundingClientRect();
     const point = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-    if (!rect.width || !rect.height || !target.contains(document.elementFromPoint(point.x, point.y))) throw new Error('Obscured target: ' + ${JSON.stringify(selector)});
-    return point;
+    const candidates = [point, ...[[.25,.25],[.75,.25],[.25,.75],[.75,.75]].map(([x,y]) => ({ x: rect.x + rect.width*x, y: rect.y + rect.height*y }))];
+    const hit = candidates.find(candidate => target.contains(document.elementFromPoint(candidate.x, candidate.y)));
+    if (!rect.width || !rect.height || !hit) throw new Error('Obscured target: ' + ${JSON.stringify(selector)});
+    return hit;
   })()`);
   const click = async selector => {
     const point = await pointFor(selector);
     const id = `__simple3dClick${sequence++}`;
     receipt.lastAction = selector;
-    // The editor replaces selected SVG nodes on pointerup, before a click can reach the old node.
-    await page(`window[${JSON.stringify(id)}] = new Promise(resolveClick => document.addEventListener('pointerup', event => resolveClick(event.isTrusted), { once: true, capture: true })); true`);
+    // SVG selection can replace its node on pointerup; buttons must complete their native click.
+    const eventType = await page(`document.querySelector(${JSON.stringify(selector)}).matches('button')`) ? 'click' : 'pointerup';
+    await page(`window[${JSON.stringify(id)}] = new Promise(resolveClick => document.addEventListener(${JSON.stringify(eventType)}, event => resolveClick(event.isTrusted), { once: true, capture: true })); true`);
     if (touch) {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] });
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     } else {
       for (const type of ['mousePressed', 'mouseReleased']) await cdp.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
     }
-    assert.equal(await page(`window[${JSON.stringify(id)}]`), true, 'real browser-generated pointer release');
+    assert.equal(await page(`window[${JSON.stringify(id)}]`), true, 'real browser-generated control activation or canvas pointer release');
     await page(`delete window[${JSON.stringify(id)}]`);
   };
   const key = async (keyName, code, keyCode, modifiers = 0) => {
@@ -280,7 +288,7 @@ ${anchor}`);
   touch = true;
   await page(`document.querySelector('#open-walkthrough').scrollIntoView({ block: 'center', behavior: 'instant' })`);
   await paint();
-  const touchReady = await armState(`document.querySelector('[data-walkthrough-ready="true"]')`, 'touch 3D ready');
+  const touchReady = await armState(`document.querySelector('[data-walkthrough-ready="true"][data-studio-ready="true"][data-asset-state="ready"]')`, 'touch 3D ready');
   await click('#open-walkthrough');
   await touchReady();
   await setMode('walk');
@@ -397,7 +405,7 @@ ${anchor}`);
     await bounded(browser.navigate(receipt.url), `${kind} editor fixture`);
     await page(`window.__roomStudioQaRenderProfile = true; document.querySelector('#open-walkthrough').scrollIntoView({ block: 'center', behavior: 'instant' })`);
     await paint();
-    const ready = await armState(`document.querySelector('[data-walkthrough-ready="true"]')`, `${kind} ready`);
+    const ready = await armState(`document.querySelector('[data-walkthrough-ready="true"][data-studio-ready="true"][data-asset-state="ready"]')`, `${kind} ready`);
     await click('#open-walkthrough');
     await ready();
     const targeted = await armState(`document.querySelector('[data-walkthrough]').getAttribute('data-target-${kind}-id') === '${kind}'`, `${kind} raycast target`);
@@ -427,20 +435,22 @@ ${anchor}`);
   await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('room-studio-layout-v2', ${JSON.stringify(JSON.stringify(DEMO_LAYOUTS[0]))});` });
 
   // Narrow geometry runs first so this regression is RED on the old 230px toolbar.
-  for (const [width, height] of touchFollowupOnly ? [] : [[390, 844], [320, 568], [1440, 1000], [844, 390]]) {
+  for (const [width, height] of [[390, 844], [320, 568], [1440, 1000], [844, 390]]) {
     touch = width <= 900;
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: touch, maxTouchPoints: 2 });
     await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: touch });
     await bounded(browser.navigate(receipt.url), 'Editor navigation');
     await paint();
     // The short landscape workspace scrolls; use native scrolling before actual SVG input.
-    await page(`document.querySelector('[data-item-id="${DEMO_LAYOUTS[0].items[0].id}"]').scrollIntoView({ block: 'center', behavior: 'instant' })`);
+    await page(`document.querySelector('[data-zone-id="${DEMO_LAYOUTS[0].zones[0].id}"]').scrollIntoView({ block: 'center', behavior: 'instant' })`);
     await paint();
-    await click(`[data-item-id="${DEMO_LAYOUTS[0].items[0].id}"]`);
+    await click(`[data-zone-id="${DEMO_LAYOUTS[0].zones[0].id}"]`);
+    assert.equal(await page(`!!document.querySelector('[data-item-field], [data-structure-field], [data-rotate-handle], [data-structure-rotate], [data-furniture-search], [data-overlap-picker]')`), false, 'no retired 2D detail editing path');
+    assert.equal(await page(`document.querySelectorAll('[data-item-id][pointer-events=none]').length`), DEMO_LAYOUTS[0].items.length, 'all furniture remains visible and read-only');
     const documentBefore = await page(`localStorage.getItem('room-studio-layout-v2')`);
     await page(`document.querySelector('#open-walkthrough').scrollIntoView({ block: 'center', behavior: 'instant' })`);
     await paint();
-    const ready = await armState(`document.querySelector('[data-walkthrough-ready="true"]')`, '3D ready');
+    const ready = await armState(`document.querySelector('[data-walkthrough-ready="true"][data-studio-ready="true"][data-asset-state="ready"]')`, '3D ready');
     await click('#open-walkthrough');
     await ready();
     const entryFocusInside = await page(`Boolean(document.activeElement?.closest('[data-walkthrough]'))`);
@@ -479,7 +489,9 @@ ${anchor}`);
     assert.ok(geometry.toolbar.bottom <= geometry.stage.y, 'primary controls end before the scene begins');
     const initial = await snapshot();
     assert.equal(initial.viewMode, 'dollhouse');
-    assert.ok(initial.selectedTarget, 'real editor selection reaches 3D');
+    assert.ok(initial.selectedTarget, 'real editor space selection reaches 3D');
+    assert.equal(initial.selection.kind, 'zone');
+    assert.equal(initial.selection.id, DEMO_LAYOUTS[0].zones[0].id);
     assert.equal(initial.renderer.pixelRatio, 1);
     assert.equal(initial.renderer.shadows, true, 'screenshots use production rendering');
     checkFit(initial);

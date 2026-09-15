@@ -20,6 +20,7 @@ import {
   splitWallSegment,
   spaceIdOf,
   structureSegment,
+  structureBounds,
 } from './geometry.js';
 
 const DEFAULT_EYE_HEIGHT_CM = 165;
@@ -954,12 +955,14 @@ function buildScene(scene, zones, items, structures, wallHeight, center, assets)
   ));
   getInteriorWallSegments(zones).forEach((segment) => buildWallSegment(segment, automaticWallOpenings(segment)));
   userWalls.forEach((wall) => {
+    const first = scene.children.length;
     buildWallSegment(
       structureSegment(wall),
       openings.filter((opening) => opening.wallId === wall.id),
       wall.height / 100,
       Math.max(0.02, wall.thickness / 100),
     );
+    scene.children.slice(first).forEach(object => { object.userData.structureId = wall.id; });
   });
   const doorControllers = doors.map((door) => buildDoorLeaf(scene, door, center, doorMaterial, trimMaterial));
   const windowControllers = windows.map((windowStructure) => buildWindowSash(scene, windowStructure, center, trimMaterial));
@@ -1083,6 +1086,7 @@ export function openWalkthrough({
   onUndo = null,
   onRedo = null,
   historyState = null,
+  furnitureTemplates = [],
 }) {
   activeCleanup?.();
 
@@ -1471,13 +1475,24 @@ export function openWalkthrough({
   };
   const interactWithOpening = (clientX, clientY) => {
     const hit = openingAt(clientX, clientY);
-    if (!hit) return false;
+    if (!hit || hit.structure.locked) return false;
     const isWindow = hit.kind === 'window';
     const isSliding = isWindow || hit.structure.doorType === 'sliding';
     const opening = hit.targetOpening > 5 ? 0 : isSliding ? 100 : 90;
-    hit.setOpening(opening);
-    onStructureChange?.(hit.structure.id, isSliding ? { openRatio: opening } : { openAngle: opening });
-    if (getLayout && editSession) editSession.refresh(getLayout());
+    const updates = isSliding ? { openRatio: opening } : { openAngle: opening };
+    try {
+      if (editSession) {
+        if (!editSession.preview({ type: 'update-structure', id: hit.structure.id, updates })) return false;
+        editSession.commit();
+      } else {
+        onStructureChange?.(hit.structure.id, updates);
+        hit.setOpening(opening);
+      }
+    } catch (error) {
+      editSession?.cancel();
+      setStatusMessage(status, `문·창 변경 실패 · ${error.message}`);
+      return false;
+    }
     const action = opening > 0 ? '열었습니다' : '닫았습니다';
     const label = isWindow ? '미닫이창을' : isSliding ? '미닫이문을' : '여닫이문을';
     setStatusMessage(status, `${label} ${action}`);
@@ -1518,11 +1533,16 @@ export function openWalkthrough({
   const onResize = () => {
     const width = stage.clientWidth;
     const height = stage.clientHeight;
+    // Panel/viewport transitions can briefly collapse the stage before layout settles.
+    if (!width || !height) return;
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     if (viewMode !== 'walk' && !overviewNavigated) setOverviewCamera(viewMode, overviewTarget);
   };
+  // Observe the actual scene viewport, not only the window or the supporting panel.
+  const stageResizeObserver = new ResizeObserver(onResize);
+  stageResizeObserver.observe(stage);
   const activateNavigation = () => {
     if (viewMode === 'walk') {
       walkPose.position.copy(camera.position);
@@ -1580,12 +1600,15 @@ export function openWalkthrough({
     focusButton.disabled = !selectedFocusTarget;
     const item = selection?.kind === 'item' ? items.find(item => item.id === selection.id) : null;
     const zone = selection?.kind === 'zone' ? zones.find(zone => zone.id === selection.id) : null;
-    selectionRing.visible = Boolean(onEdit && (item || zone) && viewMode !== 'walk');
-    if (item || zone) {
-      const bounds = item ? itemBounds(item) : { left: zone.x, right: zone.x + zone.width, top: zone.y, bottom: zone.y + zone.depth };
+    const structure = selection?.kind === 'structure' ? sceneStructures.find(entry => entry.id === selection.id) : null;
+    selectionRing.visible = Boolean(onEdit && (item || zone || structure) && viewMode !== 'walk');
+    if (item || zone || structure) {
+      const bounds = item ? itemBounds(item) : structure ? structureBounds(structure) : { left: zone.x, right: zone.x + zone.width, top: zone.y, bottom: zone.y + zone.depth };
+      const bottom = item?.elevation ?? structure?.sillHeight ?? 0;
+      const height = item?.height ?? structure?.height ?? 1.5;
       selectionRing.box.set(
-        new THREE.Vector3((bounds.left - center.x) / 100, item ? (item.elevation ?? 0) / 100 + 0.01 : 0.01, (bounds.top - center.y) / 100),
-        new THREE.Vector3((bounds.right - center.x) / 100, item ? ((item.elevation ?? 0) + item.height) / 100 + 0.02 : 0.035, (bounds.bottom - center.y) / 100),
+        new THREE.Vector3((bounds.left - center.x) / 100, bottom / 100 + 0.01, (bounds.top - center.y) / 100),
+        new THREE.Vector3((bounds.right - center.x) / 100, (bottom + height) / 100 + 0.02, (bounds.bottom - center.y) / 100),
       );
     }
   };
@@ -1646,6 +1669,12 @@ export function openWalkthrough({
         }
       });
     }
+    overlay.dataset.doorControllerCount = String(doorControllers.length);
+    overlay.dataset.windowControllerCount = String(openingControllers.filter(controller => controller.kind === 'window').length);
+    overlay.dataset.visibleDoorMeshCount = String(doorControllers.reduce((count, controller) => count + controller.meshes.filter(mesh => hasVisibleMaterial(mesh.material)).length, 0));
+    let frameParts = 0;
+    worldRoot.traverse(object => { if (object.userData.doorFramePart && hasVisibleMaterial(object.material)) frameParts++; });
+    overlay.dataset.visibleDoorFramePartCount = String(frameParts);
     updateSelection();
     studioPanel?.sync();
     overlay.dataset.sceneRevision = String(Number(overlay.dataset.sceneRevision ?? 0) + 1);
@@ -1681,6 +1710,11 @@ export function openWalkthrough({
       }
       if (invisible || ['furniture-shadow','furniture-label'].includes(object.userData.type)) continue;
       if (furniture) return { kind: 'item', id: furniture.userData.id };
+      if (object.userData.openingController) return { kind: 'structure', id: object.userData.openingController.structure.id };
+      if (object.userData.structureId) {
+        if (presentationWalls && hit.point.y > 0.65 && !object.userData.doorFramePart) continue;
+        return { kind: 'structure', id: object.userData.structureId };
+      }
       if (object.userData.type === 'floor') return { kind: 'zone', id: object.userData.id, surface: 'floor' };
       if (object.userData.type === 'wall') {
         if (presentationWalls && hit.point.y > 0.65 && !object.userData.doorFramePart) continue;
@@ -1695,7 +1729,6 @@ export function openWalkthrough({
           if (zone) return { kind: 'zone', id: zone.id, surface: 'wall' };
         }
       }
-      if (object.userData.openingController) return null;
     }
     return null;
   };
@@ -1708,19 +1741,21 @@ export function openWalkthrough({
       editPointers.add(event.pointerId);
       renderer.domElement.setPointerCapture?.(event.pointerId);
       if (editPointers.size > 1) {
+        const editDragging = Boolean(editDrag?.moved);
         editDrag = null;
-        studioPanel?.cancel();
+        // Camera contacts must not discard an unrelated numeric/placement preview.
+        if (editSession?.pending && editDragging) studioPanel?.cancel();
         overviewNavigation.down(event);
         return;
       }
       const selection = studioPanel && event.button === 0 && !event.shiftKey ? pickEditable(event) : null;
-      if (studioPanel && event.button === 0 && !event.shiftKey) studioPanel.select(selection);
+      if (studioPanel && event.button === 0 && !event.shiftKey && (selection || !editSession?.pending)) studioPanel.select(selection);
       const item = studioPanel?.current;
       const point = groundPoint(event);
-      if (selection?.kind === 'item' && !item.locked && point) {
+      if (['item', 'structure'].includes(selection?.kind) && !item.locked && point) {
         editDrag = { id: event.pointerId, x: item.x, y: item.y, point, clientX: event.clientX, clientY: event.clientY, moved: false };
       }
-      overviewNavigation.down(event, selection?.kind === 'item');
+      overviewNavigation.down(event, ['item', 'structure'].includes(selection?.kind));
       renderer.domElement.focus({ preventScroll: true });
       return;
     }
@@ -1782,8 +1817,8 @@ export function openWalkthrough({
       const drag = editDrag;
       editDrag = null;
       if (drag?.id === event.pointerId) {
-        if (event.type === 'pointerup' && drag.moved) studioPanel.commit();
-        else if (event.type !== 'pointerup') studioPanel.cancel();
+        // Release leaves a visible draft; only the explicit Apply control writes history.
+        if (event.type !== 'pointerup') studioPanel.cancel();
       }
       return;
     }
@@ -1951,7 +1986,7 @@ export function openWalkthrough({
       delete overlay.dataset.targetWindowId;
       furnitureLabels.forEach((label) => { label.visible = false; });
     }
-    selectionRing.visible = Boolean(onEdit && selectedFocusTarget && focus && ['item','zone'].includes(focus.kind) && viewMode !== 'walk');
+    selectionRing.visible = Boolean(onEdit && selectedFocusTarget && focus && ['item','zone','structure'].includes(focus.kind) && viewMode !== 'walk');
     renderer.render(scene, camera);
   };
 
@@ -1980,6 +2015,7 @@ export function openWalkthrough({
     clearTimeout(toastTimer);
     clearTimeout(bumpTimer);
     window.removeEventListener('resize', onResize);
+    stageResizeObserver.disconnect();
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('keyup', onKeyUp);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
@@ -2098,7 +2134,7 @@ export function openWalkthrough({
   if (onEdit) {
     const showEditError = error => setStatusMessage(status, `변경을 적용하지 못했습니다 · ${error.message}`);
     editSession = createStudioEditSession({ layout: { zones, items, structures, wallHeight }, getLayout, onEdit, onPreview: refreshLayout });
-    studioPanel = createStudioPanel({ overlay, session: editSession, focus, onSelection: updateSelection, onResize, onUndo, onRedo, historyState, onError: showEditError });
+    studioPanel = createStudioPanel({ overlay, session: editSession, focus, furnitureTemplates, onSelection: updateSelection, onResize, onUndo, onRedo, historyState, onError: showEditError });
     studioPanel.onRetry(() => refreshLayout(editSession.layout, true));
     studioPanel.setAssets(assetState);
     studioPanel.setMode(initialMode);

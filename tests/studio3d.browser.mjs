@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { createServer as createPortReservation } from 'node:net';
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } from '../src/demo-layouts.js';
+import { ROOM_ASSETS, ROOM_MATERIALS } from '../src/asset-library.js';
 
 const root = resolve(import.meta.dirname, '..');
 // Avoid SwiftShader backpressure in the Linux functional matrix; full-quality views
@@ -28,13 +30,30 @@ const server = await createServer({
     {
       name: 'studio-observation',
       transform(source, id) {
+        if (id.split('?')[0] === join(root, 'src/main.js')) {
+          const anchor = 'function apply3dEdit(action) {';
+          assert.equal(source.split(anchor).length, 2);
+          return source.replace(anchor, `${anchor}
+ window.__actions.push(structuredClone(action));`) + `
+            window.__actions = [];
+            Object.defineProperties(window, {
+              __layout: { get: () => layoutSnapshot() },
+              __history: { get: () => historyPast },
+              __future: { get: () => historyFuture },
+            });
+            window.__resetStudioFixture = layout => {
+              applyProjectDocument({ projectName: 'Studio acceptance', layout });
+              starterDialogOpen = false; mobilePanel = 'canvas'; pendingFocus = null;
+              window.__actions = []; render();
+            };`;
+        }
         if (id.split('?')[0] !== join(root, 'src/walkthrough3d.js')) return;
         const anchor = "  overlay.dataset.walkthroughReady = 'true';";
         assert.equal(source.split(anchor).length, 2);
         return source.replace(
           anchor,
           `
-    window.__scene = () => ({ items, zones, sceneStructures, viewMode, destroyed, canMoveTo, scene, camera, center, editSession, overviewOrbitTarget,
+    window.__scene = () => ({ items, zones, sceneStructures, viewMode, destroyed, canMoveTo, scene, camera, renderer, center, editSession, overviewOrbitTarget,
       projectedPoints() { return studioSpatialPoints(overviewSpatialMeshes(scene)).map(point => point.project(camera).toArray()); },
       project(id) { const item = items.find(i => i.id === id); const p = new THREE.Vector3((item.x-center.x)/100, ((item.elevation||0)+item.height/2)/100, (item.y-center.y)/100).project(camera); const r = renderer.domElement.getBoundingClientRect(); return {x:r.x+(p.x+1)*r.width/2,y:r.y+(1-p.y)*r.height/2}; } });
     ${anchor}`,
@@ -49,9 +68,14 @@ const report = { output, renderProfile: qaRenderProfile ? 'qa-functional' : 'pro
 try {
   await server.listen();
   const url = server.resolvedUrls.local[0];
+  const executablePath = process.env.CHROME_PATH ?? [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser',
+    chromium.executablePath(),
+  ].find(existsSync);
+  assert.ok(executablePath && existsSync(executablePath), 'Install Chrome/Chromium or set CHROME_PATH');
   browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH ?? (process.platform === 'darwin'
-      ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/usr/bin/google-chrome'),
+    executablePath,
     headless: true,
     args: ['--enable-unsafe-swiftshader'],
   });
@@ -94,11 +118,35 @@ try {
     await done();
   };
   const close = async () => {
+    // Observe the real Three.js dispose events before the app tears the scene down.
+    await page.evaluate(() => {
+      const resources = new Map();
+      const watch = resource => {
+        if (!resource || resources.has(resource)) return;
+        resources.set(resource, 0);
+        resource.addEventListener('dispose', () => resources.set(resource, resources.get(resource) + 1));
+      };
+      window.__scene().scene.traverse(object => {
+        watch(object.geometry);
+        for (const material of [object.material].flat().filter(Boolean)) {
+          watch(material);
+          Object.values(material).filter(value => value?.isTexture).forEach(watch);
+        }
+      });
+      window.__disposedResources = () => [...resources].map(([resource, count]) => ({
+        type: resource.type ?? (resource.isTexture ? 'Texture' : 'unknown'), count,
+      }));
+    });
     await change(
       `!document.querySelector('[data-walkthrough]') && window.__scene().destroyed`,
       () => page.locator('[data-walkthrough-exit]').first().click(),
     );
     assert.equal(await page.locator('#app').evaluate(app => app.inert), false);
+    const disposal = await page.evaluate(() => window.__disposedResources());
+    assert.ok(disposal.length > 0);
+    assert.deepEqual(disposal.filter(resource => resource.count === 0), [], 'every live scene geometry, material and texture is disposed');
+    assert.equal(await page.evaluate(() => window.__scene().renderer.getContext().isContextLost()), true);
+    report.disposedResources = (report.disposedResources ?? 0) + disposal.length;
   };
   // Drive canvas gestures directly; observe native delivery after the app handler.
   const mouse = async (type, x, y, modifiers = 0) => {
@@ -131,61 +179,18 @@ try {
   const assetReady = `document.querySelector('[data-walkthrough]')?.dataset.assetState === 'ready'`;
   const studioReady = `document.querySelector('[data-walkthrough]')?.dataset.studioReady === 'true' && ${assetReady}`;
   const open = async (index = 0, legacy = false, ready = studioReady) => {
-    await change(ready, () =>
-      page.evaluate(
-        async ({ index, legacy }) => {
-          const { openWalkthrough } = await import('/src/walkthrough3d.js');
-          const { DEMO_LAYOUTS, REGIONAL_DEMO_LAYOUTS } = await import('/src/demo-layouts.js');
-          window.__layout = structuredClone((legacy ? DEMO_LAYOUTS : REGIONAL_DEMO_LAYOUTS)[index]);
-          window.__history = [];
-          window.__future = [];
-          window.__actions = [];
-          window.__close3d = openWalkthrough({
-            ...window.__layout,
-            initialMode: 'dollhouse',
-            getLayout: () => window.__layout,
-            onEdit(action) {
-              window.__actions.push(structuredClone(action));
-              window.__history.push(structuredClone(window.__layout));
-              window.__future = [];
-              if (action.type === 'add-item') window.__layout.items.push(action.item);
-              if (action.type === 'update-item')
-                window.__layout.items = window.__layout.items.map((item) =>
-                  item.id === action.id ? { ...item, ...action.updates } : item,
-                );
-              if (action.type === 'update-zone') {
-                const selected = window.__layout.zones.find((zone) => zone.id === action.id);
-                window.__layout.zones = window.__layout.zones.map((zone) =>
-                  (zone.spaceId ?? zone.id) === (selected.spaceId ?? selected.id)
-                    ? { ...zone, ...action.updates }
-                    : zone,
-                );
-              }
-              return structuredClone(window.__layout);
-            },
-            onUndo() {
-              if (window.__history.length) {
-                window.__future.push(window.__layout);
-                window.__layout = window.__history.pop();
-              }
-              return structuredClone(window.__layout);
-            },
-            onRedo() {
-              if (window.__future.length) {
-                window.__history.push(window.__layout);
-                window.__layout = window.__future.pop();
-              }
-              return structuredClone(window.__layout);
-            },
-            historyState: () => ({
-              canUndo: window.__history.length > 0,
-              canRedo: window.__future.length > 0,
-            }),
-          });
-        },
-        { index, legacy },
-      ),
-    );
+    await page.evaluate(layout => window.__resetStudioFixture(layout), (legacy ? DEMO_LAYOUTS : REGIONAL_DEMO_LAYOUTS)[index]);
+    await change(ready, () => page.locator('#open-walkthrough').click());
+    const profile = await page.evaluate(() => ({
+      shadows: window.__scene().renderer.shadowMap.enabled,
+      antialias: window.__scene().renderer.getContext().getContextAttributes().antialias,
+      ratio: window.__scene().renderer.getPixelRatio(),
+      gpu: window.__scene().renderer.getContext().getParameter(0x1f01),
+    }));
+    assert.equal(profile.shadows, !qaRenderProfile);
+    assert.equal(profile.antialias, !qaRenderProfile);
+    assert.equal(profile.ratio, qaRenderProfile ? 0.5 : 1);
+    report.renderer = profile;
   };
   const paint = () =>
     page.evaluate(
@@ -334,6 +339,9 @@ try {
     await mouse('mouseMoved', dragStart.x + 35, dragStart.y + 12);
     assert.equal(await page.evaluate(() => window.__actions.length), count);
     await mouse('mouseReleased', dragStart.x + 35, dragStart.y + 12);
+    assert.equal(await page.evaluate(() => window.__actions.length), count);
+    assert.equal(await page.evaluate(() => window.__scene().editSession.pending), true);
+    await apply();
     assert.equal(await page.evaluate(() => window.__actions.length), count + 1);
     const moved = await page.evaluate((id) => window.__layout.items.find((item) => item.id === id), sofa.id);
     assert.notEqual(moved.x, sofa.x);
@@ -351,7 +359,7 @@ try {
       moved,
     );
     assert.equal(await page.evaluate(() => window.__actions.length), count + 1);
-    report.checks.push('direct drag commits on release; Escape cancels with no canonical write');
+    report.checks.push('direct drag previews until Apply; Escape cancels with no canonical write');
     await change(
       `${assetReady} && window.__scene().items.find(item=>item.id===${JSON.stringify(sofa.id)}).materialId==='walnut'`,
       () => page.locator('[data-studio-material="walnut"]').click(),
@@ -377,6 +385,54 @@ try {
     await apply();
     assert.equal(await page.evaluate(() => window.__layout.items.length), beforeAdd + 1);
     report.checks.push('real GLB palette, replacement dimensions, add preview and commit');
+    await page.locator('[data-studio-tab="item"]').click();
+    assert.deepEqual(await page.locator('[data-studio-asset]').evaluateAll(buttons => buttons.map(button => button.dataset.studioAsset)), ROOM_ASSETS.map(asset => asset.id));
+    for (const asset of ROOM_ASSETS) {
+      const canonical = await page.evaluate(() => window.__layout);
+      await change(`${assetReady} && window.__scene().editSession.pending`, () => page.locator(`[data-studio-asset="${asset.id}"]`).click());
+      const selected = await page.locator('.studio3d-shell').getAttribute('data-selection-id');
+      const rendered = await page.evaluate(id => {
+        const { scene, items } = window.__scene();
+        const group = scene.children[0].children.find(object => object.userData.id === id && object.userData.type === 'furniture');
+        const meshes = [];
+        group.traverse(object => {
+          if (object.isMesh && object.userData.roomAssetOwned) meshes.push({
+            vertices: object.geometry.attributes.position.count,
+            textured: [object.material].flat().some(material => material.map?.image?.width > 0),
+            assetId: object.userData.assetId,
+          });
+        });
+        return { item: items.find(item => item.id === id), state: group.userData.assetState, meshes };
+      }, selected);
+      assert.equal(rendered.state, 'ready');
+      assert.equal(rendered.item.assetId, asset.id);
+      assert.deepEqual([rendered.item.width, rendered.item.depth, rendered.item.height],
+        [asset.dimensions.width, asset.dimensions.depth, asset.dimensions.height].map(value => Math.round(value * 100)));
+      assert.ok(rendered.meshes.length > 1 && rendered.meshes.every(mesh => mesh.vertices > 3 && mesh.assetId === asset.id));
+      assert.ok(rendered.meshes.some(mesh => mesh.textured), `${asset.id}: real decoded GLB texture`);
+      assert.deepEqual(await page.evaluate(() => window.__layout), canonical);
+      await change(`${assetReady} && !window.__scene().editSession.pending`, () => page.locator('[data-studio-cancel]').click());
+      assert.deepEqual(await page.evaluate(() => window.__layout), canonical);
+    }
+    await page.locator('[data-studio-target]').selectOption(`item:${sofa.id}`);
+    for (const palette of ROOM_MATERIALS.filter(material => material.kind === 'palette')) {
+      await change(`${assetReady} && window.__scene().items.find(item => item.id === ${JSON.stringify(sofa.id)}).materialId === ${JSON.stringify(palette.id)}`, () => page.locator(`[data-studio-material="${palette.id}"]`).click());
+      const slots = await page.evaluate(id => {
+        const group = window.__scene().scene.children[0].children.find(object => object.userData.id === id && object.userData.type === 'furniture');
+        const slots = {};
+        group.traverse(object => {
+          if (object.isMesh && object.userData.roomAssetOwned) for (const material of [object.material].flat()) slots[material.userData.slot ?? material.name] = `#${material.color.getHexString()}`;
+        });
+        return slots;
+      }, sofa.id);
+      const applicable = Object.entries(palette.slots).filter(([slot]) => slot in slots);
+      assert.ok(applicable.length > 0);
+      for (const [slot, color] of applicable) assert.equal(slots[slot], color);
+      if (await page.evaluate(() => window.__scene().editSession.pending)) await apply();
+      assert.equal(await page.evaluate(id => window.__layout.items.find(item => item.id === id).materialId, sofa.id), palette.id);
+    }
+    report.checks.push('all 12 catalog GLBs have real geometry/textures and cancel without writes; all 3 palettes change rendered material slots');
+
     await page.locator('[data-studio-tab="floor"]').click();
     const zoneId = await page.locator('.studio3d-shell').getAttribute('data-selection-id');
     await change(
@@ -392,15 +448,35 @@ try {
     await apply();
     await capture('desktop-floor-wall-edits');
     report.checks.push('zone floor and independently owned wall PBR finishes commit');
+    for (const finish of ROOM_MATERIALS.filter(material => material.kind === 'surface')) {
+      for (const usage of finish.usage) {
+        await page.locator(`[data-studio-tab="${usage}"]`).click();
+        await change(`${assetReady} && window.__scene().zones.find(zone => zone.id === ${JSON.stringify(zoneId)})[${JSON.stringify(`${usage}MaterialId`)}] === ${JSON.stringify(finish.id)}`, () => page.locator(`[data-studio-material="${finish.id}"]`).click());
+        assert.ok(await page.evaluate(color => {
+          let matches = 0;
+          window.__scene().scene.traverse(object => {
+            for (const material of [object.material].flat().filter(Boolean)) {
+              if (material.userData.studioSurface && `#${material.color.getHexString()}` === color
+                && material.map?.image?.width > 0 && material.normalMap?.image?.width > 0 && material.roughnessMap?.image?.width > 0) matches++;
+            }
+          });
+          return matches;
+        }, finish.color), `${finish.id}/${usage}: rendered PBR color, normal and roughness maps`);
+        if (await page.evaluate(() => window.__scene().editSession.pending)) await apply();
+        assert.equal(await page.evaluate(({ zoneId, usage }) => window.__layout.zones.find(zone => zone.id === zoneId)[`${usage}MaterialId`], { zoneId, usage }), finish.id);
+      }
+    }
+    report.checks.push('all 7 finishes render their real PBR maps and commit on every supported floor/wall surface');
+
     await page.locator('[data-walkthrough-more]').click();
-    const download = page.waitForEvent('download');
+    const download = page.waitForEvent('download', { timeout: 20000 });
     await page.locator('[data-save-snapshot]').click();
     await (await download).saveAs(join(output, 'edited-snapshot.png'));
     await page.keyboard.press('Escape');
     await close();
     assert.equal(await page.locator('[data-walkthrough]').count(), 0);
     assert.equal(await page.evaluate(() => window.__scene().destroyed), true);
-    report.checks.push('PNG export; cleanup closes canvas and marks renderer destroyed');
+    report.checks.push('PNG export; cleanup disposes real geometry/materials/textures, loses WebGL context and destroys renderer');
     for (const width of [1440, 390])
       for (let index = 0; index < 3; index++) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
@@ -555,7 +631,7 @@ try {
     await close();
     report.checks.push('real failed GLB request is visibly error, retry loads actual model');
 
-    // The actual parent entry uses main.js history and localStorage, not the harness callbacks.
+    // Reopen the actual parent entry and explicitly verify storage, focus and inert state.
     await change(studioReady, () => page.locator('#open-walkthrough').click());
     await page.locator('button[data-view-mode="top"]').click();
     const actualItem = await page.evaluate(() => window.__scene().items[0]);

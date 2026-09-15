@@ -67,6 +67,8 @@ jobs:
         run: npm run test:browser:mobile
       - name: Run simple workspace and direct manipulation audit
         run: npm run test:browser:simple
+      - name: Run space and detail editing boundary audit
+        run: npm run test:browser:spaces
       - name: Run prebuilt asset and 3D editing audit
         run: npm run test:browser:assets
       - name: Run consultation and recovery audit
@@ -98,6 +100,16 @@ jobs:
           path: |
             .omx/artifacts/seoul-assets/
             .omx/artifacts/studio3d/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload space and detail editing artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: space-detail-audit-${{ github.run_attempt }}
+          path: |
+            .omx/artifacts/space-only/
+            .omx/artifacts/studio3d-details/
           if-no-files-found: warn
           retention-days: 7
       - name: Upload consultation browser artifacts

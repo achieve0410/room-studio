@@ -1119,6 +1119,18 @@ footer { height: 36px; display: grid; place-items: center; border-top: 1px solid
   .canvas-wrap { height: var(--canvas-min); min-height: var(--canvas-min); }
 }
 
+/* 2D defines spaces; detail entities remain a non-interactive drawing context. */
+.plan-item, .plan-structure { cursor: default; }
+.mobile-space-tabs { display: contents; }
+.space-edit-flow { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; color: var(--muted-readable); font-size: var(--text-caption); line-height: 1.5; }
+.space-edit-flow strong { color: var(--ink); }
+.space-edit-guide { margin: 0 0 var(--space-3); color: var(--muted-readable); font-size: var(--text-control); line-height: 1.6; word-break: keep-all; }
+.space-detail-button { width: 100%; min-height: var(--target); margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--accent); border-radius: var(--radius-control); background: var(--accent); color: var(--paper); font-size: var(--text-control); }
+.space-detail-button:hover { background: var(--ink); border-color: var(--ink); }
+.mobile-nav > [data-open-detail] { color: var(--accent); }
+.panel :is(button, input, select), .view-tabs button { min-height: var(--target); }
+.panel button { min-width: var(--target); }
+
 /* The everyday workspace reveals tools only when their task is active. */
 .workspace-mode-button, .workspace-panel-back, .workspace-panel-tabs button,
 .simple-selection button, .workspace-hint button, .furniture-search button {
@@ -1195,7 +1207,7 @@ footer { height: 36px; display: grid; place-items: center; border-top: 1px solid
 .simple-selection-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-body); }
 .simple-selection-heading span { color: var(--muted-readable); font-size: var(--text-caption); white-space: nowrap; }
 .simple-selection-heading button { margin-left: auto; border: 0; padding: 0 var(--space-2); color: var(--muted-readable); }
-.simple-selection-actions { display: flex; gap: var(--space-1); }
+.simple-selection-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .simple-selection-actions button { flex: 1; }
 .simple-selection-actions button:disabled { opacity: .4; cursor: default; }
 .simple-selection-actions [data-simple-action='delete'] { color: var(--error); }

@@ -2,8 +2,8 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-09-14
-- Primary product surfaces: 배경 도면·치수 도구를 포함한 2D 공간·가구·벽·문 편집기, 상세 조정 패널, 3D 1인칭·돌하우스·상공 미리보기
+- Last refreshed: 2026-09-15
+- Primary product surfaces: 2D 공간 형태·치수 편집기와 3D 가구·문·창·벽 상세 편집기, 3D 1인칭·돌하우스·상공 보기
 - Evidence reviewed: `src/main.js`, `src/layout-tools.js`, `src/styles.css`, `src/walkthrough3d.js`, `scripts/mobile-browser-audit.mjs`, 390×844·1440×1000 렌더링, RoomSketcher·Planner 5D·Canva·Figma FigJam·SketchUp LayOut의 공식 조작 문서
 
 ## Brand
@@ -22,9 +22,17 @@
 - Key contexts of use: 데스크톱 상담 자리에서는 도면과 상세 정보를 함께 보고, 현장 모바일에서는 도면과 현재 조작에 집중한다. 두 환경에서 같은 데이터와 기능을 제공한다.
 
 ## Information architecture
-- Primary navigation: 기본은 간편 배치. 데스크톱은 가구·공간을 전환하는 단일 보조 패널과 넓은 도면, 모바일은 도면·공간·가구·상세 탭을 사용한다. 정밀 도구를 켜면 기존 3열 편집기로 전환한다.
+- Primary navigation: 2D는 공간 형태를 정의한다. 데스크톱은 공간 목록과 넓은 도면, 모바일은 도면·공간·공간 상세와 3D 편집 진입을 제공한다. 가구·문·창·벽의 추가·수정·삭제는 3D 편집 안에서 수행한다.
 - Core routes/screens: 단일 2D 편집 화면, 전체 화면 3D 둘러보기
-- Content hierarchy: 내 공간 만들기 > 가구 놓기 > 3D 확인. 현재 선택의 조작만 도면 아래에 표시한다. 상담·배치안 비교·제안서는 접힌 보조 영역에서, 좌표·벽·치수·통계는 정밀 도구에서 연다.
+- Content hierarchy: 2D에서 공간 만들기 > 3D에서 가구·문 배치 > 걸어보기. 2D 가구와 개구부는 위치 확인용으로 표시하며 조작 대상이 아니다. 공간의 이동·크기·이름·종류·합치기·삭제와 배경 도면·치수는 2D에 남긴다. 상담·비교·제안서는 보조 영역에서 연다.
+
+## Space and detail editing boundary
+- This section supersedes earlier 2D furniture interaction descriptions below. Existing drawings retain all furniture, structures, finishes, dimensions, consultation options, and schema compatibility.
+- 3D selection actions reuse the existing paper·ink·accent tokens, 4·8·12·16px spacing, 44px minimum touch targets, and 16px mobile input text. Selection, placement preview, pending changes, apply, cancel, undo, and redo must remain distinguishable.
+- The 3D catalog and inspector share one bounded scrolling body. On portrait phones they form a bottom panel; on short landscape screens they use a supporting side panel. The scene occupies the remaining viewport, never the area behind an expanded panel. Current selection and apply/cancel remain reachable without scrolling a long catalog.
+- Furniture placement previews in the scene before confirmation. Moving, rotating, resizing, deleting, and changing materials have touch buttons or numeric alternatives; users need not grab a small 3D handle. Door and window placement snaps to an actual wall and exposes width, height, opening direction, and open/closed controls.
+- Camera movement and object editing remain separate gestures. A second contact or pointer cancellation rolls back an unfinished object drag before camera navigation starts. No edit depends on hover, a keyboard modifier, or a long press.
+- 2D edit affordances and keyboard commands target spaces, not rendered furniture or openings. Returning from 3D keeps the same shared document and history; no data migration or duplicate drawing is introduced.
 
 ## Design principles
 - Canvas first: 모바일에서도 도면을 기본 화면으로 유지한다.

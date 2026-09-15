@@ -115,3 +115,88 @@ test('wall finishes split merged walls by room boundary with independent inward 
   assert.equal(shared.positive.id, 'b');
   assert.equal(shared.negative.id, 'a');
 });
+
+test('structure placement and edits preview actual snapped openings as one action', () => {
+  const canonical = layout();
+  const actions = [];
+  const session = createStudioEditSession({ layout: canonical, onEdit: action => { actions.push(action); } });
+  session.preview({ type: 'add-structure', structure: {
+    id: 'door', type: 'door', x: 190, y: 27, width: 90, height: 205,
+    orientation: 'vertical', doorType: 'swing', openAngle: 0,
+  } });
+  assert.equal(session.layout.structures[0].y, 0);
+  assert.equal(session.layout.structures[0].orientation, 'horizontal');
+  session.preview({ type: 'update-structure', id: 'door', updates: { width: 110, openAngle: 90, hinge: 'end' } });
+  assert.equal(session.layout.structures[0].width, 110);
+  assert.equal(canonical.structures.length, 0);
+  session.commit();
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].type, 'add-structure');
+  assert.equal(actions[0].structure.openAngle, 90);
+  assert.equal(actions[0].structure.y, 0);
+});
+
+test('delete previews cancel safely and deleting an uncommitted item writes no history', () => {
+  let calls = 0;
+  const session = createStudioEditSession({ layout: layout(), onEdit: () => { calls++; } });
+  session.preview({ type: 'delete-item', id: 'sofa' });
+  assert.equal(session.layout.items.length, 0);
+  session.cancel();
+  assert.equal(session.layout.items.length, 1);
+  session.preview({ type: 'add-item', item: { ...layout().items[0], id: 'copy' } });
+  session.preview({ type: 'delete-item', id: 'copy' });
+  assert.equal(session.pending, false);
+  assert.equal(session.commit(), false);
+  assert.equal(calls, 0);
+});
+
+test('walls move attached openings together and delete them in one reversible preview', () => {
+  const canonical = layout();
+  canonical.structures = [
+    { id: 'wall', type: 'wall', x: 250, y: 200, length: 300, height: 240, thickness: 6, orientation: 'horizontal' },
+    { id: 'window', type: 'window', wallId: 'wall', x: 210, y: 200, width: 120, height: 120, sillHeight: 90, orientation: 'horizontal' },
+  ];
+  const session = createStudioEditSession({ layout: canonical, onEdit() {} });
+  session.preview({ type: 'update-structure', id: 'wall', updates: { x: 270, orientation: 'vertical' } });
+  assert.equal(session.layout.structures[1].x, 270);
+  assert.equal(session.layout.structures[1].orientation, 'vertical');
+  session.cancel();
+  session.preview({ type: 'delete-structure', id: 'wall' });
+  assert.equal(session.layout.structures.length, 0);
+  session.cancel();
+  assert.deepEqual(session.layout, canonical);
+});
+
+test('locks protect deletion and attached openings but allow an explicit unlock', () => {
+  const canonical = layout();
+  canonical.items[0].locked = true;
+  canonical.structures = [
+    { id: 'wall', type: 'wall', x: 200, y: 200, length: 300, height: 240, orientation: 'horizontal' },
+    { id: 'door', type: 'door', wallId: 'wall', x: 200, y: 200, width: 90, height: 205, locked: true, orientation: 'horizontal' },
+  ];
+  const session = createStudioEditSession({ layout: canonical, onEdit() {} });
+  assert.equal(session.preview({ type: 'delete-item', id: 'sofa' }), false);
+  assert.equal(session.preview({ type: 'delete-structure', id: 'door' }), false);
+  assert.equal(session.preview({ type: 'delete-structure', id: 'wall' }), false);
+  assert.equal(session.preview({ type: 'update-structure', id: 'wall', updates: { x: 300 } }), false);
+  assert.equal(session.preview({ type: 'update-item', id: 'sofa', updates: { locked: false, x: 300 } }), false);
+  assert.equal(session.preview({ type: 'update-item', id: 'sofa', updates: { locked: false } }), true);
+  assert.equal(session.layout.items[0].locked, false);
+  session.cancel();
+  assert.equal(session.layout.items[0].locked, true);
+});
+
+test('locked wall ownership and compound-space finishes cannot be bypassed in preview', () => {
+  const canonical = layout();
+  canonical.zones[0].spaceId = 'shared';
+  canonical.zones.push({ id: 'locked-part', spaceId: 'shared', x: 500, y: 0, width: 100, depth: 400, locked: true });
+  canonical.structures = [
+    { id: 'wall', type: 'wall', x: 200, y: 200, length: 300, height: 240, orientation: 'horizontal', locked: true },
+    { id: 'door', type: 'door', wallId: 'wall', x: 200, y: 200, width: 90, height: 205, orientation: 'horizontal' },
+  ];
+  const session = createStudioEditSession({ layout: canonical, onEdit() {} });
+  assert.equal(session.preview({ type: 'update-zone', id: 'room', updates: { floorMaterialId: 'tile-slate' } }), false);
+  assert.equal(session.preview({ type: 'update-structure', id: 'door', updates: { openAngle: 90 } }), false);
+  assert.equal(session.preview({ type: 'add-structure', structure: { ...canonical.structures[1], id: 'new' } }), false);
+  assert.deepEqual(session.layout, canonical);
+});
