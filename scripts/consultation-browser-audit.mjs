@@ -14,6 +14,9 @@ import {
 } from '../.omo/evidence/room-studio-improvements/browser-qa-lib.mjs';
 
 const mobile = process.argv.includes('--mobile');
+// Software-rendered Linux workflow coverage uses the same profile as the studio
+// functional matrix. The required production-profile gate retains full-quality views.
+const qaRenderProfile = process.platform === 'linux' && !process.env.STUDIO_BASELINE;
 const outputDirectory = resolve('.omx/artifacts/consultation', `${new Date().toISOString().replaceAll(':', '-')}-${mobile ? 'mobile' : 'desktop'}`);
 await mkdir(outputDirectory, { recursive: true });
 const port = await new Promise((resolvePort, reject) => {
@@ -36,7 +39,8 @@ const chromePath = process.env.CHROME_PATH ?? (
       ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
       : '/usr/bin/google-chrome'
 );
-const receipt = { mobile, actions: [], scenarios: [], screenshots: [], errors: [], viewports: [], outputDirectory,
+const receipt = { mobile, renderProfile: qaRenderProfile ? 'qa-functional' : 'production',
+  actions: [], scenarios: [], screenshots: [], errors: [], viewports: [], outputDirectory,
   scenarioMap: [
     { scenario: 'A/B independence', before: '2D furniture click and ArrowRight', after: '3D target, X + 1 preview, Apply, return to 2D' },
     { scenario: 'modal shortcut isolation and portable export', before: '2D furniture nudge creates undo history', after: '3D numeric move and Apply create shared undo history' },
@@ -45,14 +49,34 @@ const receipt = { mobile, actions: [], scenarios: [], screenshots: [], errors: [
   ],
 };
 let browser;
+const modelRequests = new Map();
 
 try {
   browser = await launchChrome(chromePath);
   const cdp = browser.cdp;
+  cdp.listeners.set('Network.requestWillBeSent', new Set([(event) => {
+    if (new URL(event.request.url).pathname.endsWith('.glb')) {
+      modelRequests.set(event.requestId, { url: event.request.url, started: event.timestamp });
+    }
+  }]));
+  cdp.listeners.set('Network.responseReceived', new Set([(event) => {
+    const request = modelRequests.get(event.requestId);
+    if (request) Object.assign(request, { status: event.response.status, response: event.timestamp });
+  }]));
+  cdp.listeners.set('Network.loadingFinished', new Set([(event) => {
+    const request = modelRequests.get(event.requestId);
+    if (request) Object.assign(request, { finished: event.timestamp, bytes: event.encodedDataLength });
+  }]));
+  cdp.listeners.set('Network.loadingFailed', new Set([(event) => {
+    const request = modelRequests.get(event.requestId);
+    if (request) Object.assign(request, { failed: event.timestamp, error: event.errorText });
+  }]));
+  await cdp.send('Network.enable');
   // Attach to the owned browser, not another worker/browser. Native select menus
   // are platform UI; Playwright's selectOption operates their public form surface.
   const connection = await chromium.connectOverCDP(`http://${new URL(cdp.socket.url).host}`);
   const page = connection.contexts()[0].pages()[0];
+  await page.addInitScript((profile) => { window.__roomStudioQaRenderProfile = profile; }, qaRenderProfile);
   const evaluatePage = (expression) => evaluate(cdp, expression);
   cdp.listeners.set('Runtime.exceptionThrown', new Set([
     (event) => receipt.errors.push(event.exceptionDetails.exception?.description ?? event.exceptionDetails.text),
@@ -69,7 +93,6 @@ try {
     receipt.screenshots.push(path);
   };
   const click = async (selector, predicate) => {
-    if (predicate) await armState(predicate);
     const point = await evaluatePage(`(async () => {
       const element = document.querySelector(${JSON.stringify(selector)});
       if (!element || element.disabled || element.closest('[inert]')) throw new Error('Unavailable control: ' + ${JSON.stringify(selector)});
@@ -87,6 +110,7 @@ try {
       point,
       hit: await evaluatePage(`document.elementsFromPoint(${point.x}, ${point.y}).slice(0, 3).map(node => node.getAttribute('class') || node.tagName)`),
     });
+    if (predicate) await armState(predicate);
     if (touchMode) {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] });
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -564,6 +588,12 @@ try {
   if (browser) {
     const path = join(outputDirectory, 'failure.png');
     try {
+      receipt.failureState = await evaluate(browser.cdp, `({
+        walkthrough: { ...document.querySelector('[data-walkthrough]')?.dataset },
+        studio: { ...document.querySelector('.studio3d-shell')?.dataset },
+        status: document.querySelector('[data-studio-load]')?.textContent,
+        applyDisabled: document.querySelector('[data-studio-apply]')?.disabled,
+      })`);
       await capture(browser.cdp, path);
       receipt.screenshots.push(path);
     } catch (captureError) {
@@ -580,6 +610,7 @@ try {
     console.error(`CONSULTATION_FAIL cleanup: ${cleanupErrors.join('\n')}`);
   }
   await writeFile(join(outputDirectory, 'results.json'), JSON.stringify(receipt, null, 2));
+  await writeFile(join(outputDirectory, 'model-requests.json'), JSON.stringify([...modelRequests.values()], null, 2));
   console.log(`CONSULTATION_EVIDENCE ${outputDirectory}`);
 }
 process.exit(process.exitCode ?? 0);
