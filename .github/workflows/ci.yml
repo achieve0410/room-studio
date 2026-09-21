@@ -110,6 +110,8 @@ jobs:
           path: |
             .omx/artifacts/space-only/
             .omx/artifacts/studio3d-details/
+            .omx/artifacts/direct-space-editor/
+            .omx/artifacts/studio3d-panel-ui/
           if-no-files-found: warn
           retention-days: 7
       - name: Upload consultation browser artifacts

@@ -189,7 +189,7 @@ try {
   const file = join(output, 'seoul-options.roomstudio.json');
   await (await downloaded).saveAs(file);
   const portable = JSON.parse(await readFile(file, 'utf8'));
-  assert.equal(portable.schemaVersion, 3);
+  assert.equal(portable.schemaVersion, 4);
   assert.deepEqual(portable.layout.items, optionB.items);
   assert.deepEqual(portable.layout.consultation.inactiveGeometry.items, optionA.items);
   await click('[data-project-open]');

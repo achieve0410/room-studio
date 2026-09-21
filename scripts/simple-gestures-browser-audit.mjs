@@ -173,6 +173,7 @@ try {
   const frame = () => page('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   const reset = async (mode = 'simple', layout = fixture) => {
     await page(`window.__simpleGestureAudit.reset(${JSON.stringify(layout)})`);
+    await page('window.scrollTo({ top: 0, left: 0, behavior: "instant" })');
     await frame();
     if ((await snapshot()).mode !== mode) await tap('[data-workspace-mode]');
     const result = await snapshot();
@@ -216,8 +217,8 @@ try {
   };
   const blank = () => page(`(() => {
     const bounds = document.querySelector('#plan-canvas').getBoundingClientRect();
-    for (let y = bounds.top + 25; y < bounds.bottom - 50; y += 10) {
-      for (let x = bounds.left + 25; x < bounds.right - 85; x += 10) {
+    for (let y = bounds.top + 6; y < bounds.bottom - 6; y += 8) {
+      for (let x = bounds.left + 6; x < bounds.right - 6; x += 8) {
         if (document.elementFromPoint(x, y)?.classList.contains('grid-background')) return { x, y };
       }
     }

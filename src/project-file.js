@@ -67,7 +67,7 @@ export function parseProjectFile(source) {
   if (envelope.formatVersion !== PROJECT_FORMAT_VERSION) {
     throw new ProjectFileError('UNSUPPORTED_VERSION', '지원하지 않는 파일 버전입니다.');
   }
-  if (![1, 2, CURRENT_SCHEMA_VERSION].includes(envelope.schemaVersion)) {
+  if (![1, 2, 3, CURRENT_SCHEMA_VERSION].includes(envelope.schemaVersion)) {
     throw new ProjectFileError('UNSUPPORTED_SCHEMA', '지원하지 않는 도면 스키마입니다.');
   }
 

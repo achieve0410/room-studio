@@ -80,7 +80,7 @@ export function createCloudStore({ client } = {}) {
         .select('id,name,layout_json,schema_version,revision,updated_at')
         .eq('id', id)
         .single());
-      if (![1, 2, CURRENT_SCHEMA_VERSION].includes(project.schema_version)) {
+      if (![1, 2, 3, CURRENT_SCHEMA_VERSION].includes(project.schema_version)) {
         const error = new Error('지원하지 않는 도면 스키마입니다.');
         error.code = 'UNSUPPORTED_SCHEMA';
         throw error;

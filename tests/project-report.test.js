@@ -175,3 +175,26 @@ test('space overlap warnings identify both spaces, including duplicate names', (
   const report = createDecisionReport({ layout: { ...layout, zones, items: [] } });
   for (const id of ['zone-1', 'zone-2']) assert.match(report, new RegExp(`data-warning-kind="zoneOverlaps" data-entity-id="${id}"`));
 });
+
+test('report accepts only bounded raster data previews and maps them to their option', () => {
+  const alternate = { ...layout, items: [], structures: [] };
+  const compared = { ...layout, consultation: {
+    version: 1, businessName: '', clientName: '', requirements: '', activeOption: 'B', recommendedOption: null,
+    options: { A: { label: '첫 안', recommendation: '', nextSteps: '' }, B: { label: '둘째 안', recommendation: '', nextSteps: '' } },
+    inactiveGeometry: alternate,
+  } };
+  const a = 'data:image/jpeg;base64,/9j/AA==';
+  const b = 'data:image/webp;base64,UklGRg==';
+  const report = createDecisionReport({ layout: compared, previews: { A: a, B: b } });
+  const options = Object.fromEntries([...report.matchAll(/<article data-option="([AB])">([\s\S]*?)<\/article>/g)].map(([, key, html]) => [key, html]));
+  assert.match(options.A, new RegExp(`src="${a.replaceAll('/', '\\/')}"`));
+  assert.doesNotMatch(options.A, new RegExp(b));
+  assert.match(options.B, new RegExp(`src="${b.replaceAll('/', '\\/')}"`));
+  for (const preview of ['https://example.com/view.jpg', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,AAAA" onerror="alert(1)']) {
+    const unsafe = createDecisionReport({ layout, previews: { A: preview } });
+    assert.doesNotMatch(unsafe, /<img\b/);
+    assert.doesNotMatch(unsafe, /<img[^>]+onerror=|src=["']https:\/\//);
+  }
+  const oversized = `data:image/png;base64,${'A'.repeat(7_000_000)}`;
+  assert.doesNotMatch(createDecisionReport({ layout, previews: { A: oversized } }), /<img\b/);
+});

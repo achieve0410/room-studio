@@ -1,6 +1,7 @@
 import {
   alignDoorToWall, getExteriorWallSegments, getInteriorWallSegments, normalizeAngle,
   pointInZone, snapDoorToWallSegments, spaceIdOf, structureSegment,
+  segmentFrame, structureAngle, zonePoints, attachOpeningToZoneEdge,
 } from './geometry.js';
 
 const copy = (value) => structuredClone(value);
@@ -11,8 +12,10 @@ export function studioWallTargets(layout) {
     ...(layout.structures ?? []).filter(entry => entry.type === 'wall').map(wall => ({
       ...structureSegment(wall), wallId: wall.id, name: wall.name, locked: wall.locked,
     })),
-    ...getExteriorWallSegments(layout.zones),
-    ...getInteriorWallSegments(layout.zones),
+    ...[...getExteriorWallSegments(layout.zones), ...getInteriorWallSegments(layout.zones)].map(segment => ({
+      ...segment,
+      locked: segment.sources?.some(source => layout.zones.find(zone => zone.id === source.zoneId)?.locked) ?? false,
+    })),
   ];
 }
 
@@ -30,6 +33,8 @@ function prepareAction(layout, requested) {
   if (kind === 'structure' && !lockOnly) {
     const ownerId = action.structure?.wallId ?? action.updates?.wallId ?? selected?.wallId;
     if (layout.structures.some(entry => entry.id === ownerId && entry.locked)) return null;
+    const attachment = action.structure?.wallAttachment ?? action.updates?.wallAttachment ?? selected?.wallAttachment;
+    if (layout.zones.some(zone => zone.id === attachment?.zoneId && zone.locked)) return null;
   }
   if (kind === 'zone' && ['floorMaterialId', 'wallMaterialId'].some(field => field in action.updates)
     && layout.zones.some(zone => spaceIdOf(zone) === spaceIdOf(selected) && zone.locked)) return null;
@@ -45,14 +50,26 @@ function prepareAction(layout, requested) {
   }
   if (kind === 'structure' && !lockOnly) {
     if (next.type === 'wall') {
+      if (operation === 'update' && 'orientation' in action.updates && !('angle' in action.updates) && Number.isFinite(next.angle))
+        next.angle = next.orientation === 'vertical' ? 90 : 0;
       next.length = Math.max(next.length, ...layout.structures.filter(entry => entry.wallId === next.id).map(entry => entry.width));
-    } else if (operation === 'add' || ['x', 'y', 'width', 'wallId', 'orientation'].some(field => field in action.updates)) {
+    } else if (operation === 'add' || ['x', 'y', 'width', 'wallId', 'wallAttachment', 'orientation', 'angle'].some(field => field in action.updates)) {
       const targets = studioWallTargets(layout).filter(target => !target.locked);
       const owner = next.wallId && targets.find(target => target.wallId === next.wallId);
       const moved = operation === 'update' && ['x', 'y'].some(field => field in action.updates && action.updates[field] !== selected[field]);
       const snapped = snapDoorToWallSegments(next, owner && !moved ? [owner] : targets, Infinity);
       if (!snapped) throw new Error('이 폭을 놓을 수 있는 벽이 없습니다. 폭을 줄이거나 벽을 추가하세요.');
       next = snapped;
+      if (!next.wallId) {
+        const target = targets.find(target => !target.wallId && snapDoorToWallSegments(next, [target], 1e-5));
+        const sources = [...(target?.sources ?? [])].sort((a, b) =>
+          Number(b.zoneId === selected?.wallAttachment?.zoneId) - Number(a.zoneId === selected?.wallAttachment?.zoneId));
+        for (const source of sources) {
+          const zone = layout.zones.find(zone => zone.id === source.zoneId);
+          const attached = attachOpeningToZoneEdge(next, zone, source.edgeIndex);
+          if (attached && Math.hypot(attached.x - next.x, attached.y - next.y) < 1e-5) { next = attached; break; }
+        }
+      }
     }
     if (next.type === 'window') {
       const height = layout.structures.find(entry => entry.id === next.wallId)?.height ?? layout.wallHeight ?? 240;
@@ -63,6 +80,9 @@ function prepareAction(layout, requested) {
   if (operation === 'add') action[kind] = next;
   else action.updates = Object.fromEntries(Object.entries(next).filter(([field, value]) => field !== 'id'
     && (field in action.updates || JSON.stringify(value) !== JSON.stringify(selected[field]))));
+  if (operation === 'update' && kind === 'structure' && selected.wallAttachment && !next.wallAttachment) {
+    action.updates.wallAttachment = null;
+  }
   return action;
 }
 
@@ -84,11 +104,15 @@ const applyPrepared = (layout, action) => {
     [key]: layout[key].map((entity) => {
       if (entity.id === action.id) return next;
       if (kind === 'structure' && selected.type === 'wall' && entity.wallId === selected.id) {
-        const rotated = selected.orientation !== next.orientation;
+        const rotated = structureAngle(selected) !== structureAngle(next);
+        const before = segmentFrame(structureSegment(selected));
+        const after = segmentFrame(structureSegment(next));
+        const offset = (entity.x - selected.x) * before.tangent.x + (entity.y - selected.y) * before.tangent.y;
+        const directed = Number.isFinite(selected.angle) || Number.isFinite(next.angle);
         const attached = alignDoorToWall({
           ...entity,
-          x: rotated ? next.x : entity.x + next.x - selected.x,
-          y: rotated ? next.y : entity.y + next.y - selected.y,
+          x: directed ? next.x + after.tangent.x * offset : rotated ? next.x : entity.x + next.x - selected.x,
+          y: directed ? next.y + after.tangent.y * offset : rotated ? next.y : entity.y + next.y - selected.y,
         }, next);
         if (attached.type === 'window') {
           attached.sillHeight = Math.min(attached.sillHeight, Math.max(0, next.height - 50));
@@ -193,30 +217,34 @@ export function studioItemFromAsset(asset, point, id) {
 
 /** Split shared geometry segments at zone edges so each inward face has an owner. */
 export function studioWallRuns(segment, zones) {
-  const horizontal = segment.orientation === 'horizontal';
-  const start = horizontal ? segment.x1 : segment.y1;
-  const end = horizontal ? segment.x2 : segment.y2;
-  const fixed = horizontal ? segment.y : segment.x;
-  const cuts = [
-    ...new Set([
-      start,
-      end,
-      ...zones
-        .flatMap((zone) => (horizontal ? [zone.x, zone.x + zone.width] : [zone.y, zone.y + zone.depth]))
-        .filter((value) => value > start && value < end),
-    ]),
-  ].sort((a, b) => a - b);
-  return cuts.slice(0, -1).map((value, index) => {
-    const last = cuts[index + 1],
-      middle = (value + last) / 2;
-    const at = (offset) => ({
-      x: horizontal ? middle : fixed + offset,
-      y: horizontal ? fixed + offset : middle,
+  const frame = segmentFrame(segment);
+  const project = point => (point.x - frame.start.x) * frame.tangent.x + (point.y - frame.start.y) * frame.tangent.y;
+  const side = point => (point.x - frame.start.x) * frame.normal.x + (point.y - frame.start.y) * frame.normal.y;
+  const cuts = [0, frame.length];
+  for (const zone of zones) {
+    const points = zonePoints(zone);
+    points.forEach((point, index) => {
+      const next = points[(index + 1) % points.length];
+      const a = side(point), b = side(next);
+      if (Math.abs(a) < 1e-6) cuts.push(project(point));
+      if (a * b < 0) cuts.push(project(point) + (project(next) - project(point)) * a / (a - b));
     });
+  }
+  const sorted = cuts.filter(value => value >= 0 && value <= frame.length).sort((a, b) => a - b)
+    .filter((value, index, values) => !index || value - values[index - 1] > 1e-6);
+  const at = distance => ({ x: frame.start.x + frame.tangent.x * distance, y: frame.start.y + frame.tangent.y * distance });
+  // Preserve the historical +x ownership of vertical runs; other runs use their left normal.
+  const normal = segment.orientation === 'vertical' ? { x: 1, y: 0 } : frame.normal;
+  return sorted.slice(0, -1).map((value, index) => {
+    const start = at(value), end = at(sorted[index + 1]);
+    const middle = at((value + sorted[index + 1]) / 2);
+    const run = segment.orientation === 'horizontal' ? { ...segment, x1: start.x, x2: end.x }
+      : segment.orientation === 'vertical' ? { ...segment, y1: start.y, y2: end.y }
+      : { ...segment, x1: start.x, y1: start.y, x2: end.x, y2: end.y };
     return {
-      segment: horizontal ? { ...segment, x1: value, x2: last } : { ...segment, y1: value, y2: last },
-      positive: zones.find((zone) => pointInZone(at(1), zone)),
-      negative: zones.find((zone) => pointInZone(at(-1), zone)),
+      segment: run,
+      positive: zones.find(zone => pointInZone({ x: middle.x + normal.x, y: middle.y + normal.y }, zone)),
+      negative: zones.find(zone => pointInZone({ x: middle.x - normal.x, y: middle.y - normal.y }, zone)),
     };
   });
 }

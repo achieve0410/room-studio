@@ -347,7 +347,7 @@ try {
   assert.deepEqual(await state(), beforeFileDialogShortcut, 'a modal must not apply editor shortcuts to the hidden drawing');
   const portablePath = await download('[data-project-export]');
   const portable = JSON.parse(await readFile(portablePath, 'utf8'));
-  assert.equal(portable.schemaVersion, 3);
+  assert.equal(portable.schemaVersion, 4);
   assert.equal(portable.projectName, projectName);
   assert.equal(portable.layout.consultation.activeOption, 'B');
   assert.deepEqual(portable.layout.items, beforeFileDialogShortcut.items);

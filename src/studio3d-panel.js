@@ -1,6 +1,6 @@
 import { ROOM_ASSETS, ROOM_MATERIALS, roomAssetUrl } from './asset-library.js';
 import { studioItemFromAsset, studioItemFromTemplate, studioStructureFromType, studioWallTargets } from './studio3d-edit.js';
-import { snapDoorToWallSegments } from './geometry.js';
+import { snapDoorToWallSegments, zoneInteriorPoint, segmentFrame, structureAngle } from './geometry.js';
 
 export function createStudioPanel({
   overlay,
@@ -20,34 +20,46 @@ export function createStudioPanel({
   let revealed = false;
   let currentMode = 'dollhouse';
   shell.setAttribute('aria-label', '3D 가구와 구조 상세 편집');
-  shell.innerHTML = `<div class="studio3d-panel-head"><button type="button" data-studio-toggle aria-expanded="false" aria-controls="studio3d-body">가구 · 문 · 상세</button><button type="button" data-studio-undo aria-label="3D 실행 취소">↶</button><button type="button" data-studio-redo aria-label="3D 다시 실행">↷</button></div>
+  shell.innerHTML = `<div class="studio3d-panel-head"><button type="button" data-studio-toggle aria-expanded="false" aria-controls="studio3d-body"><span>편집 도구</span><strong>가구 라이브러리</strong></button><button type="button" data-studio-undo aria-label="3D 실행 취소">↶</button><button type="button" data-studio-redo aria-label="3D 다시 실행">↷</button></div>
     <div id="studio3d-body" class="studio3d-body" hidden>
-      <label class="studio3d-field">장면에서 선택 또는 목록 선택<select data-studio-target aria-label="3D 대상 선택"></select></label>
-      <p class="studio3d-hint">선택·끌기 또는 수치로 미리보기 → 적용. 문·창은 벽에 맞춰집니다. 빈 곳 드래그: 회전 · 위에서 보기: 화면 이동 · 두 손가락: 확대·이동</p>
-      <div data-studio-item-tools>
-        <div class="studio3d-coordinates" data-studio-fields></div>
-        <label class="studio3d-field" data-studio-wall-field>붙일 벽<select data-studio-wall-target aria-label="문·창을 붙일 벽"></select></label>
-        <p class="studio3d-hint" data-studio-wall-status></p>
-        <div class="studio3d-nudges" role="group" aria-label="선택 대상 10cm 이동"><button type="button" data-studio-nudge="0,-10" aria-label="위로 10cm">↑</button><button type="button" data-studio-nudge="-10,0" aria-label="왼쪽으로 10cm">←</button><button type="button" data-studio-nudge="0,10" aria-label="아래로 10cm">↓</button><button type="button" data-studio-nudge="10,0" aria-label="오른쪽으로 10cm">→</button></div>
-        <div class="studio3d-nudges" data-studio-opening-tools><button type="button" data-studio-opening="0">닫기</button><button type="button" data-studio-opening="0.5">반 열기</button><button type="button" data-studio-opening="1">열기</button></div>
-        <div class="studio3d-entity-actions"><button type="button" data-studio-duplicate>복제</button><button type="button" data-studio-lock>잠금</button><button type="button" data-studio-delete>삭제</button></div>
-      </div>
       <div class="studio3d-tabs" role="tablist" aria-label="추가와 마감"><button role="tab" type="button" data-studio-tab="item" aria-controls="studio3d-catalog">가구</button><button role="tab" type="button" data-studio-tab="structure" aria-controls="studio3d-catalog">문·벽</button><button role="tab" type="button" data-studio-tab="floor" aria-controls="studio3d-catalog">바닥</button><button role="tab" type="button" data-studio-tab="wall" aria-controls="studio3d-catalog">벽 마감</button></div>
-      <div class="studio3d-swatches" data-studio-palettes aria-label="가구 주 재질"></div>
-      <label class="studio3d-replace"><input type="checkbox" data-studio-replace> 선택 가구를 모델로 교체</label>
-      <label class="studio3d-field" data-studio-search-field>가구 찾기<input data-studio-search type="search" placeholder="이름 검색"></label>
+      <label class="studio3d-field studio3d-search" data-studio-search-field><span>가구 찾기</span><input data-studio-search type="search" placeholder="소파, 침대, 테이블 검색"></label>
       <div id="studio3d-catalog" data-studio-catalog role="tabpanel"></div>
+      <p class="studio3d-empty" data-studio-empty hidden>검색 결과가 없습니다. 다른 이름으로 찾아보세요.</p>
+      <details class="studio3d-target-alternative" data-studio-target-alternative open>
+        <summary>장면 목록에서 대상 선택</summary>
+        <label class="studio3d-field"><span class="sr-only">3D 대상 선택</span><select data-studio-target aria-label="3D 대상 선택"></select></label>
+      </details>
+      <details class="studio3d-precision" data-studio-precision>
+        <summary><span>정밀 배치 및 설정</span><small>좌표 · 높이 · 재질</small></summary>
+        <div class="studio3d-precision-body">
+          <p class="studio3d-hint">장면에서 끌어 미리 본 뒤 적용하세요. 문과 창은 선택한 벽에 맞춰집니다.</p>
+          <div class="studio3d-swatches" data-studio-palettes aria-label="가구 주 재질"></div>
+          <label class="studio3d-replace"><input type="checkbox" data-studio-replace> 선택 가구를 이 모델로 교체</label>
+          <div data-studio-item-tools>
+            <div class="studio3d-coordinates" data-studio-fields></div>
+            <label class="studio3d-field" data-studio-wall-field>붙일 벽<select data-studio-wall-target aria-label="문·창을 붙일 벽"></select></label>
+            <p class="studio3d-hint" data-studio-wall-status></p>
+            <div class="studio3d-nudges" role="group" aria-label="선택 대상 10cm 이동"><button type="button" data-studio-nudge="0,-10" aria-label="위로 10cm">↑</button><button type="button" data-studio-nudge="-10,0" aria-label="왼쪽으로 10cm">←</button><button type="button" data-studio-nudge="0,10" aria-label="아래로 10cm">↓</button><button type="button" data-studio-nudge="10,0" aria-label="오른쪽으로 10cm">→</button></div>
+            <div class="studio3d-nudges" data-studio-opening-tools><button type="button" data-studio-opening="0">닫기</button><button type="button" data-studio-opening="0.5">반 열기</button><button type="button" data-studio-opening="1">열기</button></div>
+            <div class="studio3d-entity-actions"><button type="button" data-studio-duplicate>복제</button><button type="button" data-studio-lock>잠금</button><button type="button" data-studio-delete>삭제</button></div>
+          </div>
+        </div>
+      </details>
     </div>
-    <div class="studio3d-selection" role="status" aria-live="polite"><strong data-studio-selection>가구 또는 공간 선택</strong><span data-studio-draft></span></div>
-    <div class="studio3d-actions"><button type="button" data-studio-rotate>15° 회전</button><button type="button" data-studio-apply>적용</button><button type="button" data-studio-cancel>취소</button></div>
-    <div class="studio3d-load" data-studio-error role="alert"></div>
-    <div class="studio3d-load" data-studio-load role="status" aria-live="polite"></div><button type="button" data-studio-retry hidden>에셋 다시 불러오기</button>`;
+    <div class="studio3d-footer">
+      <div class="studio3d-selection" role="status" aria-live="polite"><strong data-studio-selection>가구 또는 공간 선택</strong><span data-studio-draft></span></div>
+      <div class="studio3d-actions"><button type="button" data-studio-rotate>15° 회전</button><button type="button" data-studio-apply>적용</button><button type="button" data-studio-cancel>취소</button></div>
+      <div class="studio3d-load" data-studio-error role="alert"></div>
+      <div class="studio3d-load" data-studio-load role="status" aria-live="polite"></div><button type="button" data-studio-retry hidden>에셋 다시 불러오기</button>
+    </div>`;
   overlay.append(shell);
   overlay.classList.add('has-studio3d');
   const $ = (selector) => shell.querySelector(selector);
   const body = $('.studio3d-body'),
     target = $('[data-studio-target]'),
-    catalog = $('[data-studio-catalog]');
+    catalog = $('[data-studio-catalog]'),
+    precision = $('[data-studio-precision]');
   let selection = focus && ['item', 'zone', 'structure'].includes(focus.kind) ? { ...focus } : null;
   let deletedSelection = null;
   let tab = 'item',
@@ -96,6 +108,7 @@ export function createStudioPanel({
     if (value?.kind === 'item') tab = 'item';
     else if (value?.kind === 'structure') tab = 'structure';
     else if (value?.kind === 'zone') tab = value.surface ?? (['item', 'structure'].includes(tab) ? 'floor' : tab);
+    if (value) precision.open = true;
     sync();
     onSelection(selection);
   };
@@ -105,13 +118,14 @@ export function createStudioPanel({
     if (!session.preview({ type: `add-${kind}`, [kind]: value })) throw new Error('잠긴 벽에는 문·창을 추가할 수 없습니다.');
     selection = { kind, id: value.id };
     deletedSelection = null;
+    precision.open = true;
     sync();
     onSelection(selection);
     body.scrollTop = 0;
   };
   const roomPoint = () => {
     const room = zone();
-    return { x: room.x + room.width / 2, y: room.y + room.depth / 2 };
+    return zoneInteriorPoint(room);
   };
   const fields = [
     ['name', '이름', 'text', 'detail'],
@@ -202,7 +216,7 @@ export function createStudioPanel({
             if (!room) return;
             const item = studioItemFromAsset(
               asset,
-              { x: room.x + room.width / 2, y: room.y + room.depth / 2 },
+              zoneInteriorPoint(room),
               crypto.randomUUID(),
             );
             place('item', item);
@@ -289,7 +303,10 @@ export function createStudioPanel({
     $('[data-studio-item-tools]').hidden = !detail;
     shell.querySelectorAll('[data-studio-scope]').forEach(label => { label.hidden = !scopes[label.dataset.studioScope]; });
     shell.querySelectorAll('[data-studio-value]').forEach((input) => {
-      if (document.activeElement !== input) input.value = current?.[input.dataset.studioValue] ?? 0;
+      if (document.activeElement !== input) {
+        const value = current?.[input.dataset.studioValue] ?? 0;
+        input.value = typeof value === 'number' ? Math.round(value * 100) / 100 : value;
+      }
       input.disabled = !detail || Boolean(current?.locked);
       if (input.dataset.studioValue === 'width') { input.min = opening ? current.type === 'window' ? 60 : 50 : 20; input.max = opening ? current.type === 'window' ? 400 : 300 : 600; }
       if (input.dataset.studioValue === 'height') { input.min = selection?.kind === 'item' ? 1 : current?.type === 'window' ? 50 : 100; input.max = selection?.kind === 'item' ? 400 : 600; }
@@ -301,10 +318,10 @@ export function createStudioPanel({
       const targets = studioWallTargets(session.layout);
       wallTarget.replaceChildren();
       targets.forEach((wall, index) => {
-        const horizontal = wall.orientation === 'horizontal';
-        const label = `${wall.name ?? '공간 경계'} · ${horizontal ? '가로 Y' : '세로 X'} ${horizontal ? wall.y : wall.x} cm`;
+        const frame = segmentFrame(wall);
+        const label = `${wall.name ?? `공간 벽 ${index + 1}`} · ${Math.round(frame.angle)}° · ${Math.round(frame.length)} cm`;
         const option = new Option(label, String(index));
-        option.disabled = Boolean(wall.locked) || (horizontal ? wall.x2 - wall.x1 : wall.y2 - wall.y1) < current.width;
+        option.disabled = Boolean(wall.locked) || frame.length < current.width;
         wallTarget.add(option);
       });
       const owner = targets.findIndex(wall => {
@@ -313,7 +330,7 @@ export function createStudioPanel({
       });
       wallTarget.value = String(owner);
       wallTarget.disabled = Boolean(current.locked);
-      $('[data-studio-wall-status]').textContent = owner < 0 ? '기존 직접 배치 · 이동하면 벽에 맞춥니다.' : `벽 연결됨 · ${current.orientation === 'horizontal' ? '가로' : '세로'}`;
+      $('[data-studio-wall-status]').textContent = owner < 0 ? '기존 직접 배치 · 이동하면 벽에 맞춥니다.' : `벽 연결됨 · ${Math.round(structureAngle(current))}°`;
     }
     $('[data-studio-opening-tools]').hidden = !opening;
     shell.querySelectorAll('[data-studio-nudge], [data-studio-rotate]').forEach((button) => {
@@ -362,6 +379,8 @@ export function createStudioPanel({
           : selection?.kind !== 'zone' || Boolean(current?.locked);
       if (tab === 'item') button.hidden = !button.textContent.includes($('[data-studio-search]').value.trim());
     });
+    const visibleCatalogItems = [...catalog.querySelectorAll('button')].filter((button) => !button.hidden).length;
+    $('[data-studio-empty]').hidden = tab !== 'item' || visibleCatalogItems > 0;
   };
   target.addEventListener('change', () => {
     const [kind, ...id] = target.value.split(':');
@@ -400,7 +419,7 @@ export function createStudioPanel({
   $('[data-studio-wall-target]').addEventListener('change', event => {
     const wall = studioWallTargets(session.layout)[Number(event.target.value)];
     const placed = snapDoorToWallSegments(entity(), [wall], Infinity);
-    if (placed) patch({ x: placed.x, y: placed.y, orientation: placed.orientation, wallId: placed.wallId });
+    if (placed) patch({ x: placed.x, y: placed.y, angle: structureAngle(placed), orientation: placed.orientation, wallId: placed.wallId });
   });
   shell.querySelectorAll('[data-studio-opening]').forEach(button => button.addEventListener('click', () => {
     const current = entity();
