@@ -1,322 +1,209 @@
+/* 3D supporting panel: the scene owns the viewport; this panel owns only its body scroll. */
 .walkthrough-overlay.has-studio3d {
-  --asset-card-preview: 96px;
-  --asset-panel-width: 288px;
+  --asset-card-preview: 104px;
+  --asset-panel-width: var(--studio-panel-width, 336px);
 }
-.walkthrough-overlay.has-studio3d .walkthrough-hud {
-  z-index: 8;
-}
+.walkthrough-overlay.has-studio3d .walkthrough-hud { z-index: 8; }
 .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
-  right: calc(var(--asset-panel-width) + 24px);
+  right: calc(var(--asset-panel-width) + var(--space-6));
   width: auto;
 }
 .studio3d-shell {
   box-sizing: border-box;
   position: absolute;
   z-index: 6;
-  top: calc(134px + env(safe-area-inset-top));
-  right: 12px;
-  bottom: 12px;
+  top: calc(112px + env(safe-area-inset-top));
+  right: var(--space-3);
+  bottom: var(--space-3);
   width: var(--asset-panel-width);
   display: flex;
+  min-height: 0;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  overflow: hidden;
   color: var(--ink);
-  background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px #0002;
-  font-size: var(--text-control, 13px);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised, var(--paper));
+  box-shadow: var(--shadow-panel);
+  font-family: var(--font-ui, inherit);
+  font-size: var(--text-control);
 }
 .walkthrough-overlay .studio3d-shell[hidden],
-.walkthrough-overlay .studio3d-shell [hidden] {
-  display: none;
-}
+.walkthrough-overlay .studio3d-shell [hidden] { display: none; }
 .studio3d-shell button,
 .studio3d-shell input,
 .studio3d-shell select {
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--target);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   color: var(--ink);
-  background: var(--paper);
+  background: var(--surface-raised, var(--paper));
   font: inherit;
 }
-.studio3d-shell button {
-  padding: 8px;
-  cursor: pointer;
-}
-.studio3d-shell button:hover:not(:disabled),
+.studio3d-shell button { padding: var(--space-2); cursor: pointer; }
+.studio3d-shell button:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 6%, var(--surface-raised)); }
 .studio3d-shell button[aria-selected='true'],
 .studio3d-shell button[aria-pressed='true'] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, var(--paper));
+  border-color: transparent;
+  background: var(--ink);
+  color: var(--surface-raised);
 }
-.studio3d-shell button[aria-pressed='true'] {
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-.studio3d-shell button:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-.walkthrough-overlay .studio3d-shell :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+.studio3d-shell button:disabled { cursor: default; opacity: .42; }
+.walkthrough-overlay .studio3d-shell :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .studio3d-panel-head {
   display: grid;
-  grid-template-columns: 1fr 44px 44px;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) var(--target) var(--target);
+  gap: var(--space-1);
   flex: none;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface, var(--paper));
 }
 .studio3d-panel-head > button:first-child {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  padding-inline: var(--space-3);
   text-align: left;
-  font-weight: 700;
 }
+.studio3d-panel-head > button:first-child span { color: var(--muted-readable); font-size: var(--text-caption); font-weight: 500; }
+.studio3d-panel-head > button:first-child strong { overflow: hidden; font-size: var(--text-control); text-overflow: ellipsis; white-space: nowrap; }
 .studio3d-body {
   flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
   grid-auto-rows: max-content;
   align-content: start;
-  min-height: 0;
-  overflow: auto;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow-y: auto;
   overscroll-behavior: contain;
-  display: grid;
-  gap: 12px;
-  padding: 2px;
+  scrollbar-gutter: stable;
 }
-.studio3d-field {
-  display: grid;
-  gap: 4px;
-  color: var(--muted);
-}
+.studio3d-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-1); }
+.studio3d-tabs button { padding-inline: var(--space-1); font-size: var(--text-caption); }
+.studio3d-field { display: grid; gap: var(--space-1); color: var(--muted-readable); font-size: var(--text-caption); }
 .studio3d-field select,
-.studio3d-field input {
-  width: 100%;
-  padding: 8px;
-}
-.studio3d-hint {
-  margin: 0;
-  font-size: var(--text-caption, 12px);
-  line-height: 1.5;
-  word-break: keep-all;
-  color: var(--muted);
-}
-.studio3d-hint > span {
-  display: block;
-}
-.studio3d-coordinates {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.studio3d-coordinates label {
-  display: grid;
-  gap: 4px;
-  color: var(--muted);
-}
-.studio3d-coordinates input,
-.studio3d-coordinates select {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 4px;
-  font-variant-numeric: tabular-nums;
-}
-.studio3d-nudges {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  margin-top: 8px;
-}
-.studio3d-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-}
-.studio3d-tabs button { padding: 4px; }
-.studio3d-entity-actions,
-.studio3d-nudges[data-studio-opening-tools] {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  margin-top: 8px;
-}
-.studio3d-entity-actions [data-studio-delete] { color: var(--error, var(--accent)); }
-.studio3d-shell [data-studio-wall-field] { margin-top: 8px; }
-.studio3d-swatches {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-}
-.studio3d-swatches button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  font-size: var(--text-caption, 12px);
-}
-.studio3d-swatches i {
-  display: block;
-  width: 24px;
-  height: 24px;
-  flex: none;
-  border: 1px solid #0002;
-  border-radius: 50%;
-}
-.studio3d-replace {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-}
-.studio3d-replace input {
-  width: 20px;
-  accent-color: var(--accent);
-}
-.studio3d-catalog {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
+.studio3d-field input { width: 100%; padding: var(--space-2) var(--space-3); }
+.studio3d-search { position: relative; }
+.studio3d-search span { color: var(--ink); font-size: var(--text-control); font-weight: 650; }
+.studio3d-hint,
+.studio3d-empty { margin: 0; color: var(--muted-readable); font-size: var(--text-caption); line-height: 1.5; word-break: keep-all; }
+.studio3d-empty { padding: var(--space-4); border: 1px dashed var(--line); border-radius: var(--radius-control); text-align: center; }
+.studio3d-catalog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .studio3d-catalog .room-asset-card {
+  position: relative;
   display: flex;
+  min-height: calc(var(--asset-card-preview) + 58px);
   flex-direction: column;
-  gap: 4px;
-  text-align: left;
+  align-items: stretch;
+  gap: var(--space-1);
   overflow: hidden;
-  padding: 4px;
+  padding: var(--space-1);
+  text-align: left;
 }
 .studio3d-catalog .room-asset-card img {
   width: 100%;
   height: var(--asset-card-preview);
   object-fit: contain;
-  background: #ece9e1;
-  border-radius: 4px;
+  border-radius: calc(var(--radius-control) - 2px);
+  background: var(--surface);
 }
-.studio3d-catalog .room-asset-card strong {
-  font-size: var(--text-caption, 12px);
-  font-weight: 600;
+.studio3d-catalog .room-asset-card strong { padding-inline: var(--space-1); font-size: var(--text-control); font-weight: 650; line-height: 1.35; }
+.studio3d-catalog .room-asset-card small { padding: 0 var(--space-1) var(--space-1); color: var(--muted-readable); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.studio3d-catalog .room-asset-card[aria-pressed='true'] small { color: var(--line); }
+.studio3d-target-alternative,
+.studio3d-precision { border-top: 1px solid var(--line); }
+.studio3d-target-alternative summary,
+.studio3d-precision summary {
+  min-height: var(--target);
+  padding: var(--space-3) var(--space-1);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: var(--text-control);
+  font-weight: 650;
 }
-.studio3d-catalog .room-asset-card small {
-  font-size: 11px;
-  color: var(--muted);
-}
-.studio3d-selection {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  flex: none;
-  min-width: 0;
-}
-.studio3d-shell .studio3d-selection strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-  font-weight: 600;
-}
-.studio3d-selection span {
-  color: var(--accent);
-  font-size: var(--text-caption, 12px);
-}
-.studio3d-actions {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
-  gap: 4px;
-  flex: none;
-}
-.studio3d-actions [data-studio-apply]:not(:disabled) {
-  color: var(--paper);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.studio3d-load {
-  font-size: var(--text-caption, 12px);
-  line-height: 1.5;
-  color: var(--muted);
-  max-height: 88px;
-  overflow: auto;
-  overflow-wrap: anywhere;
-}
-.studio3d-load:empty {
-  display: none;
-}
-.studio3d-shell[data-asset-state='error'] .studio3d-load {
-  color: var(--error, var(--accent));
-}
+.studio3d-target-alternative[open] summary,
+.studio3d-precision[open] summary { color: var(--accent); }
+.studio3d-target-alternative .studio3d-field { padding: 0 var(--space-1) var(--space-3); }
+.studio3d-precision summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.studio3d-precision summary::marker { color: var(--muted-readable); }
+.studio3d-precision summary small { color: var(--muted-readable); font-size: var(--text-caption); font-weight: 500; }
+.studio3d-precision-body { display: grid; gap: var(--space-3); padding: 0 var(--space-1) var(--space-3); }
+.studio3d-coordinates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.studio3d-coordinates label { display: grid; gap: var(--space-1); color: var(--muted-readable); font-size: var(--text-caption); }
+.studio3d-coordinates input,
+.studio3d-coordinates select { box-sizing: border-box; width: 100%; padding: var(--space-2); font-variant-numeric: tabular-nums; }
+.studio3d-nudges { display: grid; grid-template-columns: repeat(4, minmax(var(--target), 1fr)); gap: var(--space-1); margin-top: var(--space-2); }
+.studio3d-entity-actions,
+.studio3d-nudges[data-studio-opening-tools] { display: grid; grid-template-columns: repeat(3, minmax(var(--target), 1fr)); gap: var(--space-1); margin-top: var(--space-2); }
+.studio3d-entity-actions [data-studio-delete] { color: var(--error); }
+.studio3d-shell [data-studio-wall-field] { margin-top: var(--space-2); }
+.studio3d-swatches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); }
+.studio3d-swatches button { display: flex; align-items: center; gap: var(--space-2); text-align: left; font-size: var(--text-caption); }
+.studio3d-swatches i { display: block; width: var(--space-6); height: var(--space-6); flex: none; border: 1px solid var(--line); border-radius: 50%; }
+.studio3d-replace { display: flex; min-height: var(--target); align-items: center; gap: var(--space-2); color: var(--muted-readable); font-size: var(--text-caption); }
+.studio3d-replace input { width: var(--space-6); min-height: var(--target); margin: 0; accent-color: var(--accent); }
+.studio3d-footer { flex: none; display: grid; gap: var(--space-2); padding: var(--space-2); border-top: 1px solid var(--line); background: var(--surface); }
+.studio3d-selection { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-2); padding-inline: var(--space-1); }
+.studio3d-shell .studio3d-selection strong { min-width: 0; overflow: hidden; font-size: var(--text-control); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.studio3d-selection span { flex: none; color: var(--accent); font-size: var(--text-caption); }
+.studio3d-shell[data-pending='true'] .studio3d-selection span::before { content: ''; display: inline-block; width: var(--space-2); height: var(--space-2); margin-right: var(--space-1); border-radius: 50%; background: var(--accent); }
+.studio3d-actions { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: var(--space-1); }
+.studio3d-actions [data-studio-apply]:not(:disabled) { border-color: var(--accent); background: var(--accent); color: var(--surface-raised); font-weight: 700; }
+.studio3d-load { max-height: 72px; overflow: auto; color: var(--muted-readable); font-size: var(--text-caption); line-height: 1.5; overflow-wrap: anywhere; }
+.studio3d-load:empty { display: none; }
+.studio3d-shell[data-asset-state='error'] .studio3d-load { color: var(--error); }
+
 @media (max-width: 900px), (max-height: 600px) {
   .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
     right: 0;
-    bottom: calc(var(--studio-panel-height, 140px) + 16px + env(safe-area-inset-bottom));
+    bottom: calc(var(--studio-panel-height, 124px) + var(--space-4) + env(safe-area-inset-bottom));
   }
   .studio3d-shell {
     top: auto;
-    left: 12px;
-    right: 12px;
-    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
     width: auto;
-    max-height: min(48dvh, calc(100dvh - 300px));
-    padding: 8px;
-    gap: 4px;
-  }
-  .studio3d-body {
-    border-top: 1px solid var(--line);
-    padding-top: 8px;
+    max-height: var(--studio-panel-portrait, min(40dvh, 340px));
   }
   .studio3d-shell input,
-  .studio3d-shell select {
-    font-size: 16px;
-  }
-  .studio3d-catalog {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .studio3d-selection {
-    font-size: 12px;
-    min-height: 18px;
-  }
-  .studio3d-shell.is-expanded {
-    max-height: min(48dvh, calc(100dvh - 300px));
-  }
-  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-status {
-    display: none;
+  .studio3d-shell select { font-size: var(--text-input-mobile); }
+  .studio3d-panel-head { padding: var(--space-1); }
+  .studio3d-panel-head > button:first-child span { display: none; }
+  .studio3d-body { gap: var(--space-1); padding: var(--space-2); }
+  .studio3d-footer { gap: var(--space-1); padding: var(--space-1); }
+  .studio3d-selection { min-height: var(--space-6); }
+  .studio3d-search > span { display: none; }
+  .studio3d-search input { margin-top: 0; }
+  .studio3d-catalog { --asset-card-preview: 56px; }
+  .studio3d-catalog .room-asset-card { display: grid; grid-template-columns: var(--asset-card-preview) minmax(0, 1fr); align-content: center; min-height: 0; }
+  .studio3d-catalog .room-asset-card img { grid-row: 1 / 3; }
+  .studio3d-catalog .room-asset-card :is(strong, small) { padding: 0; word-break: keep-all; }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-status { display: none; }
+}
+@media (max-width: 900px) and (orientation: portrait) {
+  .walkthrough-overlay.has-studio3d:has(.studio3d-shell.is-expanded).is-overview .walkthrough-stage {
+    height: calc(100dvh - 134px - var(--studio-panel-portrait, min(40dvh, 340px)) - var(--space-4) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    bottom: calc(var(--studio-panel-portrait, min(40dvh, 340px)) + var(--space-4) + env(safe-area-inset-bottom));
   }
 }
 @media (max-height: 600px) and (orientation: landscape) {
-  .walkthrough-overlay.has-studio3d { --asset-panel-width: min(42vw, 288px); }
-  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage {
-    right: calc(var(--asset-panel-width) + 24px);
-    bottom: 0;
-  }
-  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-hud {
-    right: calc(var(--asset-panel-width) + 24px);
-  }
+  .walkthrough-overlay.has-studio3d { --asset-panel-width: min(36vw, 304px); }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-stage { right: calc(var(--asset-panel-width) + var(--space-6)); bottom: 0; }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-hud { right: calc(var(--asset-panel-width) + var(--space-6)); }
   .walkthrough-overlay.has-studio3d.is-overview .walkthrough-view-tools {
-    left: 8px;
-    right: 8px;
+    left: var(--space-2);
+    right: var(--space-2);
     transform: none;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-view-tools button { min-width: 44px; padding: 0 4px; }
+  .walkthrough-overlay.has-studio3d.is-overview .walkthrough-view-tools button { min-width: var(--target); padding-inline: var(--space-1); }
   .walkthrough-overlay.has-studio3d.is-overview .walkthrough-more-panel { max-width: 100%; }
-  .studio3d-shell {
-    top: 8px;
-    left: auto;
-    width: var(--asset-panel-width);
-    max-height: none;
-    bottom: 8px;
-  }
-  .studio3d-shell.is-expanded {
-    top: 8px;
-    max-height: calc(100dvh - 16px);
-  }
-  .studio3d-catalog {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  .studio3d-shell { top: var(--space-2); left: auto; width: var(--asset-panel-width); max-height: none; bottom: var(--space-2); }
+  .studio3d-catalog .room-asset-card { display: flex; min-height: calc(var(--asset-card-preview) + 52px); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .studio3d-shell {
-    transition: none;
-  }
-}
+@media (prefers-reduced-motion: reduce) { .studio3d-shell { transition: none; } }

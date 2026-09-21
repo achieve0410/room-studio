@@ -1,4 +1,6 @@
 import './styles.css';
+import './space-editor.css';
+import { createSpaceEditor } from './space-editor.js';
 import { createConfiguredCloudStore, hasCloudConfiguration, normalizeProjectName, resolveAuthRedirectUrl } from './cloud-store.js';
 import {
   calibrateBackgroundPlan,
@@ -15,6 +17,7 @@ import { normalizeItemAppearance, normalizeZoneAppearance } from './appearance.j
 import { ROOM_ASSETS, assetForItem } from './asset-library.js';
 import {
   createComparisonOption,
+  geometryForOption,
   geometrySnapshot,
   normalizeConsultation,
   preparePersistedLayout,
@@ -59,6 +62,12 @@ import {
   structureSegment,
   zoneBounds,
   zonesOverlap,
+  zonePoints,
+  zoneFromPoints,
+  zoneInteriorPoint,
+  segmentEndpoints,
+  structureAngle,
+  reconcileZoneOpenings,
 } from './geometry.js';
 
 const ACTIVE_PROJECT_KEY_PREFIX = 'room-studio-active-project-v1';
@@ -73,7 +82,7 @@ const SHAPES = {
 };
 const DOOR_TYPES = { swing: '여닫이문', sliding: '미닫이문' };
 const STRUCTURE_LABELS = { wall: '벽', door: '문', window: '미닫이창' };
-const ORIENTATIONS = { horizontal: '가로', vertical: '세로' };
+const ORIENTATIONS = { horizontal: '가로', vertical: '세로', diagonal: '사선' };
 const END_DIRECTIONS = { start: '시작쪽', end: '끝쪽' };
 const spaceColors = ['#d9d2c2', '#ced8cf', '#e7cfb6', '#c8d7dd', '#d8c9d5', '#ddd9c8'];
 const DEFAULT_ZONE_COLOR = '#d9d2c2';
@@ -173,6 +182,7 @@ const normalizeStructure = (structure, wallHeight) => {
     y: numberValue(structure.y, 0, -5000, 5000),
     height: numberValue(structure.height, structure.type === 'wall' ? wallHeight : structure.type === 'window' ? 120 : 205, structure.type === 'window' ? 50 : 100, 600),
     orientation,
+    ...(Number.isFinite(structure.angle) ? { angle: normalizeAngle(structure.angle) } : {}),
     locked: Boolean(structure.locked),
   };
   if (structure.type === 'wall') {
@@ -188,6 +198,7 @@ const normalizeStructure = (structure, wallHeight) => {
     slideDirection: END_DIRECTIONS[structure.slideDirection] ? structure.slideDirection : 'end',
     openRatio: numberValue(structure.openRatio, structure.type === 'door' && structure.doorType === 'sliding' ? 100 : 0, 0, 100),
     wallId: typeof structure.wallId === 'string' && /^[\w-]+$/.test(structure.wallId) ? structure.wallId : null,
+    ...(structure.wallAttachment ? { wallAttachment: structuredClone(structure.wallAttachment) } : {}),
   };
   if (structure.type === 'window') {
     const sillHeight = numberValue(structure.sillHeight, 90, 0, Math.max(0, wallHeight - 50));
@@ -276,7 +287,7 @@ function normalizeDrawing(saved) {
         if (!generatedSpaceIds.has(key)) generatedSpaceIds.set(key, uid('space'));
         spaceId = generatedSpaceIds.get(key);
       }
-      return {
+      const normalized = {
         id,
         spaceId,
         name: typeof zone.name === 'string' ? zone.name.slice(0, 80) : '공간',
@@ -291,6 +302,7 @@ function normalizeDrawing(saved) {
         locked: Boolean(zone.locked),
         walkthroughStart: Boolean(zone.walkthroughStart),
       };
+      return Object.hasOwn(zone, 'points') ? zoneFromPoints(normalized, zonePoints(zone)) : normalized;
     });
     const items = saved.items.map((source) => {
       const item = source && typeof source === 'object' ? source : {};
@@ -337,7 +349,7 @@ function normalizeDrawing(saved) {
       .map((dimension) => normalizeDimension(dimension, dimensionIds))
       .filter(Boolean);
     const backgroundPlan = normalizeBackgroundPlan(saved.backgroundPlan);
-    return {
+    const drawing = {
       ...defaultState(zones),
       zones,
       items,
@@ -347,6 +359,9 @@ function normalizeDrawing(saved) {
       wallHeight,
       selection: null,
     };
+    const reconciled = reconcileZoneOpenings(drawing, drawing);
+    if (!reconciled) throw new TypeError('연결된 문과 창을 도면의 벽에 배치할 수 없습니다.');
+    return reconciled;
   }
   return defaultState();
 }
@@ -392,6 +407,9 @@ const TOUCH_SLOP_PX = 10;
 const mobileLayoutQuery = window.matchMedia(`(max-width: ${FOCUSED_MOBILE_BREAKPOINT}px)`);
 let canvasZoom = 1;
 let canvasCenter = null;
+let canvasBase = null;
+let spaceEditor = null;
+const scenePreviews = new Map();
 let mobilePanel = 'canvas';
 let workspaceMode = 'simple';
 let workspacePanel = 'spaces';
@@ -570,6 +588,9 @@ function applyProjectDocument({
   mobileMoveArmed = false;
   canvasZoom = 1;
   canvasCenter = null;
+  canvasBase = null;
+  spaceEditor?.reset();
+  scenePreviews.clear();
   layoutChangeVersion += 1;
   persistCurrentDraft();
   return true;
@@ -717,6 +738,10 @@ async function open3dEditor() {
       onUndo() { undo(); return layoutSnapshot(); },
       onRedo() { redo(); return layoutSnapshot(); },
       onStructureChange: (id, updates) => apply3dEdit({ type: 'update-structure', id, updates }),
+      onSnapshot({ layout, imageDataUrl }) {
+        const option = state.consultation?.activeOption ?? 'A';
+        scenePreviews.set(option, { key: sceneGeometryKey(layout), imageDataUrl });
+      },
       onClose() {
         active3dCleanup = null;
         document.querySelector('#open-walkthrough')?.focus({ preventScroll: true });
@@ -755,9 +780,16 @@ function exportPortableProject() {
 
 function exportDecisionReport() {
   try {
+    const layout = layoutSnapshot();
+    const previews = {};
+    for (const option of ['A', ...(layout.consultation?.inactiveGeometry ? ['B'] : [])]) {
+      const preview = scenePreviews.get(option);
+      if (preview?.key === sceneGeometryKey(geometryForOption(layout, option))) previews[option] = preview.imageDataUrl;
+    }
     const report = createDecisionReport({
       projectName: activeProjectName,
-      layout: layoutSnapshot(),
+      layout,
+      previews,
     });
     const url = URL.createObjectURL(new Blob([report], { type: 'text/html;charset=utf-8' }));
     const anchor = document.createElement('a');
@@ -772,6 +804,10 @@ function exportDecisionReport() {
   } catch (error) {
     setProjectFileFeedback(error.message || '의사결정 리포트를 만들지 못했습니다.', 'error');
   }
+}
+
+function sceneGeometryKey(layout) {
+  return JSON.stringify({ zones: layout.zones, items: layout.items, structures: layout.structures, wallHeight: layout.wallHeight });
 }
 
 async function importPortableProject(file) {
@@ -1340,7 +1376,10 @@ async function initializeCloud() {
 
 function updateState(updates, options = {}) {
   const previous = options.historySnapshot ?? layoutSnapshot();
-  const next = { ...state, ...updates };
+  const next = Object.hasOwn(updates, 'zones')
+    ? reconcileZoneOpenings(previous, { ...state, ...updates })
+    : { ...state, ...updates };
+  if (!next) throw new Error('연결된 문·창을 유지할 수 없습니다. 잠금, 벽 길이와 개구부 폭을 확인하세요.');
   // Validate the complete 3D edit before changing state, history or storage.
   // This retains the same schema/size boundary as local, cloud and portable data.
   if (options.normalize) {
@@ -1364,6 +1403,21 @@ function updateState(updates, options = {}) {
   render();
 }
 
+function updateEditorState(updates, options = {}) {
+  try {
+    updateState(updates, options);
+  } catch (error) {
+    editorNotice = error.message;
+    render();
+  }
+}
+
+function commitEditorPreview(previous) {
+  const next = layoutSnapshot();
+  state = { ...state, ...previous };
+  updateEditorState(next, { historySnapshot: previous });
+}
+
 function updateZone(id, updates, options = {}) {
   const selected = state.zones.find((zone) => zone.id === id);
   const sharedUpdates = Object.fromEntries(
@@ -1385,9 +1439,12 @@ function updateZone(id, updates, options = {}) {
     next.width = numberValue(next.width, zone.width, 100, 1200);
     next.depth = numberValue(next.depth, zone.depth, 100, 1200);
     next.height = numberValue(next.height, zone.height ?? 240, 100, 600);
-    return next;
+    return zone.points ? zoneFromPoints(next, zone.points.map(point => ({
+      x: next.x + point.x * next.width / zone.width,
+      y: next.y + point.y * next.depth / zone.depth,
+    }))) : next;
   });
-  updateState({ zones }, options);
+  updateEditorState({ zones }, options);
 }
 
 function updateItem(id, updates, options = {}) {
@@ -1724,7 +1781,7 @@ function addZone() {
     depth: 220,
     color: spaceColors[state.zones.length % spaceColors.length],
   });
-  updateState({ zones: [...state.zones, zone], selection: { kind: 'zone', id: zone.id } });
+  updateEditorState({ zones: [...state.zones, zone], selection: { kind: 'zone', id: zone.id } });
 }
 
 function zonesConnect(first, second) {
@@ -1784,7 +1841,7 @@ function mergeSelectedSpaces() {
   };
   mobileMultiSelect = false;
   mobileMoveArmed = false;
-  updateState({
+  updateEditorState({
     zones: state.zones.map((zone) => selectedSpaceIds.has(spaceIdOf(zone)) ? { ...zone, ...shared } : zone),
     selection: { kind: 'zone', id: primary.id },
   });
@@ -1814,7 +1871,8 @@ function addZonePart() {
     width,
     depth,
   };
-  updateState({ zones: [...state.zones, part], selection: { kind: 'zone', id: part.id } });
+  delete part.points;
+  updateEditorState({ zones: [...state.zones, part], selection: { kind: 'zone', id: part.id } });
 }
 
 function quickNumericFields(kind) {
@@ -1822,13 +1880,17 @@ function quickNumericFields(kind) {
 }
 
 function normalizeQuickNumericEntity(original, preview) {
-  return {
+  const next = {
     ...original, ...preview,
     x: numberValue(preview.x, original.x, -5000, 5000),
     y: numberValue(preview.y, original.y, -5000, 5000),
     width: numberValue(preview.width, original.width, 100, 1200),
     depth: numberValue(preview.depth, original.depth, 100, 1200),
   };
+  return original.points ? zoneFromPoints(next, original.points.map(point => ({
+    x: next.x + point.x * next.width / original.width,
+    y: next.y + point.y * next.depth / original.depth,
+  }))) : next;
 }
 
 function previewQuickNumericField(input) {
@@ -1863,10 +1925,8 @@ function commitQuickNumericEdit(field = null) {
   const historySnapshot = numericEdit.historySnapshot;
   numericEdit.transaction.commit();
   numericEdit = null;
-  commitHistory(historySnapshot);
-  saveState();
   pendingFocus = field ? { kind: 'quick-field', field } : null;
-  render();
+  commitEditorPreview(historySnapshot);
 }
 
 function cancelQuickNumericEdit(field = null) {
@@ -1886,7 +1946,7 @@ function deleteSelectedZonePart() {
     render();
     return;
   }
-  updateState({ zones: state.zones.filter((zone) => zone.id !== state.selection.id), selection: null });
+  updateEditorState({ zones: state.zones.filter((zone) => zone.id !== state.selection.id), selection: null });
 }
 
 function deleteSelectedSpace() {
@@ -1899,7 +1959,7 @@ function deleteSelectedSpace() {
     render();
     return;
   }
-  updateState({ zones: state.zones.filter((zone) => spaceIdOf(zone) !== spaceId), selection: null });
+  updateEditorState({ zones: state.zones.filter((zone) => spaceIdOf(zone) !== spaceId), selection: null });
 }
 
 function deleteSelection() {
@@ -1911,7 +1971,7 @@ function deleteSelection() {
   }
   const zoneIds = new Set(entries.filter((entry) => entry.kind === 'zone').map((entry) => entry.id));
   const dimensionIds = new Set(entries.filter((entry) => entry.kind === 'dimension').map((entry) => entry.id));
-  updateState({
+  updateEditorState({
     zones: state.zones.filter((zone) => !zoneIds.has(zone.id)),
     dimensions: state.dimensions.filter((dimension) => !dimensionIds.has(dimension.id)),
     selection: null,
@@ -1973,13 +2033,15 @@ function editorContentBounds() {
 }
 
 function canvasBaseViewBox() {
+  if (canvasBase) return canvasBase;
   const bounds = editorContentBounds();
-  return {
+  canvasBase = {
     left: bounds.left - CANVAS_PADDING,
     top: bounds.top - CANVAS_PADDING,
     width: bounds.width + CANVAS_PADDING * 2,
     height: bounds.depth + CANVAS_PADDING * 2,
   };
+  return canvasBase;
 }
 
 function currentCanvasViewBox() {
@@ -1998,6 +2060,7 @@ function applyCanvasView() {
   }
   const label = document.querySelector('#zoom-level');
   if (label) label.textContent = `${Math.round(canvasZoom * 100)}%`;
+  spaceEditor?.refresh();
 }
 
 function applyCanvasViewBox(viewBox) {
@@ -2028,6 +2091,7 @@ function setCanvasZoom(nextZoom, anchorEvent = null) {
 function resetCanvasZoom() {
   canvasZoom = 1;
   canvasCenter = null;
+  canvasBase = null;
   applyCanvasView();
 }
 
@@ -2313,6 +2377,7 @@ function captureActivePointers(event) {
 }
 
 function startPinch(event) {
+  spaceEditor?.cancelPointer();
   restoreGestureSnapshot();
   syncCanvasPreviewFromState();
   resetTemporaryGestureState();
@@ -2525,6 +2590,8 @@ function startDrag(event, kind, id, options = {}) {
 
 function startEntityPress(event, kind, id) {
   if (kind !== 'zone') return;
+  const point = svgPoint(event);
+  id = [...state.zones].reverse().find(zone => pointInZone(point, zone))?.id ?? id;
   const simpleTouch = workspaceMode === 'simple' && event.pointerType === 'touch';
   const collection = state.zones;
   const entity = collection.find((entry) => entry.id === id);
@@ -2635,9 +2702,7 @@ function finishResize() {
   const previous = resize.historySnapshot;
   resize = null;
   gestureMode = activePointers.size ? 'idle-await-release' : 'idle';
-  commitHistory(previous);
-  saveState();
-  render();
+  commitEditorPreview(previous);
 }
 
 function moveDrag(event) {
@@ -2679,12 +2744,11 @@ function finishDrag() {
     const origin = drag.zoneOrigins.get(zone.id);
     return origin ? { ...zone, x: origin.x + deltaX, y: origin.y + deltaY } : zone;
   });
-  commitHistory(drag.historySnapshot);
+  const previous = drag.historySnapshot;
   drag = null;
   alignmentGuides = [];
   gestureMode = activePointers.size ? 'idle-await-release' : 'idle';
-  saveState();
-  render();
+  commitEditorPreview(previous);
 }
 
 function startMarquee(event) {
@@ -2802,9 +2866,8 @@ function resizeHandlesMarkup(entity) {
 }
 
 function wallSegmentMarkup(segment) {
-  return segment.orientation === 'horizontal'
-    ? `<line x1="${segment.x1}" y1="${segment.y}" x2="${segment.x2}" y2="${segment.y}" />`
-    : `<line x1="${segment.x}" y1="${segment.y1}" x2="${segment.x}" y2="${segment.y2}" />`;
+  const { start, end } = segmentEndpoints(segment);
+  return `<line x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" />`;
 }
 
 function dimensionBounds(dimension) {
@@ -2847,7 +2910,7 @@ function precisionMarkup() {
 
 function doorSymbolMarkup(door, options = {}) {
   const half = door.width / 2;
-  const attributes = `data-structure-id="${door.id}" pointer-events="none" transform="translate(${door.x} ${door.y}) rotate(${door.orientation === 'vertical' ? 90 : 0})"`;
+  const attributes = `data-structure-id="${door.id}" pointer-events="none" transform="translate(${door.x} ${door.y}) rotate(${structureAngle(door)})"`;
   const symbol = (() => {
     if (door.doorType === 'sliding') {
       const direction = door.slideDirection === 'start' ? -1 : 1;
@@ -2890,7 +2953,7 @@ function windowSymbolMarkup(windowStructure, options = {}) {
   const fixedCenter = direction * windowStructure.width / 4;
   const movingCenter = -direction * windowStructure.width / 4 + direction * windowStructure.width / 2 * ratio;
   const selected = options.selected ? ' is-selected' : '';
-  return `<g class="plan-structure plan-window${selected} ${windowStructure.locked ? 'is-locked' : ''}" data-structure-id="${windowStructure.id}" pointer-events="none" transform="translate(${windowStructure.x} ${windowStructure.y}) rotate(${windowStructure.orientation === 'vertical' ? 90 : 0})">
+  return `<g class="plan-structure plan-window${selected} ${windowStructure.locked ? 'is-locked' : ''}" data-structure-id="${windowStructure.id}" pointer-events="none" transform="translate(${windowStructure.x} ${windowStructure.y}) rotate(${structureAngle(windowStructure)})">
     <title>${escapeHtml(windowStructure.name)} 샷시형 미닫이창</title>
     <rect class="window-frame" x="${-half}" y="-8" width="${windowStructure.width}" height="16" rx="2" />
     <line class="window-panel window-panel-fixed" x1="${fixedCenter - panelWidth / 2}" y1="-4" x2="${fixedCenter + panelWidth / 2}" y2="-4" />
@@ -2920,7 +2983,9 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
     const selected = isSelected('zone', zone.id);
     const spaceSelected = selectedSpaceIds.has(spaceIdOf(zone));
     const showLabel = details.labelPart.id === zone.id;
-    const sizeLabel = details.parts.length > 1
+    const sizeLabel = zone.points
+      ? `${zone.points.length}개 벽 · ${(calculateUnionArea([zone]) / 10000).toFixed(1)}m²`
+      : details.parts.length > 1
       ? `${details.parts.length}조각 · ${(calculateUnionArea(details.parts) / 10000).toFixed(1)}m² · H ${zone.height ?? 240}cm`
       : `${meters(zone.width)} × ${meters(zone.depth)} · H ${zone.height ?? 240}cm`;
     const zoneItems = state.items.filter((item) => pointInZone({ x: item.x, y: item.y }, zone));
@@ -2930,14 +2995,17 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
       { x: zone.x + 12, y: zone.y + zone.depth - 28, anchor: 'start' },
       { x: zone.x + zone.width - 12, y: zone.y + zone.depth - 28, anchor: 'end' },
     ];
-    const labelPosition = labelCandidates.reduce((best, candidate) => {
+    const labelPosition = zone.points ? { ...zoneInteriorPoint(zone), anchor: 'middle' } : labelCandidates.reduce((best, candidate) => {
       const clearance = Math.min(...zoneItems.map((item) => Math.hypot(candidate.x - item.x, candidate.y - item.y)), 10000);
       return clearance > best.clearance ? { ...candidate, clearance } : best;
     }, { ...labelCandidates[0], clearance: -1 });
     return `<g class="plan-zone ${details.parts.length > 1 ? 'is-compound' : ''} ${spaceSelected ? 'is-space-selected' : ''} ${selected ? 'is-selected' : ''} ${zone.locked ? 'is-locked' : ''} ${zoneOverlaps.has(zone.id) ? 'has-overlap' : ''}" data-zone-id="${zone.id}">
-      <rect class="zone-hit-target" x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}"
+      ${zone.points ? `<polygon class="zone-hit-target" points="${zonePoints(zone).map(point => `${point.x},${point.y}`).join(' ')}"
         fill="none" stroke="transparent" stroke-width="44" vector-effect="non-scaling-stroke" pointer-events="stroke" />
-      <rect x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}" fill="${zone.color}" />
+      <polygon points="${zonePoints(zone).map(point => `${point.x},${point.y}`).join(' ')}" fill="${zone.color}" />`
+      : `<rect class="zone-hit-target" x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}"
+        fill="none" stroke="transparent" stroke-width="44" vector-effect="non-scaling-stroke" pointer-events="stroke" />
+      <rect x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}" fill="${zone.color}" />`}
       ${showLabel ? `<text class="zone-name" x="${labelPosition.x}" y="${labelPosition.y}" text-anchor="${labelPosition.anchor}">${escapeHtml(zone.name)}</text>
       <text class="zone-size" x="${labelPosition.x}" y="${labelPosition.y + 16}" text-anchor="${labelPosition.anchor}">${sizeLabel}</text>` : ''}
     </g>`;
@@ -2948,9 +3016,7 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
   const spaceOutlines = spaces.filter((parts) => selectedSpaceIds.has(spaceIdOf(parts[0]))).map((parts) => {
     const active = selectedSpaceIds.has(spaceIdOf(parts[0]));
     const outlineSpans = getExteriorWallSegments(parts).flatMap((segment) => splitWallSegment(segment, automaticWallOpenings(segment)).spans);
-    return `<g class="space-outline ${active ? 'is-active' : ''}">${outlineSpans.map((segment) => segment.orientation === 'horizontal'
-      ? `<line x1="${segment.x1}" y1="${segment.y}" x2="${segment.x2}" y2="${segment.y}" />`
-      : `<line x1="${segment.x}" y1="${segment.y1}" x2="${segment.x}" y2="${segment.y2}" />`).join('')}</g>`;
+    return `<g class="space-outline ${active ? 'is-active' : ''}">${outlineSpans.map(wallSegmentMarkup).join('')}</g>`;
   }).join('');
   const automaticSegments = [...getExteriorWallSegments(state.zones), ...getInteriorWallSegments(state.zones)];
   const automaticWalls = automaticSegments.flatMap((segment) => splitWallSegment(segment, automaticWallOpenings(segment)).spans).map(wallSegmentMarkup).join('');
@@ -2962,11 +3028,14 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
       openings.filter((opening) => opening.wallId === structure.id),
     ).spans;
     const wallStrokes = wallSpans.map((span) => {
-      const start = structure.orientation === 'horizontal' ? span.x1 - structure.x : span.y1 - structure.y;
-      const end = structure.orientation === 'horizontal' ? span.x2 - structure.x : span.y2 - structure.y;
+      const endpoints = segmentEndpoints(span);
+      const angle = structureAngle(structure) * Math.PI / 180;
+      const axis = point => (point.x - structure.x) * Math.cos(angle) + (point.y - structure.y) * Math.sin(angle);
+      const start = axis(endpoints.start);
+      const end = axis(endpoints.end);
       return `<line class="wall-stroke" x1="${start}" y1="0" x2="${end}" y2="0" />`;
     }).join('');
-    return `<g class="plan-structure plan-wall ${structure.locked ? 'is-locked' : ''}" data-structure-id="${structure.id}" pointer-events="none" transform="translate(${structure.x} ${structure.y}) rotate(${structure.orientation === 'vertical' ? 90 : 0})">
+    return `<g class="plan-structure plan-wall ${structure.locked ? 'is-locked' : ''}" data-structure-id="${structure.id}" pointer-events="none" transform="translate(${structure.x} ${structure.y}) rotate(${structureAngle(structure)})">
       <title>${escapeHtml(structure.name)} 벽</title>
       ${wallStrokes}
       <text x="0" y="-10">${escapeHtml(structure.name)} · ${Math.round(structure.length)}cm${structure.locked ? ' · 🔒' : ''}</text>
@@ -2989,7 +3058,7 @@ function render2d(collisions, outOfBounds, heightViolations, zoneOverlaps) {
     return `<rect class="group-selection-bounds" x="${selectedBoundsUnion.left}" y="${selectedBoundsUnion.top}"
       width="${selectedBoundsUnion.right - selectedBoundsUnion.left}" height="${selectedBoundsUnion.bottom - selectedBoundsUnion.top}" rx="6" />`;
   })() : '';
-  const resizeOverlay = selectedZone && !selectedZone.locked
+  const resizeOverlay = selectedZone && !selectedZone.locked && !selectedZone.points && !spaceEditor?.editingShape
     ? `<g class="resize-overlay">${resizeHandlesMarkup(selectedZone)}</g>` : '';
   const guideMarkup = alignmentGuides.map((guide) => guide.orientation === 'vertical'
     ? `<line class="alignment-guide" x1="${guide.position}" y1="${bounds.top - padding}" x2="${guide.position}" y2="${bounds.bottom + padding}" />`
@@ -3134,6 +3203,8 @@ function renderMobileSelectionBar() {
 }
 
 function renderSimpleSelection() {
+  const directControls = spaceEditor?.selectionMarkup();
+  if (directControls) return directControls;
   if (workspaceMode !== 'simple') return '';
   const entity = selectedEntity();
   if (!entity || !state.selection) {
@@ -3145,6 +3216,7 @@ function renderSimpleSelection() {
     <div class="simple-selection-heading"><strong>${single ? escapeHtml(entity.name) : `${selectionKeys.size}개 선택`}</strong><span>${single ? entity.locked ? '잠김' : '끌어서 이동' : '함께 이동'}</span><button type="button" data-simple-action="clear" aria-label="선택 해제">닫기</button></div>
     <div class="simple-selection-actions">
       ${fields.length ? `<button type="button" data-simple-action="size" aria-expanded="${quickSizesOpen}">크기</button>` : ''}
+      ${single && state.selection.kind === 'zone' && !entity.locked ? `<button type="button" data-space-shape aria-label="형태·치수 편집" aria-pressed="${spaceEditor?.editingShape}">형태</button>` : ''}
       <button type="button" data-simple-action="duplicate">복제</button>
       <button type="button" data-simple-action="details">상세</button>
       <button type="button" data-simple-action="multi" aria-pressed="${mobileMultiSelect}">함께 선택</button>
@@ -3465,7 +3537,7 @@ function render() {
       <div class="canvas-toolbar"><div><span class="eyebrow">배치 상담</span><h1 title="${escapeHtml(activeProjectName)}">${escapeHtml(activeProjectName)}</h1><p class="planning-scope" data-planning-scope><strong>기획·배치 확인용</strong><span class="desktop-only">건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다.</span><span class="mobile-only">시공 판단은 전문가 검토</span></p></div>
         <div class="view-tabs"><button class="active" type="button">2D 공간 편집</button><button id="open-walkthrough" type="button">3D 상세 편집</button></div>
       </div>
-      <p class="space-edit-flow"><strong>1. 공간 정의</strong><span>→ 2. 3D 가구·문 편집</span></p>
+      ${spaceEditor?.toolbarMarkup() ?? ''}
       ${simpleWorkspace ? '<details class="consultation-tools workspace-disclosure" data-disclosure="consultation"><summary>배치 비교 · 상담 · 제안서</summary>' : ''}
       ${renderConsultationToolbar({ projectName: activeProjectName, consultation: state.consultation })}
       ${simpleWorkspace ? '</details>' : ''}
@@ -4055,6 +4127,7 @@ function bindEvents() {
     state = { ...state, zones, selection: null };
     canvasZoom = 1;
     canvasCenter = null;
+    canvasBase = null;
     selectionKeys = new Set(state.selection ? [selectionKey(state.selection.kind, state.selection.id)] : []);
     commitHistory(previous);
     saveState();
@@ -4103,9 +4176,16 @@ function bindEvents() {
   document.querySelectorAll('[data-zone-field]').forEach((input) => {
     const field = input.dataset.zoneField;
     const entityId = state.selection.id;
-    const historySnapshot = layoutSnapshot();
+    let historySnapshot = layoutSnapshot();
     if (input.tagName !== 'SELECT') {
+      let edited = false;
+      input.addEventListener('focus', () => {
+        historySnapshot = layoutSnapshot();
+        edited = false;
+      });
       input.addEventListener('input', () => {
+        edited = true;
+        if (['x', 'y', 'width', 'depth'].includes(field)) return;
         const value = input.type === 'number' ? Number(input.value) : input.value;
         const selectedZone = state.zones.find((zone) => zone.id === entityId);
         const sharedField = ['name', 'type', 'color', 'height'].includes(field);
@@ -4116,9 +4196,13 @@ function bindEvents() {
         ));
         saveState();
       });
-      input.addEventListener('blur', (event) => commitInputBlur(event, () => updateZone(entityId, {
-        [field]: input.type === 'number' ? Number(input.value) : input.value,
-      }, { historySnapshot })));
+      input.addEventListener('blur', (event) => {
+        if (!edited) return;
+        edited = false;
+        commitInputBlur(event, () => updateZone(entityId, {
+          [field]: input.type === 'number' ? Number(input.value) : input.value,
+        }, { historySnapshot }));
+      });
       return;
     }
     input.addEventListener('change', () => {
@@ -4150,6 +4234,7 @@ function bindEvents() {
     });
   });
   document.querySelectorAll('[data-delete-selection]').forEach((button) => button.addEventListener('click', deleteSelection));
+  spaceEditor?.bind();
   focusPendingTarget();
 }
 
@@ -4244,6 +4329,7 @@ document.addEventListener('keydown', (event) => {
   const interactiveControl = target?.closest('button, a, input, select, textarea, [contenteditable]:not([contenteditable="false"])') ?? null;
   const commandKey = event.ctrlKey || event.metaKey;
   if (cloudLoadBusy || activeModal) return;
+  if (spaceEditor?.keydown(event)) return;
   if (!editingField && commandKey && event.key.toLowerCase() === 'z') {
     event.preventDefault();
     if (event.shiftKey) redo();
@@ -4296,9 +4382,7 @@ document.addEventListener('keydown', (event) => {
       x2: dimension.x2 + keyboardMovement.x,
       y2: dimension.y2 + keyboardMovement.y,
     } : dimension);
-    commitHistory(previous);
-    saveState();
-    render();
+    commitEditorPreview(previous);
   } else if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault();
     deleteSelection();
@@ -4363,7 +4447,36 @@ document.addEventListener('lostpointercapture', (event) => {
   else if (!activePointers.size) gestureMode = 'idle';
 });
 
+spaceEditor = createSpaceEditor({
+  getLayout: () => state,
+  getSelected: () => state.selection?.kind === 'zone' && selectionKeys.size === 1 ? selectedEntity() : null,
+  getSvg: () => document.querySelector('#plan-canvas'),
+  getGesture: () => gestureMode,
+  enabled: () => !active3dCleanup && !document.querySelector('[role="dialog"][aria-modal="true"]'),
+  beginContact: beginPointerContact,
+  captureContact: captureActivePointers,
+  startPan,
+  selectSpace: (event, id) => startEntityPress(event, 'zone', id),
+  createSpace(points) {
+    const zone = zoneFromPoints(makeZone({
+      name: `공간 ${groupSpaces(state.zones).length + 1}`, type: '방', color: spaceColors[state.zones.length % spaceColors.length],
+    }), points);
+    updateState({ zones: [...state.zones, zone], selection: { kind: 'zone', id: zone.id } });
+  },
+  changeSpace(zone) {
+    updateState({ zones: state.zones.map(current => current.id === zone.id ? zone : current) });
+  },
+  render,
+  modeChanged() {
+    precisionTool = null;
+    quickSizesOpen = false;
+    mobilePanel = 'canvas';
+    editorNotice = '';
+  },
+});
+
 mobileLayoutQuery.addEventListener('change', () => {
+  spaceEditor.cancelPointer();
   if (drag || resize || marquee || backgroundDrag || pan || pinch || entityPress) {
     activePointers.clear();
     cancelTemporaryGesture();

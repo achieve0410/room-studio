@@ -75,3 +75,25 @@ test('embedded image boundary rejects SVG and external resources; labels and IDs
   assert.match(first, /&lt;script&gt;x&lt;\/script&gt;/);
   assert.doesNotMatch(first, /<script| onload="/);
 });
+
+test('concave polygon rooms use their real outline and label every edge length', () => {
+  const polygon = {
+    ...zone,
+    width: 400,
+    depth: 300,
+    points: [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 100 }, { x: 160, y: 100 }, { x: 160, y: 300 }, { x: 0, y: 300 }],
+  };
+  const svg = renderPlanSvg({ zones: [polygon] });
+  const room = tags(svg, 'path').find(({ 'data-zone-id': id }) => id === 'room');
+  assert.equal(room.d, 'M 0 0 L 400 0 L 400 100 L 160 100 L 160 300 L 0 300 Z');
+  assert.equal(tags(svg, 'text').filter(({ class: name }) => name === 'zone-edge-dimension').length, 6);
+  for (const length of ['4m', '1m', '2.4m', '2m', '1.6m', '3m']) assert.match(svg, new RegExp(`>${length}<\\/text>`));
+});
+
+test('angled walls and openings share the saved plan angle', () => {
+  const wall = { id: 'angled-wall', name: '사선 벽', type: 'wall', x: 150, y: 150, length: 200, thickness: 4, angle: 30, orientation: 'diagonal' };
+  const opening = { ...door, x: 150, y: 150, angle: 30, orientation: 'diagonal', wallId: wall.id };
+  const svg = renderPlanSvg({ structures: [wall, opening] });
+  assert.ok(tags(svg, 'line').some(({ x1, y1, x2, y2 }) => Math.abs(Math.hypot(x2 - x1, y2 - y1) - 60) < 1e-8));
+  assert.ok(tags(svg, 'g').some(({ transform }) => transform === 'translate(150 150) rotate(30)'));
+});

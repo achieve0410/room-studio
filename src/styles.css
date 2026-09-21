@@ -1,14 +1,20 @@
 :root {
-  font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #292a27;
-  background: #f1eee6;
+  font-family: 'Avenir Next', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #18201d;
+  background: #edf0ee;
   font-synthesis: none;
-  --ink: #292a27;
-  --muted: #6b6c63;
-  --line: #d7d2c6;
-  --paper: #fbfaf6;
-  --accent: #ad4b32;
-  --green: #657a67;
+  --font-ui: 'Avenir Next', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ink: #18201d;
+  --muted: #5f6965;
+  --muted-readable: #56615d;
+  --line: #cbd2cf;
+  --paper: #f7f8f6;
+  --surface: #f7f8f6;
+  --surface-raised: #ffffff;
+  --canvas: #dfe5e6;
+  --accent: #c84f32;
+  --green: #46705a;
+  --success: #46705a;
   --text-body: 14px;
   --text-control: 13px;
   --text-caption: 12px;
@@ -20,13 +26,12 @@
   --space-4: 16px;
   --space-6: 24px;
   --target: 44px;
-  --radius-control: 4px;
-  --radius-panel: 8px;
-  --font-display: Georgia, serif;
-  --muted-readable: #62635b;
-  --error: #a34836;
-  --overlay: rgba(29,30,27,.48);
-  --shadow-panel: 0 24px 80px rgba(30,30,27,.28);
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --font-display: var(--font-ui);
+  --error: #a33f32;
+  --overlay: rgba(14,20,18,.58);
+  --shadow-panel: 0 18px 48px rgba(14,20,18,.18);
   --canvas-min: 152px;
   --canvas-desktop-min: 482px;
   --dialog-width: 720px;
@@ -41,11 +46,14 @@
   --asset-card-preview: 96px;
   --asset-panel-width: 288px;
   --sample-cover-height: 180px;
+  --studio-panel-width: 336px;
+  --studio-panel-portrait: min(40dvh, 340px);
+  --simple-selection-slot: 96px;
 }
 
 * { box-sizing: border-box; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 8% 2%, rgba(255,255,255,.8), transparent 25%), #f1eee6; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface); }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 .mobile-only, .mobile-nav, .mobile-context-menu, .mobile-selection-bar { display: none; }
@@ -1233,6 +1241,7 @@ footer { height: 36px; display: grid; place-items: center; border-top: 1px solid
 .demo-gallery, .starter-dialog { padding-top: 0; }
 .demo-gallery-heading, .starter-heading { position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding-block: calc(var(--dialog-top-padding) + var(--space-2)) var(--space-2); background: var(--paper); }
 .demo-gallery-heading > div, .starter-heading > div { min-width: 0; }
+.starter-heading .eyebrow { color: var(--muted-readable); font-size: var(--text-caption); }
 .demo-gallery-heading .cloud-dialog-close, .starter-heading .cloud-dialog-close { position: static; flex-shrink: 0; }
 .demo-gallery-heading h2, .starter-heading h2 { font-family: inherit; font-size: var(--text-title); font-weight: 600; line-height: 1.4; word-break: keep-all; }
 .demo-card-cover { display: block; width: 100%; height: var(--sample-cover-height); object-fit: contain; border-radius: var(--radius-control); background: var(--line); }
@@ -1296,4 +1305,37 @@ footer { height: 36px; display: grid; place-items: center; border-top: 1px solid
   .workspace[data-mode='simple'] .simple-selection { padding: 0 var(--space-2) var(--space-2); }
   .workspace[data-mode='simple'] .simple-selection-actions button { padding-inline: var(--space-1); font-size: var(--text-control); }
   .workspace[data-mode='simple'] .mobile-selection-bar { position: static; transform: none; width: 100%; }
+}
+
+
+/* Contemporary shared workspace chrome. Geometry and asset colors remain content-owned. */
+.topbar { background: var(--surface-raised); }
+.panel { background: var(--surface); }
+.canvas-wrap { border-color: var(--line); background: var(--canvas); }
+.canvas-toolbar h1,
+.walkthrough-location strong,
+.walkthrough-room-toast strong,
+.walkthrough-menu h2,
+.selection-heading h2,
+.multi-selection-inspector > strong,
+.mobile-context-heading strong,
+.mobile-selection-bar > div strong,
+.stats-bar strong,
+.transform-hud strong,
+.placement-hud strong,
+.overlap-picker > span strong { font-family: var(--font-ui); font-weight: 650; }
+:where(.panel, .canvas-column, .consultation-dialog, .comparison-dialog) button { border-radius: var(--radius-control); }
+.primary-button,
+.space-detail-button,
+.consultation-primary { min-height: var(--target); border-radius: var(--radius-control); font-size: var(--text-control); font-weight: 650; }
+
+@media (max-width: 900px) {
+  /* Selection swaps content inside a reserved slot, so selecting a room cannot resize the canvas. */
+  .workspace[data-mode='simple'] :is(.workspace-hint, .simple-selection) {
+    flex: 0 0 var(--simple-selection-slot);
+    min-height: var(--simple-selection-slot);
+    height: var(--simple-selection-slot);
+  }
+  .workspace[data-mode='simple'] .workspace-hint { padding-inline: var(--space-2); }
+  .workspace[data-mode='simple'] .simple-selection:has(.simple-size-fields) { height: auto; flex-basis: auto; }
 }

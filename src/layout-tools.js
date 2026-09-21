@@ -34,7 +34,7 @@ export function createLayoutClipboard(layout, selection) {
   };
   selection.forEach(({ kind, id }) => selected[kind]?.add(id));
   layout.structures
-    .filter((structure) => selected.structure.has(structure.wallId))
+    .filter((structure) => selected.structure.has(structure.wallId) || selected.zone.has(structure.wallAttachment?.zoneId))
     .forEach((opening) => selected.structure.add(opening.id));
   return clone({
     zones: layout.zones.filter((zone) => selected.zone.has(zone.id)),
@@ -45,7 +45,7 @@ export function createLayoutClipboard(layout, selection) {
 }
 
 export function pasteLayoutClipboard(layout, clipboard, options = {}) {
-  const source = clipboard ?? {};
+  const source = clone(clipboard ?? {});
   const offset = Number.isFinite(Number(options.offset)) ? Number(options.offset) : 20;
   const idFactory = options.idFactory ?? ((prefix) => `${prefix}-${crypto.randomUUID()}`);
   const zoneIds = new Map((source.zones ?? []).map((zone) => [zone.id, idFactory('zone')]));
@@ -78,6 +78,10 @@ export function pasteLayoutClipboard(layout, clipboard, options = {}) {
     x: structure.x + offset,
     y: structure.y + offset,
     wallId: structure.wallId ? structureIds.get(structure.wallId) ?? null : null,
+    ...(structure.wallAttachment ? { wallAttachment: {
+      ...structure.wallAttachment,
+      zoneId: zoneIds.get(structure.wallAttachment.zoneId) ?? structure.wallAttachment.zoneId,
+    } } : {}),
     locked: false,
   }));
   const dimensions = (source.dimensions ?? []).map((dimension) => ({

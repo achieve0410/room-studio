@@ -1,3 +1,14 @@
+import {
+  hasPolygon, zonePoints, zoneFromPoints, pointInPolygon, polygonUnionArea,
+  polygonIntersectionArea, polygonWallSegments, segmentFrame,
+  segmentFromEndpoints, structureAngle, angleTangent, framePoint, frameProjection, frameDistance,
+} from './space-geometry.js';
+export {
+  POLYGON_LIMITS, zonePoints, zoneFromPoints, zoneInteriorPoint,
+  moveZoneVertex, moveZoneEdge, setZoneEdgeLength, segmentEndpoints, segmentFrame, structureAngle,
+  attachOpeningToZoneEdge, reprojectOpeningToZone, reconcileZoneOpenings,
+} from './space-geometry.js';
+
 export const GRID_CM = 10;
 export const RESIZE_DIRECTIONS = {
   nw: { x: -1, y: -1 },
@@ -48,6 +59,11 @@ export function itemBounds(item) {
 }
 
 export function zoneBounds(zone) {
+  if (hasPolygon(zone)) {
+    const points = zonePoints(zone);
+    return { left: Math.min(...points.map(point => point.x)), right: Math.max(...points.map(point => point.x)),
+      top: Math.min(...points.map(point => point.y)), bottom: Math.max(...points.map(point => point.y)) };
+  }
   return {
     left: zone.x,
     right: zone.x + zone.width,
@@ -68,16 +84,18 @@ export function resizeZoneFromHandle(zone, handle, point, minimumSize = 100) {
   const direction = RESIZE_DIRECTIONS[handle];
   if (!direction) return zone;
 
-  let left = zone.x;
-  let right = zone.x + zone.width;
-  let top = zone.y;
-  let bottom = zone.y + zone.depth;
+  const bounds = zoneBounds(zone);
+  let { left, right, top, bottom } = bounds;
 
   if (direction.x < 0) left = Math.min(point.x, right - minimumSize);
   if (direction.x > 0) right = Math.max(point.x, left + minimumSize);
   if (direction.y < 0) top = Math.min(point.y, bottom - minimumSize);
   if (direction.y > 0) bottom = Math.max(point.y, top + minimumSize);
 
+  if (hasPolygon(zone)) return zoneFromPoints(zone, zonePoints(zone).map(point => ({
+    x: left + (point.x - bounds.left) * (right - left) / (bounds.right - bounds.left),
+    y: top + (point.y - bounds.top) * (bottom - top) / (bounds.bottom - bounds.top),
+  })));
   return { ...zone, x: left, y: top, width: right - left, depth: bottom - top };
 }
 
@@ -172,6 +190,7 @@ export function getAlignmentSnap(movingBounds, targetBounds, delta, threshold = 
 }
 
 export function zonesOverlap(first, second) {
+  if (hasPolygon(first) || hasPolygon(second)) return polygonIntersectionArea([first], [second]) > 1e-8;
   return boundsOverlap(zoneBounds(first), zoneBounds(second));
 }
 
@@ -218,6 +237,7 @@ export function findCollisions(items) {
 }
 
 export function pointInZone(point, zone) {
+  if (hasPolygon(zone)) return pointInPolygon(point, zonePoints(zone));
   const bounds = zoneBounds(zone);
   return (
     point.x >= bounds.left &&
@@ -230,6 +250,10 @@ export function pointInZone(point, zone) {
 export function itemInsideZones(item, zones) {
   const bounds = itemBounds(item);
   const area = (bounds.right - bounds.left) * (bounds.bottom - bounds.top);
+  if (zones.some(hasPolygon)) {
+    const covered = polygonIntersectionArea([boundsFootprint(bounds)], zones);
+    return area > 0 && Math.abs(area - covered) <= Math.max(1e-8, Number.EPSILON * area * 64);
+  }
   const coveredArea = calculateUnionArea(clippedItemFootprints(item, zones));
   // Allow only floating-point roundoff when the union partitions rotated bounds.
   return area > 0 && Math.abs(area - coveredArea) <= Number.EPSILON * area * 8;
@@ -249,6 +273,12 @@ export function itemFitsZoneHeights(item, zones, defaultHeight = 240) {
   ];
   const itemTop = (item.elevation ?? 0) + (item.height ?? 0);
 
+  if (zones.some(hasPolygon)) {
+    const footprint = [boundsFootprint(bounds)];
+    const covered = polygonIntersectionArea(footprint, zones);
+    const highEnough = polygonIntersectionArea(footprint, zones.filter(zone => itemTop <= (zone.height ?? defaultHeight)));
+    return Math.abs(covered - highEnough) <= Math.max(1e-8, Number.EPSILON * covered * 64);
+  }
   return corners.every((corner) => {
     const containingZones = zones.filter((zone) => pointInZone(corner, zone));
     return !containingZones.length || containingZones.some((zone) => itemTop <= (zone.height ?? defaultHeight));
@@ -260,6 +290,7 @@ export function findHeightViolations(items, zones, defaultHeight = 240) {
 }
 
 export function getExteriorWallSegments(zones) {
+  if (zones.some(hasPolygon)) return polygonWallSegments(zones);
   if (!zones.length) return [];
   const xCoordinates = [...new Set(zones.flatMap((zone) => [zone.x, zone.x + zone.width]))].sort((a, b) => a - b);
   const yCoordinates = [...new Set(zones.flatMap((zone) => [zone.y, zone.y + zone.depth]))].sort((a, b) => a - b);
@@ -314,6 +345,7 @@ export function getExteriorWallSegments(zones) {
 }
 
 export function getInteriorWallSegments(zones) {
+  if (zones.some(hasPolygon)) return polygonWallSegments(zones, true);
   const segments = [];
 
   for (let firstIndex = 0; firstIndex < zones.length; firstIndex += 1) {
@@ -351,58 +383,40 @@ export function getInteriorWallSegments(zones) {
 
 export function structureSegment(structure) {
   const halfLength = (structure.type === 'wall' ? structure.length : structure.width) / 2;
-  return structure.orientation === 'vertical'
-    ? { orientation: 'vertical', x: structure.x, y1: structure.y - halfLength, y2: structure.y + halfLength }
-    : { orientation: 'horizontal', x1: structure.x - halfLength, x2: structure.x + halfLength, y: structure.y };
+  const tangent = angleTangent(structureAngle(structure));
+  return segmentFromEndpoints(
+    { x: structure.x - tangent.x * halfLength, y: structure.y - tangent.y * halfLength },
+    { x: structure.x + tangent.x * halfLength, y: structure.y + tangent.y * halfLength },
+  );
 }
 
 export function structureBounds(structure) {
-  const segment = structureSegment(structure);
+  const frame = segmentFrame(structureSegment(structure));
   const halfThickness = Math.max(2, structure.type === 'wall' ? structure.thickness ?? 4 : 12) / 2;
-  return segment.orientation === 'horizontal'
-    ? { left: segment.x1, right: segment.x2, top: segment.y - halfThickness, bottom: segment.y + halfThickness }
-    : { left: segment.x - halfThickness, right: segment.x + halfThickness, top: segment.y1, bottom: segment.y2 };
+  const dx = Math.abs(frame.normal.x) * halfThickness, dy = Math.abs(frame.normal.y) * halfThickness;
+  return { left: Math.min(frame.start.x, frame.end.x) - dx, right: Math.max(frame.start.x, frame.end.x) + dx,
+    top: Math.min(frame.start.y, frame.end.y) - dy, bottom: Math.max(frame.start.y, frame.end.y) + dy };
 }
 
 export function alignDoorToWall(door, wall) {
-  if (!['door', 'window'].includes(door?.type) || wall?.type !== 'wall') return door;
-  const halfRange = Math.max(0, wall.length / 2 - door.width / 2);
-  if (wall.orientation === 'vertical') {
-    return {
-      ...door,
-      x: wall.x,
-      y: Math.min(wall.y + halfRange, Math.max(wall.y - halfRange, door.y)),
-      orientation: 'vertical',
-      wallId: wall.id,
-    };
-  }
-  return {
-    ...door,
-    x: Math.min(wall.x + halfRange, Math.max(wall.x - halfRange, door.x)),
-    y: wall.y,
-    orientation: 'horizontal',
-    wallId: wall.id,
-  };
+  if (!['door', 'window'].includes(door?.type) || wall?.type !== 'wall') return structuredClone(door);
+  const segment = structureSegment(wall), frame = segmentFrame(segment);
+  const halfRange = Math.max(0, frame.length / 2 - door.width / 2);
+  const distance = Math.max(frame.length / 2 - halfRange, Math.min(frame.length / 2 + halfRange, frameProjection(frame, door)));
+  const result = { ...structuredClone(door), ...framePoint(frame, distance), orientation: segment.orientation, wallId: wall.id };
+  if (Number.isFinite(wall.angle) || Number.isFinite(door.angle) || segment.orientation === 'diagonal') result.angle = frame.angle;
+  delete result.wallAttachment;
+  return result;
 }
 
 export function resizeStructureFromEndpoint(structure, handle, point, minimumSize) {
-  const horizontal = structure.orientation === 'horizontal';
   const sizeKey = structure.type === 'wall' ? 'length' : 'width';
   const minimum = minimumSize ?? (structure.type === 'wall' ? 40 : 50);
-  const center = horizontal ? structure.x : structure.y;
-  const half = structure[sizeKey] / 2;
-  const opposite = handle === 'start' ? center + half : center - half;
-  const requested = horizontal ? point.x : point.y;
-  const endpoint = handle === 'start'
-    ? Math.min(requested, opposite - minimum)
-    : Math.max(requested, opposite + minimum);
-  const start = Math.min(endpoint, opposite);
-  const end = Math.max(endpoint, opposite);
-  return {
-    ...structure,
-    [horizontal ? 'x' : 'y']: (start + end) / 2,
-    [sizeKey]: end - start,
-  };
+  const frame = segmentFrame(structureSegment(structure));
+  const requested = frameProjection(frame, point);
+  const start = handle === 'start' ? Math.min(requested, frame.length - minimum) : 0;
+  const end = handle === 'start' ? frame.length : Math.max(requested, minimum);
+  return { ...structuredClone(structure), ...framePoint(frame, (start + end) / 2), [sizeKey]: end - start };
 }
 
 export function snapDoorToWallSegments(door, targets, tolerance = 30) {
@@ -410,42 +424,57 @@ export function snapDoorToWallSegments(door, targets, tolerance = 30) {
   const half = door.width / 2;
   let nearest = null;
   targets.forEach((target) => {
-    const horizontal = target.orientation === 'horizontal';
-    const start = horizontal ? target.x1 : target.y1;
-    const end = horizontal ? target.x2 : target.y2;
-    if (end - start < door.width) return;
-    const minimum = start + half;
-    const maximum = end - half;
-    const requested = horizontal ? door.x : door.y;
-    const axis = Math.min(maximum, Math.max(minimum, requested));
-    const x = horizontal ? axis : target.x;
-    const y = horizontal ? target.y : axis;
+    const frame = segmentFrame(target);
+    if (frame.length < door.width) return;
+    const axis = Math.min(frame.length - half, Math.max(half, frameProjection(frame, door)));
+    const { x, y } = framePoint(frame, axis);
     const distance = Math.hypot(door.x - x, door.y - y);
-    if (!nearest || distance < nearest.distance) nearest = { target, x, y, distance };
+    if (!nearest || distance < nearest.distance) nearest = { target, frame, x, y, distance };
   });
   if (!nearest || nearest.distance > tolerance) return null;
-  return {
-    ...door,
+  const result = {
+    ...structuredClone(door),
     x: nearest.x,
     y: nearest.y,
     orientation: nearest.target.orientation,
     wallId: nearest.target.wallId ?? null,
   };
+  if (Number.isFinite(door.angle) || nearest.target.orientation === 'diagonal' || nearest.frame.angle < 0 || nearest.frame.angle > 90) result.angle = nearest.frame.angle;
+  delete result.wallAttachment;
+  return result;
 }
 
 export function splitWallSegment(segment, doors = [], tolerance = 12) {
-  const horizontal = segment.orientation === 'horizontal';
-  const start = horizontal ? segment.x1 : segment.y1;
-  const end = horizontal ? segment.x2 : segment.y2;
-  const fixed = horizontal ? segment.y : segment.x;
+  return splitWall(segment, doors, tolerance, false);
+}
+
+/** Uniform directed distances, including fragments shorter than 20cm at run seams. */
+export function splitWallSegmentLocal(segment, doors = [], tolerance = 12) {
+  return splitWall(segment, doors, tolerance, true);
+}
+
+function attachmentMatchesSegment(door, segment, frame) {
+  const attachment = door.wallAttachment;
+  if (!attachment) return true;
+  return !segment.wallId && frameDistance(frame, door) <= 1e-8
+    && (!segment.sources || segment.sources.some(source => source.zoneId === attachment.zoneId && source.edgeIndex === attachment.edgeIndex));
+}
+
+function splitWall(segment, doors, tolerance, local) {
+  const frame = segmentFrame(segment);
+  // Old axis-aligned opening coordinates remain absolute; diagonal coordinates
+  // are distances from the directed start. Spans retain all non-opening metadata.
+  const axis = segment.orientation === 'horizontal' ? 'x' : segment.orientation === 'vertical' ? 'y' : null;
+  const toOffset = value => axis ? (value - frame.start[axis]) / frame.tangent[axis] : value;
+  const toCoordinate = value => axis && !local ? framePoint(frame, value)[axis] : value;
   const explicitOpenings = doors.flatMap((door) => {
-    if (!['door', 'window'].includes(door.type) || door.orientation !== segment.orientation) return [];
-    const doorFixed = horizontal ? door.y : door.x;
-    const doorCenter = horizontal ? door.x : door.y;
-    if (Math.abs(doorFixed - fixed) > tolerance) return [];
-    const openingStart = Math.max(start, doorCenter - door.width / 2);
-    const openingEnd = Math.min(end, doorCenter + door.width / 2);
-    return openingEnd - openingStart >= 20 ? [{ start: openingStart, end: openingEnd, door }] : [];
+    if (!['door', 'window'].includes(door.type) || !attachmentMatchesSegment(door, segment, frame)) return [];
+    const tangent = angleTangent(structureAngle(door));
+    if (Math.abs(tangent.x * frame.tangent.y - tangent.y * frame.tangent.x) > 1e-8 || frameDistance(frame, door) > tolerance) return [];
+    const center = frameProjection(frame, door);
+    const start = Math.max(0, center - door.width / 2), end = Math.min(frame.length, center + door.width / 2);
+    const minimumFragment = local || segment.sources ? 1e-8 : 20 - 1e-8;
+    return end - start >= minimumFragment ? [{ start, end, door: structuredClone(door) }] : [];
   }).sort((first, second) => first.start - second.start);
   const openings = explicitOpenings.length
     ? explicitOpenings.reduce((merged, opening) => {
@@ -459,45 +488,45 @@ export function splitWallSegment(segment, doors = [], tolerance = 12) {
         return merged;
       }, [])
     : Number.isFinite(segment.doorStart) && Number.isFinite(segment.doorEnd)
-      ? [{ start: segment.doorStart, end: segment.doorEnd, doors: [] }]
+      ? [{ start: Math.max(0, Math.min(toOffset(segment.doorStart), toOffset(segment.doorEnd))), end: Math.min(frame.length, Math.max(toOffset(segment.doorStart), toOffset(segment.doorEnd))), doors: [] }]
       : [];
   const spans = [];
-  let cursor = start;
+  let cursor = 0;
   openings.forEach((opening) => {
     if (opening.start > cursor) spans.push({ start: cursor, end: opening.start });
     cursor = Math.max(cursor, opening.end);
   });
-  if (cursor < end) spans.push({ start: cursor, end });
-  const toSegment = ({ start: spanStart, end: spanEnd }) => horizontal
-    ? { orientation: 'horizontal', x1: spanStart, x2: spanEnd, y: fixed }
-    : { orientation: 'vertical', x: fixed, y1: spanStart, y2: spanEnd };
-  return { spans: spans.map(toSegment), openings };
+  if (cursor < frame.length) spans.push({ start: cursor, end: frame.length });
+  const metadata = structuredClone(segment);
+  for (const key of ['orientation', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'doorStart', 'doorEnd']) delete metadata[key];
+  const toSegment = ({ start, end }) => ({ ...structuredClone(metadata), ...segmentFromEndpoints(framePoint(frame, start), framePoint(frame, end)) });
+  return { spans: spans.map(toSegment), openings: openings.map(opening => ({ ...opening,
+    start: Math.min(toCoordinate(opening.start), toCoordinate(opening.end)), end: Math.max(toCoordinate(opening.start), toCoordinate(opening.end)),
+  })) };
 }
 
 export function doorsForAutomaticWallSegment(segment, doors = [], walls = [], automaticThickness = 6) {
-  const horizontal = segment.orientation === 'horizontal';
-  const segmentStart = horizontal ? segment.x1 : segment.y1;
-  const segmentEnd = horizontal ? segment.x2 : segment.y2;
-  const segmentFixed = horizontal ? segment.y : segment.x;
+  const frame = segmentFrame(segment);
   const wallsById = new Map(walls.filter((wall) => wall.type === 'wall').map((wall) => [wall.id, wall]));
   return doors.filter((door) => {
+    if (!attachmentMatchesSegment(door, segment, frame)) return false;
     if (!door.wallId) return true;
     const wall = wallsById.get(door.wallId);
-    if (!wall || wall.orientation !== segment.orientation) return false;
-    const wallSegment = structureSegment(wall);
-    const wallStart = horizontal ? wallSegment.x1 : wallSegment.y1;
-    const wallEnd = horizontal ? wallSegment.x2 : wallSegment.y2;
-    const wallFixed = horizontal ? wallSegment.y : wallSegment.x;
+    if (!wall) return false;
+    const other = segmentFrame(structureSegment(wall));
+    if (Math.abs(frame.tangent.x * other.tangent.y - frame.tangent.y * other.tangent.x) > 1e-8) return false;
+    const start = frameProjection(frame, other.start), end = frameProjection(frame, other.end);
     const centerTolerance = (automaticThickness + (wall.thickness ?? 4)) / 2;
-    const overlap = Math.min(segmentEnd, wallEnd) - Math.max(segmentStart, wallStart);
-    return Math.abs(segmentFixed - wallFixed) <= centerTolerance && overlap >= 20;
-  });
+    const overlap = Math.min(frame.length, Math.max(start, end)) - Math.max(0, Math.min(start, end));
+    return frameDistance(frame, other.start) <= centerTolerance + 1e-8 && overlap >= 20 - 1e-8;
+  }).map(door => structuredClone(door));
 }
 
 export function getDoorLeafSegments(doors) {
-  const toPlanPoint = (door, axis, normal = 0) => door.orientation === 'vertical'
-    ? { x: door.x - normal, y: door.y + axis }
-    : { x: door.x + axis, y: door.y + normal };
+  const toPlanPoint = (door, axis, normal = 0) => {
+    const tangent = angleTangent(structureAngle(door));
+    return { x: door.x + tangent.x * axis - tangent.y * normal, y: door.y + tangent.y * axis + tangent.x * normal };
+  };
   return doors.flatMap((door) => {
     if (door?.type !== 'door') return [];
     const width = Math.max(0, door.width ?? 0);
@@ -548,6 +577,9 @@ export function isPointBlockedByDoorLeaves(point, segments, radius = 18) {
 }
 
 export function isWalkablePoint(point, zones, radius = 18) {
+  if (zones.some(hasPolygon)) return radius > 0
+    ? itemInsideZones({ ...point, width: radius * 2, depth: radius * 2 }, zones)
+    : zones.some(zone => pointInZone(point, zone));
   const offsets = [
     [0, 0], [-radius, -radius], [radius, -radius], [radius, radius], [-radius, radius],
   ];
@@ -567,24 +599,24 @@ export function isPointBlockedByFurniture(point, items, radius = 18, eyeHeight =
 
 export function isPointBlockedByInteriorWall(point, segments, radius = 18) {
   return segments.some((segment) => {
-    if (segment.orientation === 'horizontal') {
-      if (Math.abs(point.y - segment.y) > radius + 6 || point.x < segment.x1 || point.x > segment.x2) return false;
-      if (!Number.isFinite(segment.doorStart) || !Number.isFinite(segment.doorEnd)) return true;
-      return point.x < segment.doorStart + radius || point.x > segment.doorEnd - radius;
-    }
-    if (Math.abs(point.x - segment.x) > radius + 6 || point.y < segment.y1 || point.y > segment.y2) return false;
+    const frame = segmentFrame(segment), distance = frameProjection(frame, point);
+    if (frameDistance(frame, point) > radius + 6 || distance < 0 || distance > frame.length) return false;
     if (!Number.isFinite(segment.doorStart) || !Number.isFinite(segment.doorEnd)) return true;
-    return point.y < segment.doorStart + radius || point.y > segment.doorEnd - radius;
+    const axis = segment.orientation === 'horizontal' ? 'x' : segment.orientation === 'vertical' ? 'y' : null;
+    const a = axis ? (segment.doorStart - frame.start[axis]) / frame.tangent[axis] : segment.doorStart;
+    const b = axis ? (segment.doorEnd - frame.start[axis]) / frame.tangent[axis] : segment.doorEnd;
+    return distance < Math.min(a, b) + radius || distance > Math.max(a, b) - radius;
   });
 }
 
 export function getLayoutBounds(zones) {
   if (!zones.length) return { left: 0, top: 0, right: 400, bottom: 300, width: 400, depth: 300 };
 
-  const left = Math.min(...zones.map((zone) => zone.x));
-  const top = Math.min(...zones.map((zone) => zone.y));
-  const right = Math.max(...zones.map((zone) => zone.x + zone.width));
-  const bottom = Math.max(...zones.map((zone) => zone.y + zone.depth));
+  const bounds = zones.map(zoneBounds);
+  const left = Math.min(...bounds.map(zone => zone.left));
+  const top = Math.min(...bounds.map(zone => zone.top));
+  const right = Math.max(...bounds.map(zone => zone.right));
+  const bottom = Math.max(...bounds.map(zone => zone.bottom));
   return { left, top, right, bottom, width: right - left, depth: bottom - top };
 }
 
@@ -644,6 +676,7 @@ export function getRolledBackSelection(baseSelection) {
 }
 
 export function calculateUnionArea(zones) {
+  if (zones.some(hasPolygon)) return polygonUnionArea(zones);
   if (!zones.length) return 0;
   const xCoordinates = [...new Set(zones.flatMap((zone) => [zone.x, zone.x + zone.width]))].sort(
     (a, b) => a - b,
@@ -675,6 +708,10 @@ export function calculateUnionArea(zones) {
   return area;
 }
 
+function boundsFootprint(bounds) {
+  return { x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, depth: bounds.bottom - bounds.top };
+}
+
 function clippedItemFootprints(item, zones) {
   const bounds = itemBounds(item);
   return zones.flatMap((zone) => {
@@ -690,6 +727,11 @@ function clippedItemFootprints(item, zones) {
 export function calculateCoverage(items, zones) {
   const homeArea = calculateUnionArea(zones);
   if (!homeArea) return 0;
+  if (zones.some(hasPolygon)) {
+    const footprints = items.filter(item => (item.elevation ?? 0) <= 0).map(item => boundsFootprint(itemBounds(item)));
+    const usedArea = polygonIntersectionArea(zones, footprints);
+    return Math.min(100, Math.max(0, Math.round(usedArea / homeArea * 100)));
+  }
   const footprints = items
     .filter((item) => (item.elevation ?? 0) <= 0)
     .flatMap((item) => clippedItemFootprints(item, zones));

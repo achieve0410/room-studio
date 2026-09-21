@@ -293,9 +293,9 @@ try {
   assert.equal(await chromePage.locator('#app').evaluate(app => app.inert), false);
   report.checks.push('real host boundary normalization, locks and locked attached opening rejection; each successful action owns one history entry');
   const saved = await page.evaluate(() => window.__spaceRegression.portable());
-  assert.equal(JSON.parse(saved).schemaVersion, 3);
+  assert.equal(JSON.parse(saved).schemaVersion, 4);
   const savedLayout = (await snapshot()).layout;
-  for (const schemaVersion of [1, 2, 3]) {
+  for (const schemaVersion of [1, 2, 3, 4]) {
     await page.evaluate((source) => window.__spaceRegression.import(source), JSON.stringify({ ...JSON.parse(saved), schemaVersion }));
     assert.deepEqual((await snapshot()).layout, savedLayout);
   }

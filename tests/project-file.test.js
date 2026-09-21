@@ -43,7 +43,7 @@ test('portable project files round-trip drawing data without cloud metadata', ()
   // Then the format is self-describing and only persisted drawing data survives
   assert.equal(envelope.format, 'room-studio');
   assert.equal(envelope.formatVersion, 1);
-  assert.equal(envelope.schemaVersion, 3);
+  assert.equal(envelope.schemaVersion, 4);
   assert.equal(parsed.projectName, '우리 집');
   assert.deepEqual(parsed.layout, {
     zones: completeLayout.zones,
@@ -112,7 +112,7 @@ test('schema 3 portable files preserve both alternatives and consultant metadata
   const serialized = serializeProjectFile({ projectName: 'Client project', layout });
   assert.deepEqual(parseProjectFile(serialized).layout, layout);
   assert.equal(serialized.includes('must-not-export'), false);
-  for (const schemaVersion of [1, 2]) {
+  for (const schemaVersion of [1, 2, 3]) {
     const envelope = JSON.parse(serializeProjectFile({ layout: completeLayout }));
     envelope.schemaVersion = schemaVersion;
     assert.equal(Object.hasOwn(parseProjectFile(JSON.stringify(envelope)).layout, 'consultation'), false);

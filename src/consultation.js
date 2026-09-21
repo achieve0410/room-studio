@@ -1,4 +1,6 @@
-export const CURRENT_SCHEMA_VERSION = 3;
+import { zoneFromPoints, zonePoints } from './geometry.js';
+
+export const CURRENT_SCHEMA_VERSION = 4;
 export const MAX_LAYOUT_BYTES = 1_048_576;
 
 const GEOMETRY_KEYS = ['zones', 'items', 'structures', 'dimensions', 'backgroundPlan', 'wallHeight'];
@@ -22,6 +24,36 @@ const boundedText = (value, maximum) => {
   return value;
 };
 
+function validateSpaceGeometry(layout) {
+  for (const zone of layout.zones) {
+    if (!isObject(zone) || !Object.hasOwn(zone, 'points')) continue;
+    if (!Number.isFinite(zone.x) || !Number.isFinite(zone.y) || !Array.isArray(zone.points)
+      || zone.points.some(point => !isObject(point) || !Number.isFinite(point.x) || !Number.isFinite(point.y))) throw invalid();
+    try {
+      zoneFromPoints(zone, zonePoints(zone));
+    } catch {
+      throw invalid();
+    }
+  }
+  for (const structure of layout.structures) {
+    if (!isObject(structure)) continue;
+    if (Object.hasOwn(structure, 'angle') && !Number.isFinite(structure.angle)) throw invalid();
+    if (structure.wallAttachment == null) continue;
+    const attachment = structure.wallAttachment;
+    if (!isObject(attachment) || structure.wallId || !['door', 'window'].includes(structure.type)
+      || !Number.isInteger(attachment.edgeIndex) || !Number.isFinite(attachment.offset)
+      || !Number.isFinite(structure.width) || structure.width <= 0) throw invalid();
+    const owner = layout.zones.find(zone => zone.id === attachment.zoneId);
+    if (!owner) throw invalid();
+    const points = zonePoints(owner);
+    if (attachment.edgeIndex < 0 || attachment.edgeIndex >= points.length) throw invalid();
+    const start = points[attachment.edgeIndex];
+    const end = points[(attachment.edgeIndex + 1) % points.length];
+    const length = Math.hypot(end.x - start.x, end.y - start.y);
+    if (attachment.offset < structure.width / 2 || attachment.offset > length - structure.width / 2) throw invalid();
+  }
+}
+
 /** Geometry only: never copies document metadata or the inactive option. */
 export function geometrySnapshot(layout) {
   if (!isObject(layout)
@@ -29,6 +61,7 @@ export function geometrySnapshot(layout) {
     || (layout.dimensions !== undefined && !Array.isArray(layout.dimensions))
     || (layout.backgroundPlan != null && !isObject(layout.backgroundPlan))
     || !Number.isFinite(Number(layout.wallHeight))) throw invalid();
+  validateSpaceGeometry(layout);
   return clone({
     zones: layout.zones,
     items: layout.items,

@@ -7,6 +7,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { preview } from 'vite';
 import { chromium } from 'playwright-core';
 import { migrationScenarios, minimumAssertions } from './mobile-audit-scenarios.mjs';
+import { studioWallTargets } from '../src/studio3d-edit.js';
 
 const root = resolve(import.meta.dirname, '..');
 const STORAGE_KEY = 'room-studio-layout-v2';
@@ -35,7 +36,7 @@ const fixture = { wallHeight: 240, zones: [room('room-a', 0, 0, 400, 300), room(
 const singleRoom = { wallHeight: 240, zones: [room('room', 0, 0, 600, 500)], items: [], structures: [], dimensions: [], backgroundPlan: null };
 const requestedTypes = ['toilet', 'washbasin', 'kitchenSink', 'kitchenIsland', 'laundryTower', 'clothesRackSingle', 'clothesRackDoubleRow', 'clothesRackDoubleTier'];
 const stored = `JSON.parse(localStorage.getItem('${STORAGE_KEY}'))`;
-const ready3d = `document.querySelector('[data-walkthrough]')?.dataset.studioReady === 'true' && document.querySelector('[data-walkthrough]')?.dataset.assetState === 'ready'`;
+const ready3d = `document.querySelector('[data-walkthrough]')?.dataset.studioReady === 'true' && document.querySelector('[data-walkthrough]')?.dataset.assetState === 'ready' && (document.querySelector('[data-walkthrough]')?.dataset.viewMode === 'walk' || Boolean(document.querySelector('.studio3d-shell:not([hidden])')))`;
 const pending = `document.querySelector('.studio3d-shell')?.dataset.pending === 'true'`;
 
 function check(name, pass, actual, expected = true) {
@@ -497,6 +498,9 @@ try {
     await tap(halo); await key('Escape');
     const selectedHalo = await zoneHalo(halo.id);
     check('selected zone retains same usable outside halo', selectedHalo?.id === halo.id, selectedHalo);
+    const haloLayout = await layout();
+    await tap(selectedHalo); await key('Escape');
+    equal('selected outside halo remains a real touch target without changing geometry', await layout(), haloLayout);
   });
 
   await scenario('breakpoint', async () => {
@@ -655,7 +659,8 @@ try {
     await choose('structure', doorId);
     equal('door can be independently selected while wall owns opening', await page.locator('.studio3d-shell').getAttribute('data-selection-id'), doorId);
     await field('width', 150); await apply(); equal('door width alternative persists', (await detail(doorId, 'structures')).width, 150);
-    const option = await page.locator('[data-studio-wall-target] option').evaluateAll(nodes => nodes.find(n => n.textContent.includes('가로 Y 500'))?.value);
+    const boundaryIndex = studioWallTargets(await layout()).findIndex(wall => !wall.wallId && wall.orientation === 'horizontal' && wall.y === 500);
+    const option = await page.locator('[data-studio-wall-target] option').evaluateAll((nodes, index) => nodes.find(n => n.value === String(index))?.value, boundaryIndex);
     assert.notEqual(option, undefined, 'actual horizontal boundary target exists');
     await input('[data-studio-wall-target]', option); await apply();
     const relocated = await detail(doorId, 'structures');
@@ -853,7 +858,7 @@ try {
       const exported = page.waitForEvent('download', { timeout: TIMEOUT }); await click('[data-project-export]');
       const download = await exported; const source = join(artifactDir, `portable-${width}.roomstudio.json`); await download.saveAs(source);
       const portable = JSON.parse(await readFile(source, 'utf8'));
-      check(`${width} portable export contains same document without account metadata`, portable.schemaVersion === 3 && isDeepStrictEqual(portable.layout, before) && !('ownerId' in portable) && !('userId' in portable), { schemaVersion: portable.schemaVersion, keys: Object.keys(portable) });
+      check(`${width} portable export contains same document without account metadata`, portable.schemaVersion === 4 && isDeepStrictEqual(portable.layout, before) && !('ownerId' in portable) && !('userId' in portable), { schemaVersion: portable.schemaVersion, keys: Object.keys(portable) });
       equal(`${width} portable export restores opener focus`, await page.locator('[data-project-open]').evaluate(n => n === document.activeElement), true);
       await click('[data-project-open]');
       const reportDownload = page.waitForEvent('download', { timeout: TIMEOUT }); await click('[data-project-report]');
@@ -933,15 +938,18 @@ async function zoneHalo(id) {
     for (const zone of document.querySelectorAll('.plan-zone')) {
       if (id && zone.dataset.zoneId !== id) continue;
       const hit = zone.querySelector('.zone-hit-target'), rect = zone.querySelector('rect:not(.zone-hit-target)').getBoundingClientRect();
-      for (const [x,y] of [[rect.left - 10, (rect.top + rect.bottom) / 2], [rect.right + 10, (rect.top + rect.bottom) / 2], [(rect.left + rect.right) / 2, rect.top - 10], [(rect.left + rect.right) / 2, rect.bottom + 10]])
-        if (document.elementFromPoint(x,y) === hit) return { x, y, id: zone.dataset.zoneId };
+      for (const ratio of [.5, .25, .75]) {
+        const across = rect.left + rect.width * ratio, down = rect.top + rect.height * ratio;
+        for (const [x,y] of [[rect.left - 10, down], [rect.right + 10, down], [across, rect.top - 10], [across, rect.bottom + 10]])
+          if (document.elementFromPoint(x,y) === hit) return { x, y, id: zone.dataset.zoneId };
+      }
     }
     return null;
   }, id);
 }
 async function inspectContainment(label) {
-  const data = await evaluate(`(() => { const stage = document.querySelector('[data-walkthrough-stage]').getBoundingClientRect(), panel = document.querySelector('.studio3d-shell').getBoundingClientRect(), apply = document.querySelector('[data-studio-apply]').getBoundingClientRect();
-    return { separate: stage.bottom <= panel.top + 1 || stage.right <= panel.left + 1, stage: {width:stage.width,height:stage.height}, applyVisible: apply.top >= 0 && apply.bottom <= innerHeight, overflow: document.documentElement.scrollWidth > innerWidth,
+  const data = await evaluate(`(() => { const stage = document.querySelector('[data-walkthrough-stage]').getBoundingClientRect(), panel = document.querySelector('.studio3d-shell').getBoundingClientRect(), apply = document.querySelector('[data-studio-apply]').getBoundingClientRect(), overlay = document.querySelector('[data-walkthrough]');
+    return { mode: overlay.dataset.viewMode, classes: overlay.className, separate: stage.bottom <= panel.top + 1 || stage.right <= panel.left + 1, stage: {width:stage.width,height:stage.height}, applyVisible: apply.top >= 0 && apply.bottom <= innerHeight, overflow: document.documentElement.scrollWidth > innerWidth,
       scrollBody: document.querySelector('.studio3d-body').scrollHeight >= document.querySelector('.studio3d-body').clientHeight }; })()`);
   check(`${label} scene/panel do not overlap and Apply remains reachable`, data.separate && data.stage.height >= 150 && data.applyVisible && !data.overflow && data.scrollBody, data);
 }
@@ -1026,6 +1034,7 @@ async function toggleOpening(kind, id) {
 }
 async function modalIsolation(selector, baseline, width) {
   const modal = page.locator(selector);
+  const initialView = await modal.getAttribute('data-view-mode');
   check(`${width} ${selector} owns focus and background inert`, await modal.evaluate(n => n.contains(document.activeElement)) && await page.locator('.workspace').evaluate(n => n.inert || n.closest('[inert]') !== null), await evaluate('document.activeElement.outerHTML'));
   await modal.evaluate(n => {
     const controls = [...n.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex]:not([tabindex="-1"])')].filter(el => el.getClientRects().length && !el.closest('[hidden], [inert]'));
@@ -1036,5 +1045,9 @@ async function modalIsolation(selector, baseline, width) {
   // Focus the dialog itself so key dispatch cannot accidentally click a button.
   await modal.evaluate(n => { n.tabIndex = -1; n.focus(); });
   for (const shortcut of ['ArrowRight', 'Shift+ArrowRight', 'Meta+d', 'Meta+c', 'Meta+v', 'Delete', 'Meta+z', 'Control+y']) await key(shortcut);
+  if (initialView) {
+    const finalView = await modal.evaluate(node => ({ mode: node.dataset.viewMode, overview: node.classList.contains('is-overview') }));
+    check(`${width} 3D modal shortcuts preserve overview mode`, finalView.mode === initialView && finalView.overview, finalView);
+  }
   equal(`${width} ${selector} isolates 2D editing keyboard commands`, await layout(), baseline);
 }

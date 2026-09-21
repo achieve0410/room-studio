@@ -18,9 +18,15 @@ import {
   isWalkablePoint,
   pointInZone,
   splitWallSegment,
+  splitWallSegmentLocal,
   spaceIdOf,
   structureSegment,
   structureBounds,
+  segmentEndpoints,
+  segmentFrame,
+  structureAngle,
+  zonePoints,
+  zoneInteriorPoint,
 } from './geometry.js';
 
 const DEFAULT_EYE_HEIGHT_CM = 165;
@@ -539,44 +545,27 @@ function createFloorTexture(zone) {
 }
 
 function buildWallPiece(
-  scene,
-  orientation,
-  start,
-  end,
-  fixed,
-  height,
-  centerHeight,
-  wallMaterial,
-  trimMaterial,
-  thickness = WALL_THICKNESS_M,
-  dollhouseCutaway = false,
+  scene, segment, center, height, centerHeight, wallMaterial, trimMaterial,
+  thickness = WALL_THICKNESS_M, dollhouseCutaway = false,
 ) {
-  const length = Math.max(0, end - start) / 100;
+  const frame = segmentFrame(segment);
+  const length = frame.length / 100;
   if (length <= 0.01 || height <= 0.01) return;
-  const horizontal = orientation === 'horizontal';
-  const geometry = new THREE.BoxGeometry(
-    horizontal ? length : thickness,
-    height,
-    horizontal ? thickness : length,
-  );
-  const wall = new THREE.Mesh(geometry, wallMaterial);
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(length, height, thickness), wallMaterial);
   wall.position.set(
-    horizontal ? (start + end) / 200 : fixed / 100,
+    (frame.start.x + frame.end.x - center.x * 2) / 200,
     centerHeight,
-    horizontal ? fixed / 100 : (start + end) / 200,
+    (frame.start.y + frame.end.y - center.y * 2) / 200,
   );
+  wall.rotation.y = -frame.angle * Math.PI / 180;
   wall.castShadow = true;
   wall.receiveShadow = true;
   wall.userData = { type: 'wall', dollhouseCutaway };
   scene.add(wall);
-
   if (centerHeight === height / 2 && height > 1) {
-    const baseboard = new THREE.Mesh(new THREE.BoxGeometry(
-      horizontal ? length : thickness + 0.035,
-      0.09,
-      horizontal ? thickness + 0.035 : length,
-    ), trimMaterial);
+    const baseboard = new THREE.Mesh(new THREE.BoxGeometry(length, 0.09, thickness + 0.035), trimMaterial);
     baseboard.position.set(wall.position.x, 0.045, wall.position.z);
+    baseboard.rotation.copy(wall.rotation);
     baseboard.receiveShadow = true;
     baseboard.userData = { type: 'wall-trim', dollhouseCutaway };
     scene.add(baseboard);
@@ -585,17 +574,23 @@ function buildWallPiece(
 }
 
 function isPositiveFacingExterior(segment, zones) {
-  const midpoint = segment.orientation === 'horizontal'
-    ? { x: (segment.x1 + segment.x2) / 2, y: segment.y }
-    : { x: segment.x, y: (segment.y1 + segment.y2) / 2 };
-  if (segment.orientation === 'horizontal') {
-    const roomAbove = zones.some((zone) => pointInZone({ x: midpoint.x, y: midpoint.y - 1 }, zone));
-    const roomBelow = zones.some((zone) => pointInZone({ x: midpoint.x, y: midpoint.y + 1 }, zone));
-    return roomAbove && !roomBelow;
+  const [run] = studioWallRuns(segment, zones);
+  return Boolean(run?.negative && !run.positive);
+}
+
+// Three triangulates the canonical outline; normalized UVs keep existing surface repeats.
+function zoneSurfaceGeometry(zone) {
+  if (!zone.points) return new THREE.PlaneGeometry(zone.width / 100, zone.depth / 100);
+  const shape = new THREE.Shape(zonePoints(zone).map(point => new THREE.Vector2(
+    (point.x - zone.x - zone.width / 2) / 100,
+    -(point.y - zone.y - zone.depth / 2) / 100,
+  )));
+  const geometry = new THREE.ShapeGeometry(shape);
+  const position = geometry.attributes.position, uv = geometry.attributes.uv;
+  for (let index = 0; index < position.count; index++) {
+    uv.setXY(index, position.getX(index) * 100 / zone.width + 0.5, position.getY(index) * 100 / zone.depth + 0.5);
   }
-  const roomLeft = zones.some((zone) => pointInZone({ x: midpoint.x - 1, y: midpoint.y }, zone));
-  const roomRight = zones.some((zone) => pointInZone({ x: midpoint.x + 1, y: midpoint.y }, zone));
-  return roomLeft && !roomRight;
+  return geometry;
 }
 
 function buildDoorLeaf(scene, door, center, doorMaterial, frameMaterial) {
@@ -604,7 +599,7 @@ function buildDoorLeaf(scene, door, center, doorMaterial, frameMaterial) {
   const group = new THREE.Group();
   const meshes = [];
   group.position.set((door.x - center.x) / 100, 0, (door.y - center.y) / 100);
-  group.rotation.y = door.orientation === 'vertical' ? -Math.PI / 2 : 0;
+  group.rotation.y = -structureAngle(door) * Math.PI / 180;
   let applyOpening;
   if (door.doorType === 'sliding') {
     const direction = door.slideDirection === 'start' ? -1 : 1;
@@ -700,7 +695,7 @@ function buildWindowSash(scene, windowStructure, center, frameMaterial) {
   const panelWidth = width / 2;
   const group = new THREE.Group();
   group.position.set((windowStructure.x - center.x) / 100, sillHeight, (windowStructure.y - center.y) / 100);
-  group.rotation.y = windowStructure.orientation === 'vertical' ? -Math.PI / 2 : 0;
+  group.rotation.y = -structureAngle(windowStructure) * Math.PI / 180;
   const sashMaterial = material(0xe8ece9, 0.42, 0.34);
   const glassMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xb9dce8,
@@ -774,7 +769,7 @@ function buildWindowSash(scene, windowStructure, center, frameMaterial) {
   return controller;
 }
 
-function buildScene(scene, zones, items, structures, wallHeight, center, assets) {
+export function buildScene(scene, zones, items, structures, wallHeight, center, assets) {
   const wallHeightMeters = Math.max(wallHeight, ...zones.map((zone) => zone.height ?? wallHeight)) / 100;
   const toWorld = (x, y) => ({ x: (x - center.x) / 100, z: (y - center.y) / 100 });
   const wallMaterial = material(0xe8e4db, 0.9);
@@ -792,7 +787,7 @@ function buildScene(scene, zones, items, structures, wallHeight, center, assets)
     const zoneHeightMeters = (zone.height ?? wallHeight) / 100;
     const world = toWorld(zone.x + zone.width / 2, zone.y + zone.depth / 2);
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(zone.width / 100, zone.depth / 100),
+      zoneSurfaceGeometry(zone),
       new THREE.MeshStandardMaterial({ map: zone.floorMaterialId ? null : createFloorTexture(zone), roughness: 0.8, metalness: 0.01 }),
     );
     floor.rotation.x = -Math.PI / 2;
@@ -802,21 +797,35 @@ function buildScene(scene, zones, items, structures, wallHeight, center, assets)
     if (zone.floorMaterialId) assets.surface(floor.material, zone.floorMaterialId, zone.width / 100, zone.depth / 100, zone.name);
     scene.add(floor);
 
-    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(zone.width / 100, zone.depth / 100), ceilingMaterial);
+    const ceilingGeometry = zoneSurfaceGeometry(zone);
+    // Mirror the source Y coordinates for the downward-facing ceiling rotation.
+    if (zone.points) {
+      ceilingGeometry.scale(1, -1, 1);
+      const index = ceilingGeometry.index;
+      for (let i = 0; i < index.count; i += 3) {
+        const first = index.getX(i);
+        index.setX(i, index.getX(i + 2));
+        index.setX(i + 2, first);
+      }
+      ceilingGeometry.computeVertexNormals();
+    }
+    const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(world.x, zoneHeightMeters, world.z);
     ceiling.receiveShadow = true;
     ceiling.userData = { type: 'ceiling', id: zone.id };
     scene.add(ceiling);
 
+    const interior = zoneInteriorPoint(zone);
+    const lightWorld = toWorld(interior.x, interior.y);
     const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.035, 32), lightMaterial);
-    fixture.position.set(world.x, zoneHeightMeters - 0.025, world.z);
+    fixture.position.set(lightWorld.x, zoneHeightMeters - 0.025, lightWorld.z);
     fixture.rotation.x = Math.PI;
     fixture.userData = { type: 'ceiling-fixture', id: zone.id };
     scene.add(fixture);
 
     const light = new THREE.PointLight(0xffdfb0, 2.1, Math.max(zone.width, zone.depth) / 38, 2);
-    light.position.set(world.x, zoneHeightMeters - 0.22, world.z);
+    light.position.set(lightWorld.x, zoneHeightMeters - 0.22, lightWorld.z);
     if (zone.type === '거실') {
       light.castShadow = true;
       light.shadow.mapSize.set(1024, 1024);
@@ -838,89 +847,51 @@ function buildScene(scene, zones, items, structures, wallHeight, center, assets)
     dollhouseCutaway = false,
     owners = null,
   ) => {
-    const horizontal = segment.orientation === 'horizontal';
+    const frame = segmentFrame(segment);
     const wallFaces = Array(6).fill(wallMaterial);
-    for (const [side, face] of [['positive', horizontal ? 4 : 0], ['negative', horizontal ? 5 : 1]]) {
+    const reversedFace = segment.orientation === 'vertical' && frame.normal.x < 0;
+    for (const [side, face] of [['positive', reversedFace ? 5 : 4], ['negative', reversedFace ? 4 : 5]]) {
       const zone = owners?.[side];
       if (zone?.wallMaterialId) {
         wallFaces[face] = material(0xe8e4db, 0.9);
-        assets.surface(wallFaces[face], zone.wallMaterialId,
-          (horizontal ? segment.x2 - segment.x1 : segment.y2 - segment.y1) / 100, heightMeters, zone.name);
+        assets.surface(wallFaces[face], zone.wallMaterialId, frame.length / 100, heightMeters, zone.name);
       }
     }
     const runMaterial = owners ? wallFaces : wallMaterial;
-    const fixed = (horizontal ? segment.y : segment.x) - (horizontal ? center.y : center.x);
-    const axisCenter = horizontal ? center.x : center.y;
-    const layout = splitWallSegment(segment, wallOpenings);
-    layout.spans.forEach((span) => {
-      const start = (horizontal ? span.x1 : span.y1) - axisCenter;
-      const end = (horizontal ? span.x2 : span.y2) - axisCenter;
-      buildWallPiece(
-        scene,
-        segment.orientation,
-        start,
-        end,
-        fixed,
-        heightMeters,
-        heightMeters / 2,
-        runMaterial,
-        trimMaterial,
-        thickness,
-        dollhouseCutaway,
-      );
-    });
+    const layout = splitWallSegmentLocal(segment, wallOpenings);
+    const piece = (span, height, elevation) => buildWallPiece(
+      scene, span, center, height, elevation, runMaterial, trimMaterial, thickness, dollhouseCutaway,
+    );
+    layout.spans.forEach(span => piece(span, heightMeters, heightMeters / 2));
     layout.openings.forEach((opening) => {
-      const openingStart = opening.start - axisCenter;
-      const openingEnd = opening.end - axisCenter;
+      const openingSegment = {
+        orientation: 'diagonal',
+        x1: frame.start.x + frame.tangent.x * opening.start,
+        y1: frame.start.y + frame.tangent.y * opening.start,
+        x2: frame.start.x + frame.tangent.x * opening.end,
+        y2: frame.start.y + frame.tangent.y * opening.end,
+      };
       const openingBottom = opening.doors.length
-        ? Math.min(...opening.doors.map((entry) => entry.type === 'window' ? entry.sillHeight / 100 : 0))
-        : 0;
+        ? Math.min(...opening.doors.map(entry => entry.type === 'window' ? entry.sillHeight / 100 : 0)) : 0;
       const openingTop = Math.min(heightMeters, opening.doors.length
-        ? Math.max(...opening.doors.map((entry) => entry.type === 'window' ? (entry.sillHeight + entry.height) / 100 : entry.height / 100))
+        ? Math.max(...opening.doors.map(entry => entry.type === 'window' ? (entry.sillHeight + entry.height) / 100 : entry.height / 100))
         : DOOR_HEIGHT_M);
-      if (openingBottom > 0) {
-        buildWallPiece(
-          scene,
-          segment.orientation,
-          openingStart,
-          openingEnd,
-          fixed,
-          openingBottom,
-          openingBottom / 2,
-          runMaterial,
-          trimMaterial,
-          thickness,
-          dollhouseCutaway,
-        );
-      }
+      if (openingBottom > 0) piece(openingSegment, openingBottom, openingBottom / 2);
       const lintelHeight = Math.max(0, heightMeters - openingTop);
-      const lintel = buildWallPiece(
-        scene,
-        segment.orientation,
-        openingStart,
-        openingEnd,
-        fixed,
-        lintelHeight,
-        openingTop + lintelHeight / 2,
-        runMaterial,
-        trimMaterial,
-        thickness,
-        dollhouseCutaway,
-      );
-      if (lintel && opening.doors.some(({ type }) => type === 'door')) lintel.userData.doorFramePart = true;
-      const trimDepth = thickness + 0.035;
-      [openingStart, openingEnd].forEach((doorEdge) => {
-        const jamb = new THREE.Mesh(new THREE.BoxGeometry(
-          horizontal ? 0.055 : trimDepth,
-          openingTop - openingBottom,
-          horizontal ? trimDepth : 0.055,
-        ), trimMaterial);
-        jamb.position.set(horizontal ? doorEdge / 100 : fixed / 100, openingBottom + (openingTop - openingBottom) / 2, horizontal ? fixed / 100 : doorEdge / 100);
-        jamb.userData = {
-          type: 'wall-trim',
-          dollhouseCutaway,
-          doorFramePart: opening.doors.some(({ type }) => type === 'door'),
-        };
+      const lintel = piece(openingSegment, lintelHeight, openingTop + lintelHeight / 2);
+      const doorFramePart = opening.doors.some(({ type }) => type === 'door');
+      if (lintel && doorFramePart) lintel.userData.doorFramePart = true;
+      const endpoints = segmentEndpoints(openingSegment);
+      [endpoints.start, endpoints.end].forEach((point) => {
+        // Ownership seams clip the opening interval, but are not physical frame edges.
+        if (opening.doors.length && !opening.doors.some(door => {
+          const along = (point.x - door.x) * frame.tangent.x + (point.y - door.y) * frame.tangent.y;
+          return Math.abs(Math.abs(along) - door.width / 2) < 1e-5;
+        })) return;
+        const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.055, openingTop - openingBottom, thickness + 0.035), trimMaterial);
+        jamb.rotation.y = -frame.angle * Math.PI / 180;
+        jamb.position.set((point.x - center.x) / 100, (openingBottom + openingTop) / 2, (point.y - center.y) / 100);
+        jamb.userData = { type: 'wall-trim', dollhouseCutaway, doorFramePart };
         scene.add(jamb);
       });
     });
@@ -999,6 +970,7 @@ function findStartView(zones, items) {
     const candidates = [
       [0.78, 0.2], [0.22, 0.2], [0.78, 0.78], [0.22, 0.78], [0.5, 0.5],
     ].map(([x, y]) => ({ x: zone.x + zone.width * x, y: zone.y + zone.depth * y }));
+    candidates.push(zoneInteriorPoint(zone));
     const available = candidates.filter((point) =>
       isWalkablePoint(point, zones, CAMERA_RADIUS_CM)
       && !isPointBlockedByFurniture(point, items, CAMERA_RADIUS_CM, DEFAULT_EYE_HEIGHT_CM),
@@ -1012,12 +984,12 @@ function findStartView(zones, items) {
     const target = roomItems.length ? {
       x: roomItems.reduce((sum, item) => sum + item.x, 0) / roomItems.length,
       y: roomItems.reduce((sum, item) => sum + item.y, 0) / roomItems.length,
-    } : { x: zone.x + zone.width / 2, y: zone.y + zone.depth / 2 };
+    } : zoneInteriorPoint(zone);
     return { point, target };
   }
 
   const bounds = getLayoutBounds(zones);
-  const point = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.depth / 2 };
+  const point = preferred ? zoneInteriorPoint(preferred) : { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.depth / 2 };
   return { point, target: point };
 }
 
@@ -1025,7 +997,7 @@ function miniMapMarkup(zones, layout) {
   return `
     <div class="walkthrough-map-title"><span>LIVE PLAN</span><b><i>▲</i> 보는 방향</b></div>
     <svg viewBox="${layout.left - 20} ${layout.top - 20} ${layout.width + 40} ${layout.depth + 40}" aria-label="현재 위치 미니맵">
-      ${zones.map((zone) => `<rect x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}"></rect>`).join('')}
+      ${zones.map((zone) => `<path d="M ${zonePoints(zone).map(point => `${point.x} ${point.y}`).join(' L ')} Z" fill="#d8d0bf" stroke="#756e60" stroke-width="3"></path>`).join('')}
       <text class="walkthrough-map-north" x="${layout.left + layout.width / 2}" y="${layout.top + 6}">N</text>
       <g data-map-player>
         <path class="walkthrough-view-cone" d="M 0 -8 L -42 -76 Q 0 -92 42 -76 Z"></path>
@@ -1041,10 +1013,11 @@ function focusTargetForSelection(focus, zones, items, structures, center, wallHe
   if (focus.kind === 'zone') {
     const zone = zones.find(({ id }) => id === focus.id);
     if (!zone) return null;
+    const point = zoneInteriorPoint(zone);
     return {
-      x: (zone.x + zone.width / 2 - center.x) / 100,
+      x: (point.x - center.x) / 100,
       y: Math.min(1.2, (zone.height ?? wallHeight) / 200),
-      z: (zone.y + zone.depth / 2 - center.y) / 100,
+      z: (point.y - center.y) / 100,
       name: zone.name,
     };
   }
@@ -1081,6 +1054,7 @@ export function openWalkthrough({
   onDoorChange = null,
   onStructureChange = onDoorChange,
   onClose = null,
+  onSnapshot = null,
   getLayout = null,
   onEdit = null,
   onUndo = null,
@@ -1621,6 +1595,7 @@ export function openWalkthrough({
   const refreshLayout = (next, force = false) => {
     if (destroyed || !next) return;
     const nextKey = geometryKey({ zones: next.zones, items: next.items, structures: next.structures ?? [], wallHeight: next.wallHeight ?? wallHeight });
+    const outlineChanged = JSON.stringify(zones.map(zonePoints)) !== JSON.stringify(next.zones.map(zonePoints));
     zones = structuredClone(next.zones);
     items = structuredClone(next.items);
     wallHeight = next.wallHeight ?? wallHeight;
@@ -1675,6 +1650,16 @@ export function openWalkthrough({
     let frameParts = 0;
     worldRoot.traverse(object => { if (object.userData.doorFramePart && hasVisibleMaterial(object.material)) frameParts++; });
     overlay.dataset.visibleDoorFramePartCount = String(frameParts);
+    if (outlineChanged) {
+      const pose = viewMode === 'walk' ? camera.position : walkPose.position;
+      if (!isWalkablePoint(cameraPoint(pose), zones, CAMERA_RADIUS_CM)) {
+        const start = findStartView(zones, items);
+        pose.x = (start.point.x - center.x) / 100;
+        pose.z = (start.point.y - center.y) / 100;
+        walkPose.position.copy(pose);
+      }
+      if (viewMode !== 'walk') setOverviewCamera(viewMode);
+    }
     updateSelection();
     studioPanel?.sync();
     overlay.dataset.sceneRevision = String(Number(overlay.dataset.sceneRevision ?? 0) + 1);
@@ -1720,11 +1705,14 @@ export function openWalkthrough({
         if (presentationWalls && hit.point.y > 0.65 && !object.userData.doorFramePart) continue;
         const runs = object.userData.wallRuns ?? [];
         const run = runs.find(run => {
-          const axis = run.segment.orientation === 'horizontal' ? hit.point.x * 100 + center.x : hit.point.z * 100 + center.y;
-          return axis >= (run.segment.x1 ?? run.segment.y1) - 1 && axis <= (run.segment.x2 ?? run.segment.y2) + 1;
+          const frame = segmentFrame(run.segment);
+          const along = (hit.point.x * 100 + center.x - frame.start.x) * frame.tangent.x
+            + (hit.point.z * 100 + center.y - frame.start.y) * frame.tangent.y;
+          return along >= -1 && along <= frame.length + 1;
         });
         if (run) {
-          const positive = run.segment.orientation === 'horizontal' ? hit.face.materialIndex === 4 : hit.face.materialIndex === 0;
+          const reversedFace = run.segment.orientation === 'vertical' && segmentFrame(run.segment).normal.x < 0;
+          const positive = hit.face.materialIndex === (reversedFace ? 5 : 4);
           const zone = (positive ? run.positive : run.negative) ?? run.positive ?? run.negative;
           if (zone) return { kind: 'zone', id: zone.id, surface: 'wall' };
         }
@@ -2010,6 +1998,27 @@ export function openWalkthrough({
 
   const cleanup = () => {
     if (destroyed) return;
+    let snapshotError;
+    try {
+      if (onSnapshot && !editSession?.pending && !assetState.pending && !assetState.errors.length) {
+        // Complete opening animation at its committed value before taking the scene-only image.
+        openingControllers.forEach(controller => { controller.currentOpening = controller.targetOpening; controller.tick(0); });
+        selectionRing.visible = false;
+        renderer.render(scene, camera);
+        const image = document.createElement('canvas');
+        const scale = Math.min(1, 720 / Math.max(renderer.domElement.width, renderer.domElement.height));
+        image.width = Math.max(1, Math.round(renderer.domElement.width * scale));
+        image.height = Math.max(1, Math.round(renderer.domElement.height * scale));
+        image.getContext('2d').drawImage(renderer.domElement, 0, 0, image.width, image.height);
+        onSnapshot({
+          layout: structuredClone(getLayout?.() ?? editSession?.layout ?? { zones, items, structures, wallHeight }),
+          imageDataUrl: image.toDataURL('image/jpeg', 0.82),
+        });
+      }
+    } catch (error) {
+      // Consumer/canvas errors must not leak a WebGL context or leave the editor inert.
+      snapshotError = error;
+    }
     destroyed = true;
     cancelAnimationFrame(animationFrame);
     clearTimeout(toastTimer);
@@ -2052,6 +2061,7 @@ export function openWalkthrough({
     }
     if (onClose) onClose();
     else previousFocus?.focus({ preventScroll: true });
+    if (snapshotError) throw snapshotError;
   };
   activeCleanup = cleanup;
   cleanup.refresh = (next = getLayout?.()) => {

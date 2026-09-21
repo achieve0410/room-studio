@@ -129,7 +129,7 @@ test('manual cloud saves persist an owned project and an immutable version snaps
       p_project_id: 'project-1',
       p_name: '우리 집',
       p_layout_json: { zones: [], items: [], structures: [], dimensions: [], backgroundPlan: null, wallHeight: 250 },
-    p_schema_version: 3,
+      p_schema_version: 4,
       p_expected_revision: 3,
       p_create_version: true,
     },
@@ -226,18 +226,18 @@ test('cloud saves and loads the full v3 contract while preserving owner and revi
     async rpc(name, params) {
       assert.equal(name, 'save_project');
       assert.equal(params.p_expected_revision, 4);
-      assert.equal(params.p_schema_version, 3);
+      assert.equal(params.p_schema_version, 4);
       row = { id: params.p_project_id, schema_version: params.p_schema_version, layout_json: params.p_layout_json };
       return { data: row, error: null };
     },
   } });
   await store.saveProject({ id: 'project', layout, expectedRevision: 4, expectedUserId: 'owner' });
   assert.deepEqual((await store.loadProject('project')).layout_json, layout);
-  for (const schema of [1, 2, 3]) {
+  for (const schema of [1, 2, 3, 4]) {
     row.schema_version = schema;
     assert.deepEqual((await store.loadProject('project')).layout_json, layout);
   }
-  for (const schema of [undefined, null, 0, 4, '3']) {
+  for (const schema of [undefined, null, 0, 5, '3']) {
     row.schema_version = schema;
     await assert.rejects(store.loadProject('project'), (error) => error.code === 'UNSUPPORTED_SCHEMA');
   }

@@ -2,6 +2,7 @@ import {
   getExteriorWallSegments, getInteriorWallSegments, doorsForAutomaticWallSegment,
   splitWallSegment, structureSegment, structureBounds, getDoorLeafSegments,
   itemBounds, zoneBounds, spaceIdOf, calculateUnionArea, pointInZone, meters,
+  zonePoints, zoneInteriorPoint, segmentEndpoints, segmentFrame, structureAngle,
 } from './geometry.js';
 import { formatMeasurement } from './layout-tools.js';
 
@@ -11,9 +12,10 @@ const color = (value, fallback) => /^#[0-9a-f]{6}$/i.test(String(value)) ? value
 let sequence = 0;
 
 const line = (x1, y1, x2, y2, attributes = '') => `<line ${attributes} x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
-const wallLine = (segment) => segment.orientation === 'horizontal'
-  ? line(segment.x1, segment.y, segment.x2, segment.y)
-  : line(segment.x, segment.y1, segment.x, segment.y2);
+const wallLine = (segment) => {
+  const { start, end } = segmentEndpoints(segment);
+  return line(start.x, start.y, end.x, end.y);
+};
 
 // Static editor symbols: leaf positions come from the same geometry as 3D/collision.
 function openingSymbol(opening) {
@@ -46,7 +48,7 @@ function openingSymbol(opening) {
     }
   }
   const labelY = isWindow ? -15 : sliding ? 22 : Number(opening.openSide) === 1 ? -18 : 18;
-  return `<g class="plan-${isWindow ? 'window' : 'door'}" data-structure-id="${escapeHtml(opening.id)}" transform="translate(${opening.x} ${opening.y}) rotate(${opening.orientation === 'vertical' ? 90 : 0})"><title>${escapeHtml(opening.name)}</title>${symbol}<text x="0" y="${labelY}" font-size="10" text-anchor="middle">${isWindow ? '창' : sliding ? '미닫이' : '여닫이'}</text></g>`;
+  return `<g class="plan-${isWindow ? 'window' : 'door'}" data-structure-id="${escapeHtml(opening.id)}" transform="translate(${opening.x} ${opening.y}) rotate(${structureAngle(opening)})"><title>${escapeHtml(opening.name)}</title>${symbol}<text x="0" y="${labelY}" font-size="10" text-anchor="middle">${isWindow ? '창' : sliding ? '미닫이' : '여닫이'}</text></g>`;
 }
 
 /** Browser-free static plan; accepts the editor's normalized, centimeter-based layout. */
@@ -74,28 +76,47 @@ export function renderPlanSvg(layout, { label = 'Room Studio 2D 배치 도면', 
     spaces.get(key).push(zone);
   }
   const roomLabels = [];
+  const edgeDimensions = [];
   const rooms = zones.map((zone) => {
     bounds.push(zoneBounds(zone));
+    const points = zonePoints(zone);
     const parts = spaces.get(spaceIdOf(zone));
-    const largest = parts.reduce((a, b) => b.width * b.depth > a.width * a.depth ? b : a);
+    const largest = parts.reduce((a, b) => calculateUnionArea([b]) > calculateUnionArea([a]) ? b : a);
     if (largest === zone) {
       const nearby = items.filter((item) => pointInZone(item, zone));
-      const candidates = [
-        { x: zone.x + 12, y: zone.y + 22, anchor: 'start' },
-        { x: zone.x + zone.width - 12, y: zone.y + 22, anchor: 'end' },
-        { x: zone.x + 12, y: zone.y + zone.depth - 28, anchor: 'start' },
-        { x: zone.x + zone.width - 12, y: zone.y + zone.depth - 28, anchor: 'end' },
-      ];
+      const candidates = zone.points
+        ? [{ ...zoneInteriorPoint(zone), anchor: 'middle' }]
+        : [
+          { x: zone.x + 12, y: zone.y + 22, anchor: 'start' },
+          { x: zone.x + zone.width - 12, y: zone.y + 22, anchor: 'end' },
+          { x: zone.x + 12, y: zone.y + zone.depth - 28, anchor: 'start' },
+          { x: zone.x + zone.width - 12, y: zone.y + zone.depth - 28, anchor: 'end' },
+        ];
       const position = candidates.reduce((best, candidate) => {
         const clearance = Math.min(...nearby.map((item) => Math.hypot(candidate.x - item.x, candidate.y - item.y)), 10000);
         return clearance > best.clearance ? { ...candidate, clearance } : best;
       }, { ...candidates[0], clearance: -1 });
       const size = parts.length > 1
         ? `${parts.length}조각 · ${(calculateUnionArea(parts) / 10000).toFixed(1)}m² · H ${zone.height ?? 240}cm`
-        : `${meters(zone.width)} × ${meters(zone.depth)} · H ${zone.height ?? 240}cm`;
+        : zone.points
+          ? `${(calculateUnionArea([zone]) / 10000).toFixed(1)}m² · ${points.length}개 벽 · H ${zone.height ?? 240}cm`
+          : `${meters(zone.width)} × ${meters(zone.depth)} · H ${zone.height ?? 240}cm`;
       roomLabels.push(text(zone.name, position.x, position.y, 16, position.anchor), text(size, position.x, position.y + 16, 10, position.anchor));
     }
-    return `<rect data-zone-id="${escapeHtml(zone.id)}" x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}" fill="${color(zone.color, '#d9d2c2')}" />`;
+    const signedArea = points.reduce((sum, point, index) => {
+      const next = points[(index + 1) % points.length];
+      return sum + point.x * next.y - next.x * point.y;
+    }, 0);
+    points.forEach((start, index) => {
+      const end = points[(index + 1) % points.length];
+      const dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy);
+      const direction = signedArea >= 0 ? 1 : -1;
+      edgeDimensions.push(text(formatMeasurement(length), (start.x + end.x) / 2 + direction * dy / length * 14,
+        (start.y + end.y) / 2 - direction * dx / length * 14 + 4, 10, 'middle', 'zone-edge-dimension'));
+    });
+    if (!zone.points) return `<rect data-zone-id="${escapeHtml(zone.id)}" x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.depth}" fill="${color(zone.color, '#d9d2c2')}" />`;
+    const path = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+    return `<path data-zone-id="${escapeHtml(zone.id)}" d="${path} Z" fill="${color(zone.color, '#d9d2c2')}" fill-rule="evenodd" />`;
   }).join('');
   const walls = structures.filter(({ type }) => type === 'wall');
   const openings = structures.filter(({ type }) => type === 'door' || type === 'window');
@@ -103,8 +124,11 @@ export function renderPlanSvg(layout, { label = 'Room Studio 2D 배치 도면', 
     .flatMap((segment) => splitWallSegment(segment, doorsForAutomaticWallSegment(segment, openings, walls)).spans).map(wallLine).join('');
   const explicitWalls = walls.map((wall) => {
     bounds.push(structureBounds(wall));
-    const spans = splitWallSegment(structureSegment(wall), openings.filter(({ wallId }) => wallId === wall.id)).spans;
-    return `<g data-structure-id="${escapeHtml(wall.id)}"><title>${escapeHtml(wall.name)}</title>${spans.map(wallLine).join('')}${text(`${wall.name ?? '벽'} · ${Math.round(wall.length)}cm`, wall.x, wall.y - 10, 12, 'middle')}</g>`;
+    const segment = structureSegment(wall);
+    const frame = segmentFrame(segment);
+    const spans = splitWallSegment(segment, openings.filter(({ wallId }) => wallId === wall.id)).spans;
+    const labelPoint = { x: (frame.start.x + frame.end.x) / 2 - frame.normal.x * 10, y: (frame.start.y + frame.end.y) / 2 - frame.normal.y * 10 };
+    return `<g data-structure-id="${escapeHtml(wall.id)}"><title>${escapeHtml(wall.name)}</title>${spans.map(wallLine).join('')}${text(`${wall.name ?? '벽'} · ${Math.round(frame.length)}cm`, labelPoint.x, labelPoint.y, 12, 'middle')}</g>`;
   }).join('');
   const symbols = openings.map((opening) => {
     // Full hinge-centered sweep envelope includes arc extrema at any saved angle.
@@ -131,6 +155,6 @@ export function renderPlanSvg(layout, { label = 'Room Studio 2D 배치 도면', 
   const bottom = Math.max(...bounds.map((b) => b.bottom)) + 40;
   const viewBox = bounds.length ? `${left} ${top} ${right - left} ${bottom - top}` : '0 0 800 500';
   return `<svg id="${id}" role="img" aria-label="${escapeHtml(label)}" viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg"><style>
-    #${id}{background:#faf8f2;font-family:system-ui,sans-serif}#${id} text{fill:#353734;stroke:none}#${id} .structural-walls{fill:none;stroke:#363732;stroke-width:2}#${id} .plan-item rect,#${id} .plan-item ellipse{stroke:#424642;stroke-width:2}#${id} .door-panel,#${id} .door-swing,#${id} .door-direction{fill:none;stroke:#956240;stroke-width:2}#${id} .door-swing{stroke-dasharray:5 3}#${id} .window-frame{fill:#b7ddea;fill-opacity:.58;stroke:#477d92;stroke-width:2}#${id} .window-panel{stroke:#477d92;stroke-width:2}#${id} .plan-dimension line{stroke:#725a44;stroke-width:1.5}
-  </style>${background}${rooms}<g class="structural-walls">${automaticWalls}${explicitWalls}</g>${roomLabels.join('')}${furniture}${symbols}${measurements}</svg>`;
+    #${id}{background:#f7f8f6;font-family:'Avenir Next',Pretendard,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}#${id} text{fill:#18201d;stroke:none}#${id} .structural-walls{fill:none;stroke:#18201d;stroke-width:2}#${id} .plan-item rect,#${id} .plan-item ellipse{stroke:#56615d;stroke-width:2}#${id} .door-panel,#${id} .door-swing,#${id} .door-direction{fill:none;stroke:#c84f32;stroke-width:2}#${id} .door-swing{stroke-dasharray:5 3}#${id} .window-frame{fill:#b7ddea;fill-opacity:.58;stroke:#477d92;stroke-width:2}#${id} .window-panel{stroke:#477d92;stroke-width:2}#${id} .plan-dimension line{stroke:#5f6965;stroke-width:1.5}#${id} .zone-edge-dimension{font-variant-numeric:tabular-nums;font-weight:650;paint-order:stroke;stroke:#f7f8f6;stroke-width:4px;stroke-linejoin:round}
+  </style>${background}${rooms}${edgeDimensions.join('')}<g class="structural-walls">${automaticWalls}${explicitWalls}</g>${roomLabels.join('')}${furniture}${symbols}${measurements}</svg>`;
 }

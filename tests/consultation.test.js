@@ -11,7 +11,7 @@ const drawing = () => ({
 });
 
 test('legacy layouts remain single drawings and editable metadata defaults do not create B', () => {
-  assert.equal(CURRENT_SCHEMA_VERSION, 3);
+  assert.equal(CURRENT_SCHEMA_VERSION, 4);
   assert.equal(Object.hasOwn(preparePersistedLayout(drawing()), 'consultation'), false);
   const notes = normalizeConsultation();
   assert.deepEqual(notes, {
