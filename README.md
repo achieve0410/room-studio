@@ -18,15 +18,17 @@
 </p>
 <p align="center"><sub>The public demo stores drawings only in this browser and does not enable login.</sub></p>
 
-Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines calibrated floor-plan tracing, orthogonal room shapes, furniture, walls, openings, exact dimensions, height checks, and first-person or overhead WebGL previews without requiring a desktop CAD application.
+Room Studio is a mobile-friendly, browser-based 2D/3D room planner. It combines calibrated floor-plan tracing, directly drawn polygonal rooms, furniture, walls, openings, exact dimensions, height checks, and first-person or overhead WebGL previews without requiring a desktop CAD application.
 
 ### Arrange a room
 
 1. Enter the room's width and depth in centimeters, then choose **이 크기로 시작**.
-2. Define rooms, living areas, and bathrooms in 2D. Move, resize, and combine space parts to establish the overall shape.
+2. Define rooms, living areas, and bathrooms in 2D. Choose **직접 그리기** to tap corners or drag straight walls, then close the outline. L-shaped, U-shaped, stepped and angled spaces do not require rectangular parts.
 3. Open 3D editing to place furniture and doors, adjust their position, rotation, and size, then apply or cancel the preview. Choose **걸어보기** to walk through the result.
 
 The 2D workspace defines spaces; furniture and opening symbols are read-only context. Furniture, doors, windows, and manual walls are edited in 3D. Client notes, A/B comparison and proposals are under **배치 비교 · 상담 · 제안서**. Use **파일** to move work between browsers; existing local work reopens automatically.
+
+Select a space and choose **형태** to drag its corners or walls. Tap a wall dimension to preview a new length; the filled **고정** marker identifies the stationary endpoint. Apply commits one undoable edit. **화면 이동** pans over occupied areas, and **전체 보기** explicitly fits the drawing without moving the view after each edit.
 
 ### Regional apartment references
 
@@ -51,7 +53,7 @@ Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). 
 ## Highlights
 
 - Record the client brief, compare independent A/B layouts, and export a branded recommendation document without requiring cloud login.
-- Compose L-shaped and other orthogonal spaces from multiple rectangular parts.
+- Draw concave and angled spaces directly, edit vertices and wall lengths, or retain existing compound rectangular spaces.
 - Import a PNG or JPG floor plan, calibrate it from two known points, and control its opacity or movement lock.
 - Add persistent distance dimensions and enter exact wall lengths in centimeters.
 - Move, resize, align, and combine spaces in 2D; place and transform furniture in 3D.
@@ -64,14 +66,16 @@ Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). 
 
 ## Client consultation workflow
 
-1. Open a sample or import a drawing, expand **배치 비교 · 상담 · 제안서**, then choose **상담 정보** to enter the project, business, client, and requirements.
+1. Open a sample or import a drawing, expand **배치 비교 · 상담 · 제안서**, then choose **상담 기록** to enter the project, business, client, and requirements.
 2. Edit A, choose **B안 만들기**, and switch to B to explore a different arrangement. Recommendations and next steps stay with each option.
-3. Use **비교** for side-by-side desktop or stacked mobile plans. Use 3D's lowered-wall overview to explain furniture placement; first-person mode retains full-height walls and collisions.
-4. Choose **제안서** for a self-contained HTML report with both options, measurements, opening symbols, and named warnings.
+3. Use **A/B 비교** for side-by-side desktop or stacked mobile plans. Use 3D's lowered-wall overview to explain furniture placement; first-person mode retains full-height walls and collisions.
+4. Choose **고객 제안서** for a self-contained HTML report with both options, measurements, opening symbols, named warnings and current 3D views.
+
+Closing a fully applied 3D view captures that option for the report. Editing its geometry invalidates the capture; reopening 3D refreshes it. These images stay in memory, not in portable files, and are omitted after a reload until each option is viewed again.
 
 Project names and consultation notes survive reload and portable export/import. A/B switching clears the active drawing's undo history so undo cannot modify the other option. Replacing a draft preserves one local recovery copy. Storage failures expose export/retry actions; cloud conflicts allow a separate copy or a protected remote reload.
 
-Portable schema 3 reads older schemas 1 and 2. Both options and their background images share a 1 MiB limit. Floor coverage is a clipped bounding-footprint estimate, not a circulation or installation clearance check.
+Portable schema 4 reads older schemas 1, 2 and 3. Both options and their background images share a 1 MiB limit. Polygon points and attached opening edges survive export/import. Optional cloud installations need `20260921000000_polygon_space_schema.sql` before saving schema 4. Floor coverage is a clipped bounding-footprint estimate, not a circulation or installation clearance check.
 
 ## Requirements
 
