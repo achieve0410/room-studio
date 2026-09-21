@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-09-15
+- Last refreshed: 2026-09-21
 - Primary product surfaces: 2D 공간 형태·치수 편집기와 3D 가구·문·창·벽 상세 편집기, 3D 1인칭·돌하우스·상공 보기
 - Evidence reviewed: `src/main.js`, `src/layout-tools.js`, `src/styles.css`, `src/walkthrough3d.js`, `scripts/mobile-browser-audit.mjs`, 390×844·1440×1000 렌더링, RoomSketcher·Planner 5D·Canva·Figma FigJam·SketchUp LayOut의 공식 조작 문서
 
@@ -28,8 +28,9 @@
 
 ## Space and detail editing boundary
 - This section supersedes earlier 2D furniture interaction descriptions below. Existing drawings retain all furniture, structures, finishes, dimensions, consultation options, and schema compatibility.
-- 3D selection actions reuse the existing paper·ink·accent tokens, 4·8·12·16px spacing, 44px minimum touch targets, and 16px mobile input text. Selection, placement preview, pending changes, apply, cancel, undo, and redo must remain distinguishable.
-- The 3D catalog and inspector share one bounded scrolling body. On portrait phones they form a bottom panel; on short landscape screens they use a supporting side panel. The scene occupies the remaining viewport, never the area behind an expanded panel. Current selection and apply/cancel remain reachable without scrolling a long catalog.
+- 3D selection actions reuse the shared workspace tokens, 4·8·12·16·24px spacing, 44px minimum touch targets, and 16px mobile input text. Selection, placement preview, pending changes, apply, cancel, undo, and redo must remain distinguishable.
+- The 3D panel has one scroll-owning content body and a non-scrolling selection/action footer. Furniture opens catalog-first: tabs, search, and real asset cards precede the accessible target-list alternative, explanatory copy, palettes, and precision fields. On portrait phones it is a compact bottom panel; on short landscape screens it is a supporting side panel. The scene occupies the remaining viewport, never the area behind the panel, and Apply/Cancel never scroll away with the catalog.
+- The first mobile catalog row must show complete cards, including names and dimensions. Compact panel headers keep the library title without a redundant eyebrow, and the body uses 4px gaps. Mobile cards keep a 56px model preview beside the name and dimensions rather than stacking all three vertically.
 - Furniture placement previews in the scene before confirmation. Moving, rotating, resizing, deleting, and changing materials have touch buttons or numeric alternatives; users need not grab a small 3D handle. Door and window placement snaps to an actual wall and exposes width, height, opening direction, and open/closed controls.
 - Camera movement and object editing remain separate gestures. A second contact or pointer cancellation rolls back an unfinished object drag before camera navigation starts. No edit depends on hover, a keyboard modifier, or a long press.
 - 2D edit affordances and keyboard commands target spaces, not rendered furniture or openings. Returning from 3D keeps the same shared document and history; no data migration or duplicate drawing is introduced.
@@ -61,12 +62,12 @@
 - Recovery before replacement: 저장 실패는 계속 보이는 상태와 파일 내보내기·다시 저장 경로로 알린다. 충돌 해결은 현재 작업의 복사본 보존과 원격 도면 다시 열기를 명시적으로 구분한다.
 
 ## Visual language
-- Color: 기존 종이색 배경과 먹색 텍스트를 유지한다. 글자 대비를 위해 주황 강조색은 `--accent: #ad4b32`, 보조 글자는 `--muted: #6b6c63`을 사용한다.
-- Typography: 기존 Pretendard/시스템 글꼴과 Georgia 제목 유지
+- Color: 편집기 크롬은 차가운 중성 작업면을 사용한다. `--canvas: #dfe5e6`, `--surface: #f7f8f6`, `--surface-raised: #ffffff`, `--ink: #18201d`, `--muted: #5f6965`, `--line: #cbd2cf`, `--accent: #c84f32`가 공통 의미 토큰이다. 3D 콘텐츠 자체의 재질색은 UI 팔레트로 덮지 않는다.
+- Typography: 제목·본문·조작 모두 `Avenir Next`, `Pretendard`, Apple 시스템 산세리프를 사용한다. 편집기 제목은 세리프 장식을 사용하지 않고 무게와 크기로 계층을 만든다. 치수와 좌표는 tabular figures를 사용한다.
 - Consultation type scale: `--text-body: 14px`, `--text-control: 13px`, `--text-caption: 12px`, `--text-title: 24px`. 모바일 텍스트 입력은 16px로 표시해 브라우저의 입력 확대를 피한다. 치수·좌표는 tabular figures를 사용한다.
-- Consultation tokens: `--muted-readable: #62635b`, `--error: #a34836`; 배경 덮개는 `rgba(29,30,27,.48)`. 간격은 4·8·12·16·24px, 조작 목표는 44px, 입력 모서리는 4px, 패널 모서리는 8px이다. 상담 폼 최대 폭은 720px, 비교 창은 1200px, 비교 도면 높이는 320px이다.
+- Workspace tokens: `--muted-readable: #56615d`, `--error: #a33f32`, `--success: #46705a`, `--canvas: #dfe5e6`, `--surface: #f7f8f6`, `--surface-raised: #fff`; 배경 덮개는 `rgba(14,20,18,.58)`. 간격은 4·8·12·16·24px, 조작 목표는 44px, 입력 모서리는 8px, 패널 모서리는 12px이다. `--shadow-panel`은 떠 있는 패널에만 사용한다. 상담 폼 최대 폭은 720px, 비교 창은 1200px, 비교 도면 높이는 320px이다.
 - Spacing/layout rhythm: 4·8·12·16px 기반, 모바일 터치 목표 최소 44px
-- Shape/radius/elevation: 얕은 테두리와 낮은 모서리 반경, 패널에만 제한된 그림자
+- Shape/radius/elevation: 8px 조작 모서리와 12px 패널 모서리, 선명한 1px 경계, 패널에만 제한된 그림자를 사용한다. 유리 효과·장식 그라디언트는 쓰지 않는다.
 - Motion: 150~220ms의 짧은 패널·상태 전환
 - Imagery/iconography: 텍스트와 단순 기호 중심
 
@@ -77,8 +78,11 @@
 - Token/component ownership: `src/styles.css`의 기존 CSS 변수와 클래스 사용
 - Consultation primitives: 프로젝트 제목과 상담 정보 버튼, A/B 선택 버튼 묶음, 비교 보기, 업체·고객·요구사항 폼, 배치안별 추천·수정 메모, 저장 복구 안내. 버튼은 기본·선택·키보드 초점·비활성 상태를 구분하고 폼은 취소 시 원본을 유지한다.
 - Simple workspace primitives: 방 크기 시작 폼, 보조 패널 탭, 가구 검색, 가구 카드, 선택 조작 막대, 크기 입력 disclosure, 상담·정밀 기능 disclosure. 기존 버튼·입력·초점·비활성 토큰을 재사용한다. 가구 검색은 이름으로 즉시 필터링하고 결과 없음과 검색 지우기를 제공한다.
-- Simple workspace tokens: `--workspace-rail: 264px`, `--workspace-header: 64px`, `--workspace-mobile-nav: 64px`, `--text-section: 18px`, `--workspace-canvas-min: 200px`. 간격은 기존 4·8·12·16·24px, 색상은 paper·ink·accent·line, 터치 목표는 44px을 유지한다.
-- Simple containment: 간편 데스크톱의 도면은 남은 화면 높이를 차지하고 보조 패널만 독립 스크롤한다. 모바일은 도면 위 제어를 한 줄로 줄이고 선택 막대가 도면을 가리지 않도록 흐름에 둔다. 짧은 화면에서는 중앙 작업 영역이 스크롤하며 모달만 화면 전체를 막는다.
+- 3D studio primitives: `studio3d-panel-head`는 패널 이름과 undo/redo, `studio3d-tabs`는 작업 종류, `studio3d-catalog`는 이미지·이름·치수 카드, `studio3d-selection`은 현재 선택과 pending 상태, `studio3d-actions`는 회전·Apply·Cancel을 담당한다. 대상 목록은 `studio3d-target-alternative`, 좌표·높이·벽 부착·덜 쓰는 재질/교체 설정은 `studio3d-precision` disclosure 안에 둔다. disclosure를 열어도 카탈로그 탭과 검색 상태는 유지한다.
+- 3D studio states: 기본 catalog, asset loading/error, selected, locked, pending preview, applied, empty search를 텍스트와 모양으로 구분한다. pending이면 footer에 상태 점과 "미적용 변경"을 표시하고 Apply만 강조한다. Cancel은 원본으로 복구하며 Apply 한 번은 history 한 항목으로 남는다.
+- 3D 선택 탭과 재질은 ink 배경과 반전된 글자로 표시한다. 좌표 입력은 최대 소수 두 자리로 읽기 쉽게 표시하되 저장된 기하 정밀도는 바꾸지 않는다. 짧은 가로 화면의 가구 카드는 사진 위·이름과 치수 아래 구성을 유지해 단위가 숫자에서 떨어지지 않는다.
+- Simple workspace tokens: `--workspace-rail: 264px`, `--workspace-header: 64px`, `--workspace-mobile-nav: 64px`, `--text-section: 18px`, `--workspace-canvas-min: 200px`, `--studio-panel-width: 336px`, `--studio-panel-portrait: min(40dvh, 340px)`. 간격은 4·8·12·16·24px, 색상은 surface·ink·accent·line, 터치 목표는 44px을 유지한다.
+- Simple containment: 간편 데스크톱의 도면은 남은 화면 높이를 차지하고 보조 패널만 독립 스크롤한다. 모바일은 빈 안내와 선택 막대가 같은 `--simple-selection-slot` 높이를 점유해 선택 전후 캔버스 투영이 움직이지 않으며, 크기 disclosure를 명시적으로 열 때만 늘어난다. 선택 막대는 도면을 가리지 않도록 흐름에 둔다. 짧은 화면에서는 중앙 작업 영역이 스크롤하며 모달만 화면 전체를 막는다.
 - Workspace containment: 데스크톱은 도면을 중심으로 라이브러리와 상세 패널을 배치하며 각 보조 패널이 자신의 스크롤을 소유한다. 모바일은 도면 문서와 열린 패널을 구분하고, 모달이 열리면 배경을 inert로 만든다. 비교 보기는 넓은 화면에서 두 열, 좁은 화면에서 한 열이다.
 - Reference patterns: [supporting-pane](https://github.com/changeroa/StyleGallery/blob/main/patterns/split-sidebar/supporting-pane.md)의 주 작업·보조 패널 분리와 기존 모달의 초점 복귀 규칙을 사용한다. 새로운 장식적 애니메이션이나 UI 의존성을 추가하지 않는다.
 - Interaction reference: [beui drawer](https://beui.dev/r/drawer/raw)의 배경·패널 분리와 Escape·스크롤 경계를 참고하되 기존 바닐라 모달의 키보드 초점 순환을 유지한다. 폼 닫기와 배경 클릭은 저장하지 않는 취소 동작이다.
@@ -93,7 +97,7 @@
 ## Responsive behavior
 - Supported breakpoints/devices: 320px 이상 모바일·태블릿 집중 레이아웃, 901~1180px 유연한 데스크톱/태블릿, 1181px 이상 데스크톱
 - Layout adaptations: 900px 이하에서 도면 중심 화면과 고정 하단 탭, 공간·가구·상세는 스크롤 가능한 오버레이 패널
-- Touch/hover differences: 첫 탭은 선택과 작업 메뉴, 선택된 대상은 바로 드래그 이동, 미선택 대상은 길게 누르기 이동, 빈 도면 탭은 선택 해제, 두 손가락은 5~600% 확대·축소로 동작한다. 회전·크기 핸들은 시각 크기와 별개의 최소 44px 터치 목표를 가지며 Shift 대신 그룹 선택 작업바를 제공한다.
+- Touch/hover differences: 간편 모드는 첫 탭으로 선택하고 첫 드래그부터 이동한다. 정밀 모드의 작업 메뉴에는 명시적 이동 버튼이 있다. 빈 도면 탭은 선택 해제, 두 손가락은 확대·축소와 이동이다. 화면 배율이 바뀌어도 손잡이와 치수의 터치 목표는 최소 44px이다. 실제 도형 내부 선택이 이웃 도형의 투명 터치 여백보다 우선한다.
 - Mobile editing: 선택 작업 메뉴가 열린 동안 별도 수치 입력판을 겹쳐 놓지 않는다. 메뉴를 닫거나 상세 입력으로 이동한 뒤 수치를 조정한다. 짧은 가로 화면에서도 도면·닫기·복귀 동작을 유지하고 열린 폼만 스크롤한다.
 - Small display containment: 도면의 내부 표시 높이는 최소 150px이며 테두리를 포함한 `--canvas-min`은 152px이다. 긴 프로젝트 제목은 한 줄로 줄임 표시하고 전체 이름은 상담 정보에서 확인한다. 복구본 안내는 도면 뒤에 배치하며, 저장 실패는 도면 위에서 즉시 알린다.
 - Desktop canvas: 노트북에서도 도면 내부 높이 480px을 유지하도록 `--canvas-desktop-min: 482px`을 사용한다. 보조 통계·복구 안내는 중앙 패널에서 스크롤하며, 배치 안내판은 취소 버튼을 제외한 영역에서 도면 클릭을 가로채지 않는다.
@@ -106,6 +110,7 @@
 - Comparison: 두 안을 만든 경우 각각의 이름·추천 이유·도면·확인 사항을 구분해 전달한다. 현재 안과 비교안의 데이터가 섞이지 않는다.
 - Continuation labels: 긴 문서에서 도면이 다음 페이지로 넘어가도 A/B와 배치안 이름을 도면 제목에 다시 표시한다.
 - Print: A4, 12mm 여백, 도면과 짧은 경고를 한 덩어리로 유지하되 긴 메모와 가구 목록은 페이지 사이에서 자연스럽게 흐르게 한다. 인쇄된 모든 페이지를 실제로 확인한다.
+- Print notes use 1.4 line height. The final scope notice uses a compact inline heading and the existing print body/caption sizes, so a short notice is less likely to create an otherwise empty final page.
 
 ## Interaction states
 - Loading: 3D 준비 버튼 상태 유지
@@ -129,8 +134,23 @@
 - Test/screenshot expectations: 390×844, 768×1024, 1440×1000에서 44px 조작 영역, 배경 도면·치수·잠금·복제, 직접 변형, 3D 3개 시점·선택 초점·PNG 흐름을 포함한 114개 브라우저 검증과 실제 평면 문의 가시성·반응형·전 공간 통행 검증을 확인
 
 ## Open questions
-- [ ] 실제 사용자 테스트 후 모바일 도면 패닝 제스처의 필요성 재평가 / 제품 / 탐색 효율
 - [ ] 개선된 핵심 흐름의 실제 고객 완료율과 학습 부담은 고객 파일럿으로 확인한다. 자동화된 브라우저 통과를 고객 적합성 검증으로 해석하지 않는다.
+
+## Direct space drawing
+- Canvas toolbar: `선택`, `직접 그리기`, `화면 이동` are explicit modes. Toolbar height remains stable; the selected state uses an ink wash and text, not a colored outline.
+- Drawing: mouse dragging creates a straight wall, and taps/clicks append corners. Closing the first point or `공간 완성` commits one closed space as one undo operation. A compact status shows the live segment length. `한 점 취소` and `그리기 취소` never modify the saved layout.
+- Geometry: concave and angled simple outlines are first-class. Orthogonal snapping is optional and visible. Existing rectangle parts and samples stay readable; users need not construct new outlines from rectangle pieces.
+- Shape controls: `형태·치수` reveals vertex and edge handles for the selected space. The ordinary selected body stays draggable without handles covering small touch targets. Handles use 44px screen-space targets and 12px visible markers.
+- Dimensions: each selected edge has a readable centimeter label outside its midpoint, with keyboard and touch activation. The numeric editor occupies the existing selection slot, preserves a clearly marked fixed endpoint, and previews the adjacent edge change before Apply. Invalid/self-crossing geometry is explained inline and cannot replace the saved shape.
+- Fixed endpoint: while editing a wall length, draw a filled 12px marker and a caption at that wall's starting vertex. The marker stays attached to the unchanged world coordinate during the preview; the edited wall uses the same ink as the marker.
+- Gesture ownership: a second touch cancels only an in-progress shape drag/segment and starts viewport navigation. Completed draft corners remain available. Pointer cancellation rolls back preview; every final shape or length edit is one history entry.
+- Viewport: selection, drag completion and undo never implicitly refit the drawing. `전체 보기` is the explicit fit action. Mouse wheel zoom follows the pointer; two fingers navigate without editing geometry; `화면 이동` allows dragging over occupied canvas.
+- Primitives: `space-drawing-toolbar`, `space-drawing-status`, `space-edge-editor`, SVG `space-vertex`/`space-edge-dimension`, and `space-preview`. Use existing surface/ink/line/accent, 4/8/12/16/24px spacing, target=44px, caption=12px, control=13px, mobile input=16px, and radius-control/panel tokens.
+- Portrait drawing canvas: `--direct-canvas-min: min(48dvh, 440px)` keeps the working drawing substantial; recovery and secondary consultation details scroll after the selected-object controls rather than compressing the drawing. Dimension chips are 24px visually with separate 44px hit regions, spaced with leader lines when a concave corner crowds them.
+- Compact portrait (450–599px high): use the existing 152px canvas minimum, 4px row gaps, and 8px vertical padding so the selected-space actions remain above the bottom navigation. Longer precision forms continue in the canvas column's own scroll area.
+- At 320–359px width, the six space actions share one row of at least 44px cells with 4px outer padding; long action labels may wrap inside their cell. Expanded size inputs grow the selection region instead of painting over following content.
+- Short landscape (560–900px wide, at most 500px high): the canvas column becomes a supporting-pane grid. `--direct-landscape-tools: min(304px, 42%)` contains the vertically scrolling controls on the left; the drawing stays on the right, sticky within that same scroll container and sized to the height between the topbar and bottom navigation.
+- Motion: no tween on canvas geometry, pointer-following previews, or camera gestures. Only existing short opacity/color control transitions apply, respecting reduced motion. The compact grouped action pattern follows the accessible 44px dock/pressed-state mechanism at https://beui.dev/r/dock/raw without adopting its React dependency or decorative motion.
 
 ## Seoul asset studio
 - Product reference: [Pascal Editor](https://github.com/pascalorg/editor)의 같은 장면 안에서 선택·배치·재질 변경을 이어가는 경험을 따른다. 로고·화면의 픽셀 복제나 고객별 AI 이미지 생성은 이번 제공 방식이 아니다.
