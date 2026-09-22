@@ -134,6 +134,24 @@ try {
   }
   await page.getByRole('button', { name: '공간 완성', exact: true }).tap();
   const persisted = () => page.evaluate(() => JSON.parse(localStorage.getItem('room-studio-layout-v2')));
+  const undoPoints = async points => {
+    await page.evaluate(points => {
+      window.directSpaceUndo = new Promise((done, reject) => {
+        const observer = new MutationObserver(check);
+        const deadline = setTimeout(() => { observer.disconnect(); reject(new Error('Undo did not restore polygon points')); }, 10000);
+        function check() {
+          const zone = JSON.parse(localStorage.getItem('room-studio-layout-v2')).zones[0];
+          if (JSON.stringify(zone.points) === JSON.stringify(points)) {
+            clearTimeout(deadline); observer.disconnect(); done();
+          }
+        }
+        observer.observe(document.querySelector('#app'), { subtree: true, childList: true });
+        check();
+      });
+    }, points);
+    await page.getByRole('button', { name: '실행 취소', exact: true }).tap();
+    await page.evaluate(() => window.directSpaceUndo);
+  };
   const drawn = (await persisted()).zones[0];
   assert.equal(drawn.points.length, 6, 'a concave outline remains a six-vertex space');
   assert.deepEqual(drawn.points.map(point => ({ x: point.x + drawn.x, y: point.y + drawn.y })), outline);
@@ -160,7 +178,7 @@ try {
   await page.getByRole('button', { name: '치수 적용', exact: true }).tap();
   const lengthEdited = (await persisted()).zones[0];
   assert.equal(lengthEdited.points[1].x - lengthEdited.points[0].x, 350);
-  await page.getByRole('button', { name: '실행 취소', exact: true }).tap();
+  await undoPoints(drawn.points);
   assert.deepEqual((await persisted()).zones[0].points, drawn.points, 'one undo restores the original wall length');
   await capture('mobile-concave-room');
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -182,7 +200,7 @@ try {
   await touch('touchEnd', null, 'pointerup');
   const vertexEdited = (await persisted()).zones[0];
   assert.deepEqual({ x: vertexEdited.x + vertexEdited.points[0].x, y: vertexEdited.y + vertexEdited.points[0].y }, { x: 20, y: 20 });
-  await page.getByRole('button', { name: '실행 취소', exact: true }).tap();
+  await undoPoints(drawn.points);
   const edgeMiddle = await projectPoint({ x: 200, y: 30 });
   const shiftedEdge = await projectPoint({ x: 200, y: 0 });
   await touch('touchStart', edgeMiddle, 'pointerdown');
@@ -191,7 +209,7 @@ try {
   const wallEdited = (await persisted()).zones[0];
   assert.equal(wallEdited.y + wallEdited.points[0].y, 0);
   assert.equal(wallEdited.y + wallEdited.points[1].y, 0);
-  await page.getByRole('button', { name: '실행 취소', exact: true }).tap();
+  await undoPoints(drawn.points);
   assert.deepEqual((await persisted()).zones[0].points, drawn.points);
   assert.deepEqual(errors, []);
   console.log('PASS native touch vertex and wall dragging with one-step undo');

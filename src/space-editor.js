@@ -217,7 +217,8 @@ export function createSpaceEditor({
         original: structuredClone(original), start: worldPoint(event),
         client: { x: event.clientX, y: event.clientY }, moved: false };
     }
-    refresh();
+    // Keep shape handles connected until touchstart reaches the canvas scroll guard.
+    if (mode === 'draw') refresh();
   }
 
   function move(event) {
