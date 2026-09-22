@@ -187,10 +187,9 @@ try {
     const type = document.querySelector('[data-zone-field="type"]');
     type.value = '욕실';
     type.dispatchEvent(new Event('change'));
-    const width = document.querySelector('[data-zone-field="width"]');
-    width.value = '260';
-    width.dispatchEvent(new Event('blur'));
   });
+  await chromePage.locator('[data-zone-field="width"]').fill('260');
+  await chromePage.locator('[data-zone-field="width"]').press('Tab');
   const added = (await snapshot()).layout.zones.at(-1);
   assert.equal(added.name, 'Bathroom');
   assert.equal(added.type, '욕실');
