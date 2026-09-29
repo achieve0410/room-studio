@@ -237,9 +237,27 @@ try {
   await change(`window.__scene().camera.position.x !== ${start[0]} || window.__scene().camera.position.z !== ${start[2]}`, () => touch('touchStart', [{ x: joystick.x + joystick.width / 2, y: joystick.y + joystick.height * 0.3, id: 1 }]));
   await touch('touchEnd', []);
   assert.equal(await page.evaluate(() => window.__scene().canMoveTo(window.__scene().camera.position)), true);
+  // Walking can face a neutral wall. Frame the floor with actual touch look;
+  // keep the painted-room guard rather than accepting a wall-only capture.
+  const walkCanvas = await page.locator('[data-walkthrough-canvas]').boundingBox();
+  const beforeLook = await page.evaluate(() => window.__scene().camera.rotation.x);
+  const lookPoint = { x: walkCanvas.x + walkCanvas.width * 0.65, y: walkCanvas.y + walkCanvas.height * 0.48, id: 1 };
+  assert.equal(await page.evaluate(point =>
+    document.elementFromPoint(point.x, point.y) === window.__scene().renderer.domElement, lookPoint), true,
+    'native look starts on the exposed canvas, not its toolbar');
+  await Promise.all([
+    page.waitForFunction(() => window.__scene().camera.rotation.x <= -0.95, undefined, { polling: 'raf' }),
+    (async () => {
+      await touch('touchStart', [lookPoint]);
+      await touch('touchMove', [{ ...lookPoint, y: walkCanvas.y + walkCanvas.height * 0.94 }]);
+    })(),
+  ]);
+  await touch('touchEnd', []);
+  assert.ok(await page.evaluate(before => window.__scene().camera.rotation.x < before, beforeLook));
+  assert.equal(await page.evaluate(() => window.__scene().canMoveTo(window.__scene().camera.position)), true);
   await capture('mobile-concave-walk');
   await page.locator('[data-walkthrough-exit]').first().click();
-  report.checks.push('native emulated mobile floor selection, pinch without edits, joystick navigation within polygon');
+  report.checks.push('native emulated mobile floor selection, pinch without edits, joystick navigation and touch look within polygon');
   assert.deepEqual(report.errors, []);
   report.passed = true;
 } catch (error) {
