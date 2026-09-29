@@ -45,13 +45,13 @@ try {
     cacheDir: join(output, 'vite-cache'),
     server: { host: '127.0.0.1', port: serverPort, strictPort: true, hmr: false, watch: { ignored: ['**/.omx/**'] } },
     plugins: [{
-      name: 'simple-3d-read-only-observations',
+      name: 'simple-3d-observations',
       transform(source, id) {
         if (id.split('?')[0] !== resolve('src/walkthrough3d.js')) return;
         const anchor = "  overlay.dataset.walkthroughReady = 'true';";
         assert.equal(source.split(anchor).length, 2, 'one audit instrumentation point');
         return source.replace(anchor, `
-  // Audit-only getters and disposal event subscriptions; no simulation/render replacements.
+  // Audit getters/disposal subscriptions; only the explicit toast probe controls scheduling.
   const auditResources = { geometry: new Set(), material: new Set(), texture: new Set() };
   const auditDisposed = { geometry: new Set(), material: new Set(), texture: new Set() };
   scene.traverse(object => {
@@ -64,6 +64,48 @@ try {
   for (const kind of Object.keys(auditResources)) {
     for (const resource of auditResources[kind]) resource.addEventListener('dispose', () => auditDisposed[kind].add(resource));
   }
+  window.__simple3dToastProbe = () => {
+    const original = {
+      requestAnimationFrame: window.requestAnimationFrame,
+      cancelAnimationFrame: window.cancelAnimationFrame,
+      setTimeout: window.setTimeout,
+      clearTimeout: window.clearTimeout,
+    };
+    const previousRoomId = currentRoomId;
+    const previousTimer = toastTimer;
+    const previousRoom = currentRoom.textContent;
+    const previousName = roomToast.querySelector('strong').textContent;
+    const wasVisible = roomToast.classList.contains('is-visible');
+    const frames = new Map();
+    const timers = new Map();
+    let nextId = 1000000;
+    const flush = (queue) => {
+      const callbacks = [...queue.values()];
+      queue.clear();
+      callbacks.forEach(callback => callback());
+    };
+    try {
+      window.requestAnimationFrame = callback => { const id = ++nextId; frames.set(id, callback); return id; };
+      window.cancelAnimationFrame = id => frames.delete(id);
+      window.setTimeout = callback => { const id = ++nextId; timers.set(id, callback); return id; };
+      window.clearTimeout = id => timers.delete(id);
+      currentRoomId = null;
+      announceRoom(zones[0]);
+      flush(timers);
+      flush(frames);
+      const visibleAfterPaint = roomToast.classList.contains('is-visible');
+      const dismissalsAfterPaint = timers.size;
+      flush(timers);
+      return { visibleAfterPaint, dismissalsAfterPaint, visibleAfterDismissal: roomToast.classList.contains('is-visible') };
+    } finally {
+      Object.assign(window, original);
+      currentRoomId = previousRoomId;
+      toastTimer = previousTimer;
+      currentRoom.textContent = previousRoom;
+      roomToast.querySelector('strong').textContent = previousName;
+      roomToast.classList.toggle('is-visible', wasVisible);
+    }
+  };
   window.__simple3dAudit = () => {
     const bounds = overviewSpatialBounds(scene);
     const meshes = overviewSpatialMeshes(scene);
@@ -300,6 +342,12 @@ ${anchor}`);
   const touchReady = await armState(`document.querySelector('[data-walkthrough-ready="true"][data-studio-ready="true"][data-asset-state="ready"]')`, 'touch 3D ready');
   await click('#open-walkthrough');
   await touchReady();
+  // A slow render may deliver overdue timers before the next animation frame.
+  // Exercise the real toast with controlled scheduler queues, not a timed sleep.
+  receipt.toastScheduling = await page(`window.__simple3dToastProbe()`);
+  assert.deepEqual(receipt.toastScheduling, {
+    visibleAfterPaint: true, dismissalsAfterPaint: 1, visibleAfterDismissal: false,
+  }, 'room toast starts its dismissal only after its visible paint');
   await setMode('walk');
   await screenshot('touch-before-look');
   const touchBefore = await snapshot();

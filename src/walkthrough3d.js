@@ -1380,6 +1380,7 @@ export function openWalkthrough({
   let currentRoomId = null;
   let announcedOpeningId = null;
   let toastTimer = 0;
+  let toastFrame = 0;
   let bumpTimer = 0;
 
   const syncViewToolState = () => {
@@ -2073,9 +2074,13 @@ export function openWalkthrough({
     currentRoomId = spaceIdOf(room);
     roomToast.querySelector('strong').textContent = room.name;
     roomToast.classList.remove('is-visible');
-    requestAnimationFrame(() => roomToast.classList.add('is-visible'));
+    cancelAnimationFrame(toastFrame);
     clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => roomToast.classList.remove('is-visible'), 1800);
+    toastFrame = requestAnimationFrame(() => {
+      toastFrame = 0;
+      roomToast.classList.add('is-visible');
+      toastTimer = window.setTimeout(() => roomToast.classList.remove('is-visible'), 1800);
+    });
   };
 
   const animate = (frameTime = performance.now()) => {
@@ -2232,6 +2237,7 @@ export function openWalkthrough({
     }
     destroyed = true;
     cancelAnimationFrame(animationFrame);
+    cancelAnimationFrame(toastFrame);
     clearTimeout(toastTimer);
     clearTimeout(bumpTimer);
     window.removeEventListener('resize', onResize);
