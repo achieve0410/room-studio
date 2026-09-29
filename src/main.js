@@ -1,5 +1,7 @@
 import './styles.css';
 import './space-editor.css';
+import './workbench.css';
+import { renderWorkbenchNavigation } from './workbench-ui.js';
 import { createSpaceEditor } from './space-editor.js';
 import { createConfiguredCloudStore, hasCloudConfiguration, normalizeProjectName, resolveAuthRedirectUrl } from './cloud-store.js';
 import {
@@ -454,6 +456,7 @@ let demoGalleryOpen = false;
 let pendingDemoId = null;
 let pendingDemo3d = false;
 let active3dCleanup = null;
+let lastStudioView = null;
 let opening3d = false;
 let projectDialogOpen = false;
 let projectFileFeedback = '';
@@ -567,6 +570,7 @@ function applyProjectDocument({
 }) {
   if (ownerId && ownerId !== currentCloudUserId()) return false;
   active3dCleanup?.();
+  lastStudioView = null;
   clearTimeout(cloudSaveTimer);
   cloudPendingSave = null;
   documentGeneration += 1;
@@ -717,8 +721,15 @@ async function open3dEditor() {
   if (opening3d || active3dCleanup) return;
   opening3d = true;
   const openingDocument = documentGeneration;
+  const openingSelection = JSON.stringify(state.selection);
+  const openingOption = state.consultation?.activeOption ?? 'A';
+  const initialView = lastStudioView?.document === openingDocument
+    && lastStudioView.option === openingOption
+    && lastStudioView.selection === openingSelection
+    && lastStudioView.geometry === sceneGeometryKey(layoutSnapshot())
+    ? lastStudioView.view : null;
   const button = document.querySelector('#open-walkthrough');
-  const originalText = button.textContent;
+  const originalContent = [...button.childNodes];
   button.disabled = true;
   button.textContent = '3D 준비 중…';
   try {
@@ -729,8 +740,10 @@ async function open3dEditor() {
       items: state.items,
       structures: state.structures,
       wallHeight: state.wallHeight,
+      projectName: activeProjectName,
       focus: state.selection ? { ...state.selection } : null,
       initialMode: 'dollhouse',
+      initialView,
       getLayout: layoutSnapshot,
       historyState: () => ({ canUndo: historyPast.length > 0, canRedo: historyFuture.length > 0 }),
       furnitureTemplates,
@@ -742,8 +755,18 @@ async function open3dEditor() {
         const option = state.consultation?.activeOption ?? 'A';
         scenePreviews.set(option, { key: sceneGeometryKey(layout), imageDataUrl });
       },
-      onClose() {
+      onClose(view) {
         active3dCleanup = null;
+        const room = state.zones.filter(zone => spaceIdOf(zone) === view.roomId)
+          .reduce((largest, zone) => !largest || zone.width * zone.depth > largest.width * largest.depth ? zone : largest, null);
+        if (room && (state.selection?.kind !== 'zone' || state.selection.id !== room.id)) {
+          selectEntity('zone', room.id);
+          render();
+        }
+        lastStudioView = {
+          document: openingDocument, option: openingOption, selection: JSON.stringify(state.selection),
+          geometry: sceneGeometryKey(layoutSnapshot()), view,
+        };
         document.querySelector('#open-walkthrough')?.focus({ preventScroll: true });
       },
     });
@@ -753,7 +776,7 @@ async function open3dEditor() {
   } finally {
     opening3d = false;
     button.disabled = false;
-    button.textContent = originalText;
+    button.replaceChildren(...originalContent);
   }
 }
 
@@ -3505,8 +3528,8 @@ function render() {
   const cloudState = cloudFeedbackTone === 'error' ? 'error' : !cloudConfigured ? 'setup' : cloudSession ? 'synced' : 'idle';
 
   const accountName = cloudSession?.user?.user_metadata?.full_name || cloudSession?.user?.email?.split('@')[0];
-  app.innerHTML = `<header class="topbar ${simpleWorkspace ? 'simple-topbar' : ''}" ${cloudBackgroundAttributes}>
-    <a class="brand" href="#" aria-label="Room Studio"><span class="brand-mark"><i></i><i></i><i></i></span><span><strong>ROOM</strong> STUDIO</span></a>
+  app.innerHTML = `<header class="topbar workbench-header ${simpleWorkspace ? 'simple-topbar' : ''}" ${cloudBackgroundAttributes}>
+    ${renderWorkbenchNavigation(activeProjectName, 'space')}
     <div class="topbar-cloud">
       <button class="project-account-button" data-start-open type="button" aria-haspopup="dialog"><b aria-hidden="true">✦</b><span>시작</span></button>
       <button class="project-account-button demo-open-button" data-demo-open type="button" aria-haspopup="dialog"><b aria-hidden="true">⌂</b><span>${simpleWorkspace ? '샘플' : '모델 홈'}</span></button>
@@ -3521,7 +3544,6 @@ function render() {
       <section class="space-section" id="mobile-panel-spaces" ${mobilePanelAttributes('spaces')}>
         <div class="section-title"><span>01</span><h2>공간 만들기</h2><button class="add-mini" id="add-zone" type="button">＋ 공간</button></div>
         <p class="space-edit-guide">방·거실·욕실의 크기와 위치를 정하세요. 가구와 문은 3D에서 편집합니다.</p>
-        <button class="space-detail-button" data-open-detail type="button">2. 3D 가구·문 편집</button>
         <details class="workspace-disclosure" data-disclosure="tracing"><summary>도면 따라 그리기 · 축척</summary>${renderBlueprintControls()}</details>
         <div class="preset-row"><button data-layout="apartment" type="button">기본 아파트</button><button data-layout="lshape" type="button">ㄱ자 주택</button></div>
         <p class="section-help">하나의 공간에 여러 조각을 붙여 거실·복도 같은 직교형 공간을 만드세요.</p>
@@ -3534,9 +3556,7 @@ function render() {
     </aside>
 
     <section class="canvas-column" id="mobile-panel-canvas" ${mobilePanelAttributes('canvas')}>
-      <div class="canvas-toolbar"><div><span class="eyebrow">배치 상담</span><h1 title="${escapeHtml(activeProjectName)}">${escapeHtml(activeProjectName)}</h1><p class="planning-scope" data-planning-scope><strong>기획·배치 확인용</strong><span class="desktop-only">건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다.</span><span class="mobile-only">시공 판단은 전문가 검토</span></p></div>
-        <div class="view-tabs"><button class="active" type="button">2D 공간 편집</button><button id="open-walkthrough" type="button">3D 상세 편집</button></div>
-      </div>
+      <div class="canvas-toolbar workbench-scope"><p class="planning-scope" data-planning-scope><strong>기획·배치 확인용</strong><span class="desktop-only">건축 인허가·구조·접근성·시공 판단은 관련 전문가의 검토가 필요합니다.</span><span class="mobile-only">시공 판단은 전문가 검토</span></p></div>
       ${spaceEditor?.toolbarMarkup() ?? ''}
       ${simpleWorkspace ? '<details class="consultation-tools workspace-disclosure" data-disclosure="consultation"><summary>배치 비교 · 상담 · 제안서</summary>' : ''}
       ${renderConsultationToolbar({ projectName: activeProjectName, consultation: state.consultation })}
@@ -3591,7 +3611,7 @@ function render() {
       const active = mobilePanel === panel;
       return `<button id="mobile-tab-${panel}" class="${active ? 'is-active' : ''}" data-mobile-panel="${panel}" type="button" role="tab" aria-controls="mobile-panel-${panel}" aria-selected="${active}" tabindex="${active ? '0' : '-1'}"><b aria-hidden="true">${icon}</b><span>${label}</span></button>`;
     }).join('')}</div>
-    <button data-open-detail type="button" aria-label="3D 가구·문 상세 편집"><b aria-hidden="true">3D</b><span>상세 편집</span></button>
+    <button data-open-detail type="button" aria-label="3D 꾸미기"><b aria-hidden="true">3D</b><span>꾸미기</span></button>
   </nav>
   <footer ${cloudBackgroundAttributes}>기획·배치 확인을 돕는 시각화 도구입니다. 실제 인허가·구조·접근성·시공은 전문가와 확인하세요. <strong>Room Studio</strong></footer>`;
   for (const { selector, top, left } of panelScroll) {

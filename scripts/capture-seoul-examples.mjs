@@ -9,7 +9,7 @@ import { preparePersistedLayout } from '../src/consultation.js';
 import { capture, evaluate, launchChrome, setViewport } from '../.omo/evidence/room-studio-improvements/browser-qa-lib.mjs';
 
 const output = resolve('public/assets/seoul-examples');
-const evidence = resolve('.omx/artifacts/seoul-assets/example-captures');
+const evidence = resolve(process.env.EXAMPLE_CAPTURE_OUTPUT ?? '.omx/artifacts/seoul-assets/example-captures');
 await mkdir(output, { recursive: true });
 await mkdir(evidence, { recursive: true });
 const manifest = { version: 1, source: 'Room Studio 3D canvas', license: 'Apache-2.0', examples: [] };
@@ -62,7 +62,8 @@ try {
     })()`);
     for (const type of ['mousePressed', 'mouseReleased']) await cdp.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
   };
-  await setViewport(cdp, 1440, 1000);
+  // Keep the published 1128 x 866 scene image under the shared workbench chrome.
+  await setViewport(cdp, 1488, 986);
   await browser.navigate(`http://127.0.0.1:${port}`);
   await click('[data-start-sample]');
   for (const [index, fixture] of REGIONAL_DEMO_LAYOUTS.entries()) {

@@ -213,9 +213,15 @@ try {
   assert.equal(await page.evaluate(() => window.__spaceScene().renderer.shadowMap.enabled), true);
   assert.equal(await page.evaluate(() => window.__spaceScene().renderer.getContext().getContextAttributes().antialias), true);
   assert.equal(await chromePage.locator('#app').evaluate(app => app.inert), true);
-  await chromePage.locator('[data-studio-toggle]').click();
+  const catalog = async kind => {
+    await chromePage.locator('[data-studio-add]').click();
+    if (await chromePage.locator('[data-studio-category]').isVisible()) await chromePage.locator('[data-studio-category]').selectOption(kind);
+    else await chromePage.locator(`[data-studio-tab="${kind}"]`).click();
+  };
+  await catalog('item');
   const field = async (key, value) => {
     const control = chromePage.locator(`[data-studio-value="${key}"]`);
+    if (await control.evaluate(node => node.closest('[data-studio-precision]')?.open === false)) await chromePage.locator('[data-studio-precision] > summary').click();
     await control.fill(String(value)); await control.press('Tab');
   };
   const apply = async () => {
@@ -235,19 +241,21 @@ try {
   assert.equal((await snapshot()).layout.items.at(-1).rotation, 45);
   await chromePage.locator('[data-studio-redo]').click();
   assert.equal((await snapshot()).layout.items.length, 1);
-  await chromePage.locator('[data-studio-tab="structure"]').click();
+  await catalog('structure');
   await chromePage.locator('[data-studio-structure="wall"]').click(); await apply();
   const nativeWallId = (await snapshot()).layout.structures.at(-1).id;
+  await catalog('structure');
   await chromePage.locator('[data-studio-structure="swing"]').click(); await apply();
   const nativeDoorId = (await snapshot()).layout.structures.at(-1).id;
   assert.equal((await snapshot()).layout.structures.at(-1).wallId, nativeWallId);
+  await chromePage.locator('[data-studio-list]').click();
   await chromePage.locator('[data-studio-target]').selectOption(`structure:${nativeWallId}`);
   await field('x', 340); await apply();
   assert.equal((await snapshot()).layout.structures.at(-1).x, 340);
   await chromePage.locator('[data-studio-delete]').click(); await apply();
   assert.equal((await snapshot()).layout.structures.some(structure => structure.id === nativeDoorId), false);
-  await chromePage.locator('[data-studio-tab="floor"]').click();
-  await change(`${ready} && window.__spaceScene().editSession.pending`, () => chromePage.locator('[data-studio-material="oak-natural"]').click());
+  await catalog('floor');
+  await change(`${ready} && window.__spaceScene().editSession.pending`, () => chromePage.locator('[data-studio-material="oak-natural"]:visible').click());
   await apply();
   assert.equal((await snapshot()).layout.zones[0].floorMaterialId, 'oak-natural');
   await chromePage.screenshot({ path: join(outputDirectory, 'space-only-real-3d.png') });

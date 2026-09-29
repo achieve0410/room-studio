@@ -65,6 +65,7 @@ async function openStudio(page) {
   const body = page.locator('.studio3d-body');
   if (await body.isHidden()) await page.locator('[data-studio-toggle]').click();
   await body.waitFor({ state: 'visible' });
+  await page.locator('[data-studio-add]').click();
 }
 
 async function closeStudio(page) {

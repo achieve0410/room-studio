@@ -106,7 +106,15 @@ async function input(selector, text) {
     await key('Tab');
   }
 }
-async function field(key, text) { await input(`[data-studio-value="${key}"]`, text); }
+async function precision() {
+  if (!await page.locator('[data-studio-precision]').evaluate(node => node.open)) await click('[data-studio-precision] > summary');
+}
+async function field(key, text) {
+  if (await value(key).evaluate(node => node.closest('[data-studio-precision]')?.open === false)) {
+    await precision();
+  }
+  await input(`[data-studio-value="${key}"]`, text);
+}
 async function capture(name) {
   const file = `${name}.png`;
   await page.screenshot({ path: join(artifactDir, file) });
@@ -168,7 +176,9 @@ async function reset(width = 390, height = 844, initial = fixture, advanced = tr
 }
 async function open3d(mode = 'dollhouse', expanded = false) {
   await change(ready3d, () => click('#open-walkthrough'));
-  if (mode !== 'dollhouse') await change(`document.querySelector('[data-walkthrough]')?.dataset.viewMode === '${mode}'${mode === 'walk' ? " && Boolean(document.querySelector('[data-map-player][transform]'))" : ''}`, () => click(`[data-view-mode="${mode}"]`));
+  await change(`document.querySelector('[data-walkthrough]')?.dataset.viewMode === '${mode}'${mode === 'walk' ? " && Boolean(document.querySelector('[data-map-player][transform]'))" : ''}`, async () => {
+    if (await page.locator('[data-walkthrough]').getAttribute('data-view-mode') !== mode) await click(`button[data-view-mode="${mode}"]`);
+  });
   if (expanded && await page.locator('[data-studio-toggle]').getAttribute('aria-expanded') === 'false') await togglePanel();
 }
 async function togglePanel() {
@@ -181,13 +191,21 @@ async function togglePanel() {
 async function close3d() {
   await change(`!document.querySelector('[data-walkthrough]') && !document.fullscreenElement`, () => click('.walkthrough-exit[data-walkthrough-exit]'));
 }
-async function choose(kind, id) { await input('[data-studio-target]', `${kind}:${id}`); }
+async function choose(kind, id) {
+  await click('[data-studio-list]');
+  await input('[data-studio-target]', `${kind}:${id}`);
+}
+async function catalog(kind) {
+  await click('[data-studio-add]');
+  if (await page.locator('[data-studio-category]').isVisible()) await input('[data-studio-category]', kind);
+  else await click(`[data-studio-tab="${kind}"]`);
+}
 async function apply() {
   assert.equal(await evaluate(pending), true, 'Apply must commit a real pending edit');
   await change(`!(${pending}) && ${ready3d}`, () => click('[data-studio-apply]'));
 }
 async function add(type, kind = 'item') {
-  await click(`[data-studio-tab="${kind === 'item' ? 'item' : 'structure'}"]`);
+  await catalog(kind === 'item' ? 'item' : 'structure');
   const selector = `[data-studio-${kind === 'item' ? 'template' : 'structure'}="${type}"]`;
   await change(pending, () => click(selector));
   return page.locator('.studio3d-shell').getAttribute('data-selection-id');
@@ -246,7 +264,7 @@ try {
     }
     await reset();
     const groups = [];
-    for (const [name, selector] of [['navigation', '.mobile-nav [role="tab"]'], ['toolbar', '.canvas-toolbar button'], ['actions', '.canvas-actions button']]) {
+    for (const [name, selector] of [['navigation', '.mobile-nav [role="tab"]'], ['view switch', '.workbench-modes button'], ['actions', '.canvas-actions button']]) {
       const entries = await sizes(selector); groups.push(entries);
       check(`390x844 ${name} 44px targets`, targets44(entries), entries);
     }
@@ -294,7 +312,7 @@ try {
       check(`3D ${type} named 44px catalog target`, targets44(entries) && entries.every(e => e.name), entries);
     }
     await capture('mobile-furniture-catalog');
-    await click('[data-studio-tab="structure"]');
+    await catalog('structure');
     const types = await page.locator('[data-studio-structure]').evaluateAll(nodes => nodes.map(n => n.dataset.studioStructure).sort());
     equal('3D all four structure catalog types', types, ['sliding', 'swing', 'wall', 'window']);
     check('structure catalog 44px targets', targets44(await sizes('[data-studio-structure]')), await sizes('[data-studio-structure]'));
@@ -331,6 +349,7 @@ try {
     await choose('structure', 'hostile-wall');
     equal('normalized wall length observed through 3D inspector', await value('length').inputValue(), '50');
     const doorOption = await page.locator('[data-studio-target] option').evaluateAll(nodes => nodes.find(n => n.textContent.includes('Hostile door')).value);
+    await click('[data-studio-list]');
     await input('[data-studio-target]', doorOption);
     equal('attached hostile door width clamped to owner', await value('width').inputValue(), '50');
     equal('invalid door type normalized in real inspector', await value('doorType').inputValue(), 'swing');
@@ -450,6 +469,7 @@ try {
       equal(`${cancellation} leaves undo empty`, await page.locator('[data-studio-undo]').isDisabled(), true);
     }
     await togglePanel(); await choose('item', item.id);
+    await precision();
     check('numeric resize/rotate touch alternatives meet 44px', targets44(await sizes('[data-studio-value="width"], [data-studio-value="depth"], [data-studio-value="rotation"], [data-studio-rotate]')), await sizes('[data-studio-value="width"], [data-studio-value="depth"], [data-studio-value="rotation"], [data-studio-rotate]'));
     await field('width', 190); await field('depth', 140);
     equal('numeric resize remains a disposable preview', await detail(item.id), origin);
@@ -519,7 +539,7 @@ try {
     for (const [width, height] of [[390, 844], [844, 390]]) {
       await reset(width, height, singleRoom); const errorStart = errors.length;
       await open3d('walk');
-      const ui = await walkUI(), entryPose = await pose();
+      const ui = await walkUI();
       check(`${width}x${height} coarse controls and modal focus`, ui.joystick && ui.look && ui.cone && !ui.keyboard && ui.focused && ui.menuInert && ui.menuHidden === 'true', ui);
       check(`${width}x${height} joystick/exit 44px`, targets44(await sizes('[data-walkthrough-joystick], [data-walkthrough-exit]')), await sizes('[data-walkthrough-joystick], [data-walkthrough-exit]'));
       const p = await point('[data-walkthrough-joystick]');
@@ -555,9 +575,11 @@ try {
       await touch('touchStart', [contact(1, start)]);
       await change(rotatedExpression(beforeLook), () => touch('touchMove', [contact(1, end)])); await touch('touchEnd', []);
       check(`${width} native right-look changes camera direction`, Math.abs((await pose()).rotation - beforeLook.rotation) > .5, { beforeLook, after: await pose() });
-      await capture(`coarse-3d-${width}x${height}`); await close3d(); await open3d('walk');
+      await capture(`coarse-3d-${width}x${height}`);
+      const closingPose = await pose();
+      await close3d(); await open3d('walk');
       const reopenedPose = await pose(), reopened = await stationaryFrames();
-      check(`${width} close/reopen has no stale movement`, reopened.drift < .05 && distance(entryPose, reopenedPose) < .05, { entryPose, reopenedPose, ...reopened });
+      check(`${width} close/reopen preserves pose without stale movement`, reopened.drift < .05 && distance(closingPose, reopenedPose) < .05, { closingPose, reopenedPose, ...reopened });
       await close3d(); equal(`${width} walkthrough no browser errors`, errors.slice(errorStart), []);
     }
   });
@@ -654,6 +676,7 @@ try {
     await click('[data-studio-rotate]'); await apply();
     const rotated = (await layout()).structures;
     check('wall rotation also turns both owned doors', rotated.length === 3 && rotated.every(s => s.orientation === 'vertical') && [doorId, slideId].every(id => rotated.find(s => s.id === id)?.wallId === wallId), rotated);
+    await precision();
     const before = await layout(); await click('[data-studio-nudge="10,0"]'); await apply(); const after = await layout();
     check('wall move carries both attached doors by same delta', after.structures.length === 3 && after.structures.every((s, i) => s.x === before.structures[i].x + 10 && s.y === before.structures[i].y), { before: before.structures, after: after.structures });
     await choose('structure', doorId);
@@ -807,6 +830,7 @@ try {
     await click('[data-studio-duplicate]'); equal('furniture duplicate previews without saving', (await layout()).items.length, 1); await apply();
     const clone = (await layout()).items.at(-1);
     check('3D duplicate is unlocked +20cm and preserves original', clone.id !== source.id && clone.x === source.x + 20 && clone.y === source.y + 20 && !clone.locked && JSON.stringify(await detail(id)) === JSON.stringify(source), { source, clone });
+    await catalog('item');
     const assetId = await page.locator('[data-studio-asset]').first().getAttribute('data-studio-asset');
     await change(pending, () => click(`[data-studio-asset="${assetId}"]`)); await apply();
     const model = (await layout()).items.at(-1);
@@ -814,11 +838,11 @@ try {
     await click('[data-studio-material="walnut"]'); await apply();
     equal('3D material swatch persists furniture finish', (await detail(model.id)).materialId, 'walnut');
     const finishZoneId = duplicated[1].id;
-    await choose('zone', finishZoneId); await click('[data-studio-tab="floor"]');
+    await choose('zone', finishZoneId); await catalog('floor');
     const floorMaterial = await page.locator('[data-studio-catalog] [data-studio-material]').first().getAttribute('data-studio-material');
     await click(`[data-studio-catalog] [data-studio-material="${floorMaterial}"]`); await apply();
     equal('3D floor finish persists on shared space', (await detail(finishZoneId, 'zones')).floorMaterialId, floorMaterial);
-    await click('[data-studio-tab="wall"]');
+    await catalog('wall');
     const wallMaterial = await page.locator('[data-studio-catalog] [data-studio-material]').last().getAttribute('data-studio-material');
     await click(`[data-studio-catalog] [data-studio-material="${wallMaterial}"]`); await apply();
     equal('3D wall finish persists on shared space', (await detail(finishZoneId, 'zones')).wallMaterialId, wallMaterial);
@@ -829,7 +853,7 @@ try {
     await reset(1440, 1000, singleRoom); await click('[data-select-zone="room"]'); await open3d();
     const initial = await evaluate(`({ mode: document.querySelector('[data-walkthrough]').dataset.viewMode, cutaway: document.querySelector('[data-walkthrough]').dataset.dollhouseCutaway, ceiling: document.querySelector('[data-toggle-ceiling]').getAttribute('aria-pressed'), focusDisabled: document.querySelector('[data-focus-selection]').disabled })`);
     equal('dollhouse opens with cutaway and ceilings hidden', initial, { mode: 'dollhouse', cutaway: 'true', ceiling: 'true', focusDisabled: false });
-    await click('[data-view-mode="top"]');
+    await click('button[data-view-mode="top"]');
     equal('top view retains overview/cutaway', await evaluate(`({ mode: document.querySelector('[data-walkthrough]').dataset.viewMode, overview: document.querySelector('[data-walkthrough]').classList.contains('is-overview'), cutaway: document.querySelector('[data-walkthrough]').dataset.dollhouseCutaway })`), { mode: 'top', overview: true, cutaway: 'true' });
     await click('[data-walkthrough-more]'); await click('[data-focus-selection]');
     equal('focus selected space returns to dollhouse', await page.locator('[data-walkthrough]').getAttribute('data-view-mode'), 'dollhouse');

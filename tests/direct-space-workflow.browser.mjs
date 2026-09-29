@@ -6,7 +6,7 @@ import { captureRoomScene, settleBrowserPaint } from './browser-rendering.mjs';
 
 const url = process.argv[2];
 assert.ok(url, 'Pass the URL of a freshly built production preview');
-const output = resolve('.omx/artifacts/direct-space-editor/workflow');
+const output = resolve(process.env.DIRECT_SPACE_WORKFLOW_OUTPUT ?? '.omx/artifacts/direct-space-editor/workflow');
 await mkdir(output, { recursive: true });
 const report = { url, output, checks: [], screenshots: [], errors: [] };
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -112,16 +112,26 @@ try {
 
     if (!mobile) {
       const anchor = await project({ x: 100, y: 100 });
-      const worldAt = () => page.locator('#plan-canvas').evaluate((svg, p) => {
+      const worldAt = point => page.locator('#plan-canvas').evaluate((svg, p) => {
         const world = new DOMPoint(p.x, p.y).matrixTransform(svg.getScreenCTM().inverse());
         return { x: world.x, y: world.y };
-      }, anchor);
-      const before = await worldAt();
+      }, point);
       const view = await page.locator('#plan-canvas').getAttribute('viewBox');
+      await page.evaluate(() => {
+        document.addEventListener('wheel', event => {
+          const svg = document.querySelector('#plan-canvas');
+          const world = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+          window.__wheelProbe = { screen: { x: event.clientX, y: event.clientY }, before: { x: world.x, y: world.y } };
+        }, { capture: true, once: true, passive: true });
+      });
       await page.mouse.move(anchor.x, anchor.y);
       await change(`document.querySelector('#plan-canvas').getAttribute('viewBox') !== ${JSON.stringify(view)}`, () => page.mouse.wheel(0, -220));
-      const after = await worldAt();
-      assert.ok(Math.hypot(after.x - before.x, after.y - before.y) < 0.1);
+      await settleBrowserPaint(page);
+      const event = await page.evaluate(() => window.__wheelProbe);
+      const after = await worldAt(event.screen);
+      report.wheelProbe = { requestedAnchor: anchor, event, after };
+      // Chrome quantizes wheel coordinates; the actual event point is the anchor.
+      assert.ok(Math.hypot(after.x - event.before.x, after.y - event.before.y) < 0.1, JSON.stringify(report.wheelProbe));
       assert.deepEqual((await saved()).zones, drawing.zones);
       await capture('focal-zoom');
       await activate('#zoom-fit');
@@ -133,7 +143,7 @@ try {
     await capture('3d-dollhouse');
     await activate('[data-view-mode="top"]');
     await capture('3d-top');
-    if (await page.locator('[data-studio-toggle]').getAttribute('aria-expanded') === 'false') await activate('[data-studio-toggle]');
+    await activate('[data-studio-add]');
     await activate('[data-studio-tab="item"]');
     await page.locator('[data-studio-search]').fill('의자');
     await change(`document.querySelector('.studio3d-shell').dataset.pending === 'true' && ${ready}`, () => page.locator('[data-studio-asset]:not([hidden])').first()[mobile ? 'tap' : 'click']());

@@ -6,6 +6,7 @@ import { createConnection, createServer as createNetServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
 import { DEMO_LAYOUTS } from '../src/demo-layouts.js';
+import { spaceIdOf } from '../src/geometry.js';
 import { capture, evaluate, launchChrome } from '../.omo/evidence/room-studio-improvements/browser-qa-lib.mjs';
 
 const output = resolve(process.env.SIMPLE_3D_OUTPUT ?? join('.omx/artifacts/simple-3d', new Date().toISOString().replaceAll(':', '-')));
@@ -65,13 +66,16 @@ try {
   }
   window.__simple3dAudit = () => {
     const bounds = overviewSpatialBounds(scene);
-    const corners = [];
-    for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
-      corners.push(new THREE.Vector3(x, y, z).project(camera).toArray());
-    }
+    const meshes = overviewSpatialMeshes(scene);
+    const points = focusedRoom
+      ? studioRoomPoints({ zones, items, structures: sceneStructures, wallHeight }, focusedRoom, center, meshes, presentationWalls && viewMode === 'top')
+      : studioSpatialPoints(meshes);
+    const corners = points.map(point => point.clone().project(camera).toArray());
     return {
       destroyed, connected: overlay.isConnected, navigationActive, viewMode, ceilingsVisible, keys: [...keys],
-      ceilingVisibility: ceilingObjects.map(object => object.visible),
+      ceilingVisibility: ceilingObjects.filter(object => !object.isPointLight).map(object => object.visible),
+      roomLightVisibility: ceilingObjects.filter(object => object.isPointLight).map(object => object.visible),
+      roomId: focusedRoom,
       target: overviewTarget, selectedTarget: selectedFocusTarget, selection: focus,
       bounds: [bounds.min.toArray(), bounds.max.toArray()], corners,
       camera: { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), projection: camera.projectionMatrix.toArray(), aspect: camera.aspect },
@@ -191,9 +195,9 @@ ${anchor}`);
     return {
       stage: rect(document.querySelector('[data-walkthrough-stage]')),
       toolbar: rect(document.querySelector('.walkthrough-view-tools')),
-      location: rect(document.querySelector('.walkthrough-location')),
+      location: rect(document.querySelector('.walkthrough-overlay .workbench-project')),
       panel: panel && !panel.hidden ? rect(panel) : null,
-      controls: [...document.querySelectorAll('.walkthrough-view-tools button, .walkthrough-exit')].filter(node => node.getClientRects().length).map(node => ({ ...rect(node), disabled: node.disabled, hit: node.contains(document.elementFromPoint(rect(node).x + rect(node).width / 2, rect(node).y + rect(node).height / 2)), selector: [...node.attributes].find(a => a.name.startsWith('data-'))?.name })),
+      controls: [...document.querySelectorAll('.walkthrough-view-tools button, .walkthrough-overlay .workbench-header button, .walkthrough-overlay .workbench-header select')].filter(node => node.getClientRects().length).map(node => ({ ...rect(node), disabled: node.disabled, hit: node.contains(document.elementFromPoint(rect(node).x + rect(node).width / 2, rect(node).y + rect(node).height / 2)), selector: [...node.attributes].find(a => a.name.startsWith('data-'))?.name })),
       overflow: document.documentElement.scrollWidth > innerWidth,
     };
   })()`);
@@ -211,6 +215,7 @@ ${anchor}`);
     if (geometry.panel) assert.ok(noOverlap(geometry.panel, geometry.toolbar), 'panel is below its own trigger and view modes');
   };
   const checkFit = state => {
+    assert.ok(state.corners.length > 0, 'framing checks real visible geometry, not empty aggregate-box corners');
     for (const [x, y, z] of state.corners) assert.ok(Math.abs(x) <= 0.900001 && Math.abs(y) <= 0.900001 && z >= -1 && z <= 1, `actual scene framing: ${[x, y, z]}`);
   };
   const setMode = async mode => {
@@ -262,7 +267,11 @@ ${anchor}`);
     assert.match(start.suggestedFilename, /^room-studio-3d-.*\.png$/);
     const bytes = await readFile(join(output, 'downloads', end.guid));
     const expected = Buffer.from(before.split(',')[1], 'base64');
-    assert.deepEqual(bytes, expected, 'download is the actual unchanged framed canvas');
+    assert.equal(
+      createHash('sha256').update(bytes).digest('hex'),
+      createHash('sha256').update(expected).digest('hex'),
+      'download is the actual unchanged framed canvas',
+    );
     assert.deepEqual((await snapshot()).camera, cameraBefore, 'PNG preserves the camera');
     const path = join(output, `${name}-download.png`);
     await writeFile(path, bytes);
@@ -481,11 +490,21 @@ ${anchor}`);
     await setMode('dollhouse');
     assert.equal(entryFocusInside, true, '3D entry moves keyboard focus inside the overlay');
     assert.equal(backgroundInert, true, 'the background editor is inert during 3D');
+    await pointFor('[data-studio-room]');
+    const wholeRoom = await armState(`document.querySelector('[data-walkthrough]').dataset.focusedRoom === ''`, 'whole-space framing');
+    await page(`(() => {
+      const selector = document.querySelector('[data-studio-room]');
+      selector.value = '';
+      selector.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await wholeRoom();
+    await paint();
     await screenshot(`${width}x${height}-overview`);
     const geometry = await rects();
     receipt.viewports.push({ width, height, closed: geometry });
-    assert.ok(geometry.stage.y <= 134, `closed overview stage begins at ${geometry.stage.y}px; maximum 134px`);
-    checkControls(geometry, width, height, 5);
+    const maximumTop = width <= 900 && height > width ? 152 : 134;
+    assert.ok(geometry.stage.y <= maximumTop, `closed overview stage begins at ${geometry.stage.y}px; maximum ${maximumTop}px`);
+    checkControls(geometry, width, height, 8);
     assert.ok(geometry.toolbar.bottom <= geometry.stage.y, 'primary controls end before the scene begins');
     const initial = await snapshot();
     assert.equal(initial.viewMode, 'dollhouse');
@@ -498,7 +517,7 @@ ${anchor}`);
 
     await openMore();
     const openGeometry = await rects();
-    checkControls(openGeometry, width, height, 9);
+    checkControls(openGeometry, width, height, 11);
     assert.deepEqual(openGeometry.stage, geometry.stage, 'disclosure does not resize the stage');
     assert.deepEqual((await snapshot()).camera, initial.camera, 'disclosure does not reframe the camera');
     await screenshot(`${width}x${height}-more`);
@@ -510,7 +529,7 @@ ${anchor}`);
     await spaceClosed();
     await openMore(true);
     // Native Tab reaches every enabled tool in DOM order.
-    for (const selector of ['[data-toggle-ceiling]', '[data-toggle-walls]', '[data-focus-selection]', '[data-save-snapshot]']) {
+    for (const selector of ['[data-toggle-ceiling]', '[data-toggle-walls]', '[data-focus-selection]']) {
       const focused = await armState(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`, `Tab ${selector}`, ['focusin']);
       await key('Tab', 'Tab', 9);
       await focused();
@@ -520,11 +539,17 @@ ${anchor}`);
     await key('Tab', 'Tab', 9, 8);
     assert.equal(await page(`Boolean(document.activeElement?.closest('[data-walkthrough]'))`), true, 'reverse Tab stays inside 3D');
     await closeMore();
+    for (const selector of ['button[data-view-mode="walk"]', 'button[data-view-mode="top"]', 'button[data-view-mode="dollhouse"]', '[data-save-snapshot]']) {
+      const focused = await armState(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`, `reverse Tab ${selector}`, ['focusin']);
+      await key('Tab', 'Tab', 9, 8);
+      await focused();
+    }
     await openMore();
     const shown = await armState(`document.querySelector('[data-toggle-ceiling]').getAttribute('aria-pressed') === 'false'`, 'ceiling shown');
     await click('[data-toggle-ceiling]');
     await shown();
     assert.ok((await snapshot()).ceilingVisibility.every(Boolean));
+    assert.ok((await snapshot()).roomLightVisibility.every(visible => !visible), 'overview retains daylight when ceiling geometry is shown');
     await click('[data-toggle-ceiling]');
     assert.ok((await snapshot()).ceilingVisibility.every(visible => !visible));
     await click('[data-toggle-walls]');
@@ -540,7 +565,7 @@ ${anchor}`);
     await click('[data-toggle-walls]');
     await click('[data-focus-selection]');
     const focused = await snapshot();
-    assert.deepEqual(focused.target, focused.selectedTarget);
+    assert.equal(focused.roomId, spaceIdOf(DEMO_LAYOUTS[0].zones[0]), 'focus frames the selected logical room');
     assert.notDeepEqual(focused.camera, initial.camera);
     checkFit(focused);
     await closeMore();
@@ -548,9 +573,18 @@ ${anchor}`);
     await setMode('top');
     checkFit(await snapshot());
     await screenshot(`${width}x${height}-top`);
-    await openMore();
+    // PNG omits editing outlines. Use the visible selection-clear control before
+    // comparing exact bytes, and verify that this does not change the framed view.
+    const framedCamera = (await snapshot()).camera;
+    const deselected = await armState(`window.__simple3dAudit().selection === null`, 'selection cleared for clean PNG');
+    const clearSelection = await page(`document.querySelector('[data-studio-toggle]').getAttribute('aria-expanded') === 'true' ? '[data-studio-clear]' : '[data-studio-finish-clear]'`);
+    await page(`document.querySelector(${JSON.stringify(clearSelection)}).scrollIntoView({ block: 'nearest', behavior: 'instant' })`);
+    await paint();
+    await click(clearSelection);
+    await deselected();
+    await paint();
+    assert.deepEqual((await snapshot()).camera, framedCamera, 'clearing selection preserves room framing');
     receipt.viewports.at(-1).download = await download(`${width}x${height}-top`);
-    await closeMore();
     await setMode('walk');
     assert.equal((await snapshot()).navigationActive, true);
     assert.equal(await page(`document.querySelector('[data-toggle-walls]').disabled`), true);

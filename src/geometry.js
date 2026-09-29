@@ -99,7 +99,7 @@ export function resizeZoneFromHandle(zone, handle, point, minimumSize = 100) {
   return { ...zone, x: left, y: top, width: right - left, depth: bottom - top };
 }
 
-export function resizeItemFromHandle(item, handle, point, minimumSize = 20) {
+export function resizeItemFromHandle(item, handle, point, minimumSize = 20, maximumSize = Infinity) {
   const direction = RESIZE_DIRECTIONS[handle];
   if (!direction) return item;
 
@@ -115,10 +115,10 @@ export function resizeItemFromHandle(item, handle, point, minimumSize = 20) {
   let top = -item.depth / 2;
   let bottom = item.depth / 2;
 
-  if (direction.x < 0) left = Math.min(localPoint.x, right - minimumSize);
-  if (direction.x > 0) right = Math.max(localPoint.x, left + minimumSize);
-  if (direction.y < 0) top = Math.min(localPoint.y, bottom - minimumSize);
-  if (direction.y > 0) bottom = Math.max(localPoint.y, top + minimumSize);
+  if (direction.x < 0) left = Math.max(right - maximumSize, Math.min(localPoint.x, right - minimumSize));
+  if (direction.x > 0) right = Math.min(left + maximumSize, Math.max(localPoint.x, left + minimumSize));
+  if (direction.y < 0) top = Math.max(bottom - maximumSize, Math.min(localPoint.y, bottom - minimumSize));
+  if (direction.y > 0) bottom = Math.min(top + maximumSize, Math.max(localPoint.y, top + minimumSize));
 
   const localCenter = { x: (left + right) / 2, y: (top + bottom) / 2 };
   const width = right - left;

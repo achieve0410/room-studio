@@ -416,6 +416,7 @@ try {
     if (await page('document.querySelector(".studio3d-body").hidden')) {
       await click('[data-studio-toggle]', `!document.querySelector('.studio3d-body').hidden`);
     }
+    await click('[data-studio-list]');
     await editor.locator('[data-studio-target]').selectOption('item:audit-sofa', { timeout: 15000 });
     receipt.actions.push({ scenario, select: '[data-studio-target]', value: 'item:audit-sofa' });
     assert.equal(await page('document.querySelector(".studio3d-shell").dataset.selectionId'), 'audit-sofa');
@@ -423,6 +424,7 @@ try {
   async function previewMove() {
     const before = await stored();
     await openStudio();
+    if (!await page('document.querySelector("[data-studio-precision]").open')) await click('[data-studio-precision] > summary');
     await click('[data-studio-value="x"]');
     await page('document.querySelector("[data-studio-value=x]").select()');
     await cdp.send('Input.insertText', { text: String(before.items[0].x + 1) });

@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-09-21
+- Last refreshed: 2026-09-29
 - Primary product surfaces: 2D 공간 형태·치수 편집기와 3D 가구·문·창·벽 상세 편집기, 3D 1인칭·돌하우스·상공 보기
 - Evidence reviewed: `src/main.js`, `src/layout-tools.js`, `src/styles.css`, `src/walkthrough3d.js`, `scripts/mobile-browser-audit.mjs`, 390×844·1440×1000 렌더링, RoomSketcher·Planner 5D·Canva·Figma FigJam·SketchUp LayOut의 공식 조작 문서
 
@@ -12,7 +12,7 @@
 - Avoid: 장난감 같은 색상, 과도한 애니메이션, 편집 도면을 가리는 장식
 
 ## Product goals
-- Goals: 상담자가 고객의 실제 공간에 두 배치안을 만들고, 차이와 추천 이유를 설명한 제안서를 전달하며, 다음 상담에서 작업을 이어간다.
+- Goals: 방 하나의 형태를 정하고, 가구를 직접 배치하고, 재질과 시점을 바꾸는 동안 같은 공간을 계속 다루는 경험을 제공한다. 상담·비교·제안서는 이 편집 결과를 사용하는 보조 흐름이다.
 - Non-goals: 자유 곡선 CAD, 건축 인허가 도면 제작
 - Success signals: 실제 도면을 두 점으로 축척 보정해 빠르게 옮겨 그리고, 영구 치수와 잠금으로 정밀도를 유지하며, 선택 배치를 3D 상공 시점에서 즉시 확인할 수 있음
 
@@ -23,13 +23,13 @@
 
 ## Information architecture
 - Primary navigation: 2D는 공간 형태를 정의한다. 데스크톱은 공간 목록과 넓은 도면, 모바일은 도면·공간·공간 상세와 3D 편집 진입을 제공한다. 가구·문·창·벽의 추가·수정·삭제는 3D 편집 안에서 수행한다.
-- Core routes/screens: 단일 2D 편집 화면, 전체 화면 3D 둘러보기
+- Core routes/screens: 공통 프로젝트 제목·2D 공간/3D 꾸미기 전환을 사용하는 작업 화면. 3D는 입력과 초점 격리를 위한 모달 경계를 유지하지만 별도 서비스처럼 보이는 어두운 탐색 헤더를 사용하지 않는다.
 - Content hierarchy: 2D에서 공간 만들기 > 3D에서 가구·문 배치 > 걸어보기. 2D 가구와 개구부는 위치 확인용으로 표시하며 조작 대상이 아니다. 공간의 이동·크기·이름·종류·합치기·삭제와 배경 도면·치수는 2D에 남긴다. 상담·비교·제안서는 보조 영역에서 연다.
 
 ## Space and detail editing boundary
 - This section supersedes earlier 2D furniture interaction descriptions below. Existing drawings retain all furniture, structures, finishes, dimensions, consultation options, and schema compatibility.
 - 3D selection actions reuse the shared workspace tokens, 4·8·12·16·24px spacing, 44px minimum touch targets, and 16px mobile input text. Selection, placement preview, pending changes, apply, cancel, undo, and redo must remain distinguishable.
-- The 3D panel has one scroll-owning content body and a non-scrolling selection/action footer. Furniture opens catalog-first: tabs, search, and real asset cards precede the accessible target-list alternative, explanatory copy, palettes, and precision fields. On portrait phones it is a compact bottom panel; on short landscape screens it is a supporting side panel. The scene occupies the remaining viewport, never the area behind the panel, and Apply/Cancel never scroll away with the catalog.
+- The 3D panel has one scroll-owning content body and a non-scrolling selection/action footer. An empty selection opens the catalog; selecting or placing an entity opens its contextual inspector instead. Its name, primary dimensions, material controls, and manipulation actions precede optional coordinate fields. An explicit add action returns to the catalog, and the accessible scene list remains available without scrolling past every catalog card. On portrait phones it is a compact bottom panel; on short landscape screens it is a supporting side panel. The scene occupies the remaining viewport, never the area behind the panel, and Apply/Cancel never scroll away.
 - The first mobile catalog row must show complete cards, including names and dimensions. Compact panel headers keep the library title without a redundant eyebrow, and the body uses 4px gaps. Mobile cards keep a 56px model preview beside the name and dimensions rather than stacking all three vertically.
 - Furniture placement previews in the scene before confirmation. Moving, rotating, resizing, deleting, and changing materials have touch buttons or numeric alternatives; users need not grab a small 3D handle. Door and window placement snaps to an actual wall and exposes width, height, opening direction, and open/closed controls.
 - Camera movement and object editing remain separate gestures. A second contact or pointer cancellation rolls back an unfinished object drag before camera navigation starts. No edit depends on hover, a keyboard modifier, or a long press.
@@ -47,7 +47,7 @@
 - Precision ladder: 캔버스 조작은 빠른 배치를, 스냅·키보드는 미세 조정을, 상세 입력은 정확한 수치 입력을 담당한다. 같은 값을 세 경로에서 일관되게 저장한다.
 - Trace before redraw: 실제 평면도는 배경으로 가져와 알려진 두 점의 거리로 축척을 보정하며, 투명도와 잠금으로 편집 도형보다 뒤에 머물게 한다.
 - Preview before walkthrough: 3D는 돌하우스·상공 시점으로 전체 배치를 먼저 확인하고, 필요할 때 1인칭 통행 검증으로 전환한다.
-- Compact 3D controls: 3D 기본 제어는 전체 보기·위에서·걸어보기·닫기와 도구 더보기만 표시한다. 천장·발표용 벽·선택 초점·PNG는 더보기에서 열며, 모바일의 닫힌 제어판이 장면 위 230px을 차지하지 않도록 134px 이내로 줄인다. 메뉴는 Escape로 닫고 초점을 복귀하며 화면·내보내기 카메라 구도와 실제 통행 계약은 유지한다.
+- Compact 3D controls: 공통 프로젝트/2D·3D 헤더와 입체 보기·위에서·걸어보기·도구 더보기를 구분한다. 헤더와 보기 도구의 합계는 데스크톱 120px, 세로 모바일 152px, 짧은 화면 108px이다. 천장·발표용 벽·선택 초점은 더보기에서 열고, 방 선택·PNG는 헤더에서 제공하되 높이가 줄어든 세로 화면에서는 더보기로 옮긴다. 메뉴는 Escape로 닫고 초점을 복귀하며 실제 통행 계약을 유지한다.
 - 3D input boundary: 3D는 이름 있는 모달이며 배경 편집기를 inert로 만든다. 방향키·단축키는 2D 도면을 바꾸지 않는다. 진입 시 보이는 3D 조작으로 초점을 옮기고 Tab을 안에서 순환하며, 닫기와 정리 후 현재 2D 미리보기 버튼으로 복귀한다.
 - Overview framing: 3D 전체보기는 실제 공간·가구·열린 문·프레임의 범위를 화면 비율과 시야각으로 맞추며 가장자리 여백을 둔다. 바닥 배경이나 숨긴 천장은 구도 계산에서 제외한다. PNG도 같은 카메라 구도를 사용한다.
 - Manual structure: 공간 연결부는 자동 문을 가정하지 않고 사용자가 벽과 문의 위치·폭·방향을 결정한다. 선택된 벽·문은 도면 위 양 끝점과 90도 회전 핸들로 직접 조정하며, 문을 다른 축의 벽 가까이 옮기면 해당 벽의 위치·방향·소유권으로 스냅한다.
@@ -78,9 +78,9 @@
 - Token/component ownership: `src/styles.css`의 기존 CSS 변수와 클래스 사용
 - Consultation primitives: 프로젝트 제목과 상담 정보 버튼, A/B 선택 버튼 묶음, 비교 보기, 업체·고객·요구사항 폼, 배치안별 추천·수정 메모, 저장 복구 안내. 버튼은 기본·선택·키보드 초점·비활성 상태를 구분하고 폼은 취소 시 원본을 유지한다.
 - Simple workspace primitives: 방 크기 시작 폼, 보조 패널 탭, 가구 검색, 가구 카드, 선택 조작 막대, 크기 입력 disclosure, 상담·정밀 기능 disclosure. 기존 버튼·입력·초점·비활성 토큰을 재사용한다. 가구 검색은 이름으로 즉시 필터링하고 결과 없음과 검색 지우기를 제공한다.
-- 3D studio primitives: `studio3d-panel-head`는 패널 이름과 undo/redo, `studio3d-tabs`는 작업 종류, `studio3d-catalog`는 이미지·이름·치수 카드, `studio3d-selection`은 현재 선택과 pending 상태, `studio3d-actions`는 회전·Apply·Cancel을 담당한다. 대상 목록은 `studio3d-target-alternative`, 좌표·높이·벽 부착·덜 쓰는 재질/교체 설정은 `studio3d-precision` disclosure 안에 둔다. disclosure를 열어도 카탈로그 탭과 검색 상태는 유지한다.
+- 3D studio primitives: `studio3d-panel-head`는 현재 선택과 추가/목록 전환 및 undo/redo, `studio3d-tabs`는 추가할 대상 종류, `studio3d-catalog`는 이미지·이름·치수 카드, `studio3d-selection`은 pending 상태, `studio3d-actions`는 Apply·Cancel을 담당한다. 선택한 가구의 크기·회전·재질·복제·삭제는 inspector의 주 도구이며 좌표·높이·덜 쓰는 설정만 `studio3d-precision` disclosure 안에 둔다. 목록으로 돌아와도 카탈로그 탭과 검색 상태는 유지한다.
 - 3D studio states: 기본 catalog, asset loading/error, selected, locked, pending preview, applied, empty search를 텍스트와 모양으로 구분한다. pending이면 footer에 상태 점과 "미적용 변경"을 표시하고 Apply만 강조한다. Cancel은 원본으로 복구하며 Apply 한 번은 history 한 항목으로 남는다.
-- 3D 선택 탭과 재질은 ink 배경과 반전된 글자로 표시한다. 좌표 입력은 최대 소수 두 자리로 읽기 쉽게 표시하되 저장된 기하 정밀도는 바꾸지 않는다. 짧은 가로 화면의 가구 카드는 사진 위·이름과 치수 아래 구성을 유지해 단위가 숫자에서 떨어지지 않는다.
+- 3D 선택 탭과 재질은 ink 배경과 반전된 글자로 표시한다. 좌표 입력은 최대 소수 두 자리로 읽기 쉽게 표시하되 저장된 기하 정밀도는 바꾸지 않는다. 짧은 가로 화면은 48px 사진과 이름·치수를 나란히 두어 첫 행을 온전히 보여주며 치수와 단위는 한 줄로 유지한다.
 - Simple workspace tokens: `--workspace-rail: 264px`, `--workspace-header: 64px`, `--workspace-mobile-nav: 64px`, `--text-section: 18px`, `--workspace-canvas-min: 200px`, `--studio-panel-width: 336px`, `--studio-panel-portrait: min(40dvh, 340px)`. 간격은 4·8·12·16·24px, 색상은 surface·ink·accent·line, 터치 목표는 44px을 유지한다.
 - Simple containment: 간편 데스크톱의 도면은 남은 화면 높이를 차지하고 보조 패널만 독립 스크롤한다. 모바일은 빈 안내와 선택 막대가 같은 `--simple-selection-slot` 높이를 점유해 선택 전후 캔버스 투영이 움직이지 않으며, 크기 disclosure를 명시적으로 열 때만 늘어난다. 선택 막대는 도면을 가리지 않도록 흐름에 둔다. 짧은 화면에서는 중앙 작업 영역이 스크롤하며 모달만 화면 전체를 막는다.
 - Workspace containment: 데스크톱은 도면을 중심으로 라이브러리와 상세 패널을 배치하며 각 보조 패널이 자신의 스크롤을 소유한다. 모바일은 도면 문서와 열린 패널을 구분하고, 모달이 열리면 배경을 inert로 만든다. 비교 보기는 넓은 화면에서 두 열, 좁은 화면에서 한 열이다.
@@ -135,6 +135,31 @@
 
 ## Open questions
 - [ ] 개선된 핵심 흐름의 실제 고객 완료율과 학습 부담은 고객 파일럿으로 확인한다. 자동화된 브라우저 통과를 고객 적합성 검증으로 해석하지 않는다.
+
+## Continuous workbench
+- Approved scope: 공통 편집 화면, 선택 대상별 도구, PC·모바일 직접 회전/크기 조작, 방 단위 카메라와 실내 표현. 자동 배치, 새 가구 세트, 거리 검사 시스템, 새 비교 기능, 클라우드와 배포는 포함하지 않는다.
+- Identity: 기존 중성 작업면과 ink·surface·accent 토큰을 공유한다. 프로젝트 이름과 `2D 공간`/`3D 꾸미기` 전환은 두 화면에서 같은 `workbench-heading`과 `workbench-modes` primitive를 사용한다. 3D의 영어 탐색 제목과 커다란 상태 배지를 편집 화면에서 제거한다.
+- Entry accessibility: 모바일 하단 진입도 `3D 꾸미기`로 맞추고 보이는 이름과 접근성 이름을 일치시킨다. 이 진입 글자는 ink를 사용하며, 데스크톱의 사용 범위 footer는 12px caption과 muted-readable로 읽을 수 있게 표시한다.
+- Continuity: 2D의 선택 공간은 3D의 초기 작업 공간이 된다. 같은 도면을 재열 때는 마지막 3D 선택·시점·카메라를 복원하며 도면 기하가 달라졌으면 새 공간에 맞춘다. 이 상태는 저장 스키마가 아니라 세션 UI 상태다. 도면 교체/가져오기/A-B 전환이 다른 도면의 시점을 재사용하지 않게 한다.
+- Contextual inspection: 기본 상태는 카탈로그다. 가구 선택 후에는 이름, `이동`/`회전`/`크기`, 가로·세로, 재질, 복제·삭제를 먼저 보여준다. 문·창은 폭·벽 부착·열림을, 벽은 길이·방향을, 공간은 선택한 면의 마감을 보여준다. `가구 추가`/`목록`은 명시적인 동작이고, 선택 취소는 캔버스의 빈 곳과 패널 버튼 모두에서 가능하다.
+- Compact context: 접힌 모바일 패널은 가구의 이동/회전/크기, 공간의 바닥/벽 마감, 선택이 없을 때의 짧은 추가 안내를 같은 44px 행에서 바꿔 보여준다. 패널 제목에는 펼침 방향 아이콘이 있고 적용할 수 없는 회전 명령은 숨긴다. 에셋 로딩 문구는 기존 선택 상태 행을 사용해 로딩만으로 장면 높이가 바뀌지 않는다.
+- Compact catalog: 미적용 변경·로딩·오류가 없는 카탈로그는 비활성 적용/취소 footer를 숨겨 가구 카드에 공간을 준다. 패널의 바깥 높이는 바꾸지 않는다. 600px 이하 세로 화면은 기존 탭과 동일한 종류 선택 native select를 검색 옆 104px 열에 두고 카드 사진은 48px로 줄여 이름·치수를 온전히 보인다. 상세는 가로·세로·높이를 첫 행에 두며 DOM과 시각 순서를 일치시킨다. 에셋 실패 시 빠른 변형 행 대신 오류와 재시도를 함께 보여 모든 복구 동작을 패널 안에 유지한다.
+- Reduced-height portrait: 500px 이하 세로 화면은 프로젝트/보기 헤더 56px와 보기 도구 52px를 유지하고 기존 방 선택·이미지 저장 노드를 `방·보기` 메뉴로 옮긴다. 입력 노드는 이동하지 않는다. 상세 패널은 220px와 남은 높이 중 작은 값을 쓰고 장면에 최소 44px를 남긴다. 이 상태에서는 수치 입력을 우선하며 정상 높이로 돌아오면 방 선택을 헤더에 복원한다. 패널 안쪽 간격은 4px, 상태 글자는 12px, 조작 영역은 44px을 유지한다.
+- Portrait balance: 700px 이상 높이에서는 패널을 기존 40dvh/340px 이내이면서 실제 남은 작업 높이의 절반보다 4px 작게 제한한다. 안전 영역을 포함해 장면을 더 크게 남기며, 작은 화면은 가구 카드와 첫 치수 행의 완전한 가시성을 우선한다. 패널 입력·select는 부모 폼의 margin을 상속하지 않고 토큰 gap으로 간격을 정한다.
+- Transform controls: 가구 본체는 항상 직접 이동 가능하다. 회전·크기 버튼을 선택했을 때만 44px 화면 좌표 손잡이를 보여 작은 가구의 기본 이동 영역을 보존한다. 회전은 바닥 평면의 중심을 기준으로, 크기는 반대 모서리를 고정해 조절한다. 드래그 중 치수·각도가 손잡이와 같은 화면에 표시된다. 숫자 입력과 15도 회전 버튼은 동등한 대체 경로다.
+- Transform primitives: `studio-transform-overlay`는 캔버스와 같은 영역의 화면 좌표 레이어다. 손잡이는 44px surface/ink 버튼과 24px 선형 SVG, 수치 표시는 최대 192px의 surface/ink 캡션으로 구성한다. 회전 손잡이의 키보드 활성화는 15도, 크기 손잡이는 반대 모서리를 고정한 가로·세로 10cm 증가이며 미리보기/적용 경계를 따른다. 크기 범위는 수치 입력과 같은 20~600cm다.
+- Transaction boundary: 드래그는 미리보기이며 적용 한 번은 history 한 항목이다. Escape, pointercancel, 두 번째 터치는 진행 중인 직접 조작을 되돌린다. 카메라만 조작할 때는 이미 작성한 수치/배치 미리보기를 버리지 않는다. 잠긴 대상은 손잡이를 노출하지 않는다.
+- Selection presentation: 가구 바닥 외곽선은 실제 회전을 따라간다. 선택 표시를 장면 전체를 가리는 축 정렬 주황색 와이어 박스로 표현하지 않는다. 선택 윤곽·손잡이는 PNG와 제안서 이미지에서 제외한다.
+- Room framing: `전체 공간`과 방 선택을 항상 찾을 수 있게 하고 선택한 공간의 실제 외곽과 그 안의 가구를 맞춘다. 단순히 화면 중심을 옮기는 것이 아니라 선택 공간의 크기에 맞춰 거리를 정한다. 카메라 조작은 기하·통행·문 상태를 바꾸지 않는다.
+- Room cutaway: 전체 도면과 상공 보기는 기존 낮은 벽 표현을 유지한다. 방 하나의 입체 보기에서는 카메라 앞쪽 벽만 낮추고 뒤쪽 벽은 실제 높이로 남겨 실내의 배경을 만든다. 문·창과 프레임은 자르지 않는다. 재질의 clipping만 바꾸며 통행·저장 기하는 그대로다.
+- Room selector: 공통 헤더의 native select는 `--workbench-room-width: 160px`(좁은 화면 128px), 44px 높이를 사용한다. 같은 spaceId의 공간 조각은 한 선택지이며 가장 큰 조각의 이름을 표시한다. 방 보기 전환은 미적용 편집을 버리지 않으며 새 가구는 선택한 작업 공간에 놓는다. 2D 복귀 시 작업 공간 선택은 이어지되 2D 줌·이동은 자동 초기화하지 않는다.
+- Scene material: 3D 배경은 밝은 중성색 `--scene-background: #e6e9e7`을 사용한다. 기존 GLB와 마감 식별자를 유지하고 카메라·조명·바닥 텍스처 축척·접지 그림자를 조절한다. 새 사실적 렌더링 서비스나 런타임 이미지 생성은 도입하지 않는다. 모델과 열린 문의 실제 범위는 전체 보기와 내보내기에서 유지한다.
+- Scene base: 기본 목재는 `#c5b391`, 욕실 타일은 `#ccd6d5`, 다른 타일은 `#d6d8d4`다. 목재 한 장은 120×18cm, 타일 한 장은 60×60cm 축척을 사용하고 연결된 공간 조각의 무늬 시작점을 도면 좌표에 맞춘다. 실내 장면의 색을 씻어내는 거리 안개는 사용하지 않는다. 접지 그림자는 `#20231e`의 부드러운 알파 그라데이션이며 가구 바닥 크기·회전을 따라간다.
+- Scene lighting: 하늘 fill `#f5f7f4`, 바닥 반사 `#b1aaa0`, key light `#fff5e6`, 중성 ambient `#ffffff`를 사용한다. 입체·상공 편집은 낮의 방향광과 접지 그림자로 형태를 읽고, 천장 조명은 걸어보기에서만 켠다. 방향광 그림자는 실제 가구·벽·문 기하에서 만들어지며 QA 저비용 렌더 프로필은 기존대로 별도 유지한다.
+- Containment: `--workbench-heading-height: 64px`, `--workbench-tools-height: 56px`를 기준으로 화면 높이를 정한다. 좁은 화면의 heading은 96px 안에서 프로젝트 이름과 전환을 두 행으로 배치한다. 3D 패널은 기존 `--studio-panel-width`와 `--studio-panel-portrait`를 사용하고 body만 스크롤한다. 변경 시 body scroll, 키보드 초점, 선택 대상은 유지한다.
+- Motion: 탭·버튼의 ink wash는 160ms 색상 전환, 패널 내용은 160ms opacity만 사용한다. 포인터를 따라가는 가구·손잡이·카메라는 보간하지 않는다. reduced-motion에서 이동 효과를 사용하지 않는다. [beui tabs](https://beui.dev/r/tabs/raw)의 선택 상태·로컬 스크롤·숨긴 패널 의미를 참고하며 React/Motion 코드는 도입하지 않는다.
+- Spatial reference: [supporting-pane](https://raw.githubusercontent.com/changeroa/StyleGallery/main/patterns/split-sidebar/supporting-pane.md)의 주 작업/보조 영역 분리를 bounded scroll-body shell과 조합한다. 캔버스와 패널의 크기·scroll ownership을 각각 고정하며 패널이 장면을 덮는 방식으로 공간을 확보하지 않는다.
+- Acceptance: 선택 상태별 primitive를 빈 방·가구·잠김·문·마감·미적용 상태로 실제 브라우저에서 확인한다. 375/390/768/1280/1440px과 짧은 가로 화면, 긴 이름, 모바일 키보드, 직접 마우스·native touch 조작을 포함한다. 기능 테스트 통과와 디자인/매력도 판단은 별도 증거로 기록한다.
 
 ## Direct space drawing
 - Canvas toolbar: `선택`, `직접 그리기`, `화면 이동` are explicit modes. Toolbar height remains stable; the selected state uses an ink wash and text, not a colored outline.

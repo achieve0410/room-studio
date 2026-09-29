@@ -181,6 +181,8 @@ try {
   const open = async (index = 0, legacy = false, ready = studioReady) => {
     await page.evaluate(layout => window.__resetStudioFixture(layout), (legacy ? DEMO_LAYOUTS : REGIONAL_DEMO_LAYOUTS)[index]);
     await change(ready, () => page.locator('#open-walkthrough').click());
+    // The lazy panel stylesheet changes the stage bounds before its first paint.
+    await paint();
     const profile = await page.evaluate(() => ({
       shadows: window.__scene().renderer.shadowMap.enabled,
       antialias: window.__scene().renderer.getContext().getContextAttributes().antialias,
@@ -217,6 +219,15 @@ try {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
+  const catalog = async (tab = 'item') => {
+    await page.locator('[data-studio-add]').click();
+    await page.locator(`[data-studio-tab="${tab}"]`).click();
+  };
+  const selectTarget = async (value) => {
+    await page.locator('[data-studio-list]').click();
+    await page.locator('[data-studio-target]').selectOption(value);
+  };
+  const material = (id) => page.locator(`[data-studio-material="${id}"]:visible`);
   const apply = async () => {
     const count = await page.evaluate(() => window.__actions.length);
     await change(
@@ -293,7 +304,7 @@ try {
     const sofa = await page.evaluate(() =>
       window.__layout.items.find((item) => item.assetId === 'seoul-sofa'),
     );
-    await page.locator('[data-studio-tab="wall"]').click();
+    await catalog('wall');
     assert.equal(await page.locator('[data-studio-tab="wall"]').getAttribute('aria-selected'), 'true');
     const point = await page.evaluate((id) => window.__scene().project(id), sofa.id);
     await mouse('mousePressed', point.x, point.y);
@@ -362,10 +373,11 @@ try {
     report.checks.push('direct drag previews until Apply; Escape cancels with no canonical write');
     await change(
       `${assetReady} && window.__scene().items.find(item=>item.id===${JSON.stringify(sofa.id)}).materialId==='walnut'`,
-      () => page.locator('[data-studio-material="walnut"]').click(),
+      () => material('walnut').click(),
     );
     await capture('desktop-material-preview');
     await apply();
+    await catalog();
     await page.locator('[data-studio-replace]').check();
     await change(
       `${assetReady} && window.__scene().items.find(item=>item.id===${JSON.stringify(sofa.id)}).assetId==='seoul-dining-chair'`,
@@ -385,9 +397,10 @@ try {
     await apply();
     assert.equal(await page.evaluate(() => window.__layout.items.length), beforeAdd + 1);
     report.checks.push('real GLB palette, replacement dimensions, add preview and commit');
-    await page.locator('[data-studio-tab="item"]').click();
+    await catalog();
     assert.deepEqual(await page.locator('[data-studio-asset]').evaluateAll(buttons => buttons.map(button => button.dataset.studioAsset)), ROOM_ASSETS.map(asset => asset.id));
     for (const asset of ROOM_ASSETS) {
+      await catalog();
       const canonical = await page.evaluate(() => window.__layout);
       await change(`${assetReady} && window.__scene().editSession.pending`, () => page.locator(`[data-studio-asset="${asset.id}"]`).click());
       const selected = await page.locator('.studio3d-shell').getAttribute('data-selection-id');
@@ -414,9 +427,9 @@ try {
       await change(`${assetReady} && !window.__scene().editSession.pending`, () => page.locator('[data-studio-cancel]').click());
       assert.deepEqual(await page.evaluate(() => window.__layout), canonical);
     }
-    await page.locator('[data-studio-target]').selectOption(`item:${sofa.id}`);
+    await selectTarget(`item:${sofa.id}`);
     for (const palette of ROOM_MATERIALS.filter(material => material.kind === 'palette')) {
-      await change(`${assetReady} && window.__scene().items.find(item => item.id === ${JSON.stringify(sofa.id)}).materialId === ${JSON.stringify(palette.id)}`, () => page.locator(`[data-studio-material="${palette.id}"]`).click());
+      await change(`${assetReady} && window.__scene().items.find(item => item.id === ${JSON.stringify(sofa.id)}).materialId === ${JSON.stringify(palette.id)}`, () => material(palette.id).click());
       const slots = await page.evaluate(id => {
         const group = window.__scene().scene.children[0].children.find(object => object.userData.id === id && object.userData.type === 'furniture');
         const slots = {};
@@ -433,25 +446,25 @@ try {
     }
     report.checks.push('all 12 catalog GLBs have real geometry/textures and cancel without writes; all 3 palettes change rendered material slots');
 
-    await page.locator('[data-studio-tab="floor"]').click();
+    await catalog('floor');
     const zoneId = await page.locator('.studio3d-shell').getAttribute('data-selection-id');
     await change(
       `${assetReady} && window.__scene().zones.find(zone=>zone.id===${JSON.stringify(zoneId)}).floorMaterialId==='tile-slate'`,
-      () => page.locator('[data-studio-material="tile-slate"]').click(),
+      () => material('tile-slate').click(),
     );
     await apply();
-    await page.locator('[data-studio-tab="wall"]').click();
+    await catalog('wall');
     await change(
       `${assetReady} && window.__scene().zones.find(zone=>zone.id===${JSON.stringify(zoneId)}).wallMaterialId==='plaster-chalk'`,
-      () => page.locator('[data-studio-material="plaster-chalk"]').click(),
+      () => material('plaster-chalk').click(),
     );
     await apply();
     await capture('desktop-floor-wall-edits');
     report.checks.push('zone floor and independently owned wall PBR finishes commit');
     for (const finish of ROOM_MATERIALS.filter(material => material.kind === 'surface')) {
       for (const usage of finish.usage) {
-        await page.locator(`[data-studio-tab="${usage}"]`).click();
-        await change(`${assetReady} && window.__scene().zones.find(zone => zone.id === ${JSON.stringify(zoneId)})[${JSON.stringify(`${usage}MaterialId`)}] === ${JSON.stringify(finish.id)}`, () => page.locator(`[data-studio-material="${finish.id}"]`).click());
+        await catalog(usage);
+        await change(`${assetReady} && window.__scene().zones.find(zone => zone.id === ${JSON.stringify(zoneId)})[${JSON.stringify(`${usage}MaterialId`)}] === ${JSON.stringify(finish.id)}`, () => material(finish.id).click());
         assert.ok(await page.evaluate(color => {
           let matches = 0;
           window.__scene().scene.traverse(object => {
@@ -635,7 +648,7 @@ try {
     await change(studioReady, () => page.locator('#open-walkthrough').click());
     await page.locator('button[data-view-mode="top"]').click();
     const actualItem = await page.evaluate(() => window.__scene().items[0]);
-    await page.locator('[data-studio-target]').selectOption(`item:${actualItem.id}`);
+    await selectTarget(`item:${actualItem.id}`);
     const savedBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('room-studio-layout-v2')));
     await page.locator('[data-studio-rotate]').click();
     assert.deepEqual(

@@ -17,7 +17,7 @@ const server = await createServer({
     configureServer(server) {
       server.middlewares.use('/__polygon3d', (_request, response) => {
         response.setHeader('Content-Type', 'text/html');
-        response.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Polygon 3D integration</title><main id="app"></main><script type="module">import "/src/styles.css";</script>');
+        response.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Polygon 3D integration</title><main id="app"></main><script type="module">import "/src/styles.css"; import "/src/workbench.css";</script>');
       });
     },
     transform(source, id) {
@@ -102,6 +102,7 @@ try {
         onSnapshot(snapshot) { window.__snapshots.push({ ...snapshot, beforeDisposal: !window.__scene().destroyed && !window.__scene().renderer.getContext().isContextLost() }); },
       });
     }, shape));
+    await paint();
   };
   const project = (x, y, height = 0) => page.evaluate(({ x, y, height }) => {
     const { camera, center, renderer } = window.__scene();
@@ -131,20 +132,20 @@ try {
   }), true, 'catalog placement starts inside a concave room rather than its empty bounding center');
   await page.locator('[data-studio-cancel]').click();
   await capture('concave-dollhouse');
-  await page.locator('[data-view-mode="top"]').click();
+  await page.locator('button[data-view-mode="top"]').click();
   const floorPoint = await project(80, 320);
   await change(`document.querySelector('.studio3d-shell').dataset.selectionId === 'concave'`, () => page.mouse.click(floorPoint.x, floorPoint.y));
-  await change(`window.__scene().editSession.pending && ${ready}`, () => page.locator('[data-studio-material="tile-slate"]').click());
+  await change(`window.__scene().editSession.pending && ${ready}`, () => page.locator('[data-studio-material="tile-slate"]:visible').click());
   assert.equal(await page.evaluate(() => window.__canonical().zones[0].floorMaterialId), 'oak-natural');
   await page.locator('[data-studio-cancel]').click();
-  await change(`window.__scene().editSession.pending && ${ready}`, () => page.locator('[data-studio-material="tile-slate"]').click());
+  await change(`window.__scene().editSession.pending && ${ready}`, () => page.locator('[data-studio-material="tile-slate"]:visible').click());
   await change(`!window.__scene().editSession.pending && ${ready}`, () => page.locator('[data-studio-apply]').click());
   assert.equal(await page.evaluate(() => window.__canonical().zones[0].floorMaterialId), 'tile-slate');
   await page.locator('[data-studio-undo]').click();
   assert.equal(await page.evaluate(() => window.__canonical().zones[0].floorMaterialId), 'oak-natural');
   await capture('concave-top-floor-selected');
   await verifyVoid();
-  await page.locator('[data-view-mode="walk"]').click();
+  await page.locator('button[data-view-mode="walk"]').click();
   assert.equal(await page.evaluate(() => window.__scene().canMoveTo(window.__scene().camera.position)), true);
   await capture('concave-walk');
   for (const shift of [800, -800]) {
@@ -155,7 +156,7 @@ try {
     assert.equal(await page.evaluate(() => window.__scene().canMoveTo(window.__scene().camera.position)), true, 'shape refresh relocates an invalid saved walk pose');
   }
   report.checks.push('host geometry refresh rebuilds polygon scene/minimap and relocates invalid walk poses');
-  await page.locator('[data-view-mode="dollhouse"]').click();
+  await page.locator('button[data-view-mode="dollhouse"]').click();
   const stage = await page.locator('[data-walkthrough-stage]').boundingBox();
   await page.mouse.move(stage.x + 20, stage.y + 20); await page.mouse.down();
   await page.mouse.move(stage.x + 160, stage.y + 75); await page.mouse.up();
@@ -175,8 +176,8 @@ try {
   await open('angled');
   assert.ok(await page.evaluate(() => window.__canonical().structures.every(opening => Math.abs(opening.angle - 45) < 1e-6 && opening.wallAttachment.zoneId === 'angled')));
   await capture('angled-dollhouse');
-  await page.locator('[data-view-mode="top"]').click();
-  await page.locator('[data-view-mode="dollhouse"]').click();
+  await page.locator('button[data-view-mode="top"]').click();
+  await page.locator('button[data-view-mode="dollhouse"]').click();
   const wallPoint = await page.evaluate(() => {
     const { camera, renderer, center, pickEditable } = window.__scene();
     const p = new window.__THREE.Vector3((320 - center.x) / 100, 0.3, (320 - center.y) / 100).project(camera);
@@ -191,22 +192,25 @@ try {
   });
   await change(`document.querySelector('.studio3d-shell').dataset.selectionId === 'angled'`, () => page.mouse.click(wallPoint.x, wallPoint.y));
   assert.equal(await page.locator('[data-studio-tab="wall"]').getAttribute('aria-selected'), 'true');
-  await change(`window.__scene().editSession.pending && ${ready}`, () => page.locator('[data-studio-material="plaster-warm"]').click());
+  await change(`window.__scene().editSession.pending && ${ready}`, () => page.locator('[data-studio-material="plaster-warm"]:visible').click());
   await page.locator('[data-studio-apply]').click();
+  await page.locator('[data-studio-list]').click();
   await page.locator('[data-studio-target]').selectOption('structure:door');
   assert.equal(await page.locator('[data-studio-wall-target] option').evaluateAll(options =>
     options.some(option => /undefined|NaN/.test(option.textContent))), false, 'angled wall options contain finite geometry');
+  await page.locator('[data-studio-precision] > summary').click();
   await page.locator('[data-studio-nudge="10,0"]').click();
   const draft = await page.evaluate(() => window.__scene().editSession.layout.structures[0]);
   assert.ok(Math.abs(draft.x - draft.y) < 1e-6);
   await page.locator('[data-studio-cancel]').click();
   await page.locator('[data-studio-opening="1"]').click(); await page.locator('[data-studio-apply]').click();
+  await page.locator('[data-studio-list]').click();
   await page.locator('[data-studio-target]').selectOption('structure:window');
   await page.locator('[data-studio-opening="0.5"]').click(); await page.locator('[data-studio-apply]').click();
-  await page.locator('[data-view-mode="top"]').click();
+  await page.locator('button[data-view-mode="top"]').click();
   await capture('angled-top-openings');
   assert.deepEqual(await page.evaluate(() => window.__canonical().structures.map(opening => opening.openAngle ?? opening.openRatio)), [90, 50]);
-  await page.locator('[data-view-mode="dollhouse"]').click(); await capture('angled-finished');
+  await page.locator('button[data-view-mode="dollhouse"]').click(); await capture('angled-finished');
   await page.locator('[data-studio-opening="1"]').click();
   await page.locator('[data-walkthrough-exit]').first().click();
   assert.equal(await page.evaluate(() => window.__snapshots.length), 0, 'pending placement/edit is never captured as a committed result');
@@ -215,7 +219,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await open('concave');
-  await page.locator('[data-view-mode="top"]').click();
+  await page.locator('button[data-view-mode="top"]').click();
   const mobileFloor = await project(80, 320);
   await change(`document.querySelector('.studio3d-shell').dataset.selectionId === 'concave'`, () => tapPoint(mobileFloor));
   const canvas = await page.locator('[data-walkthrough-stage]').boundingBox();
@@ -227,7 +231,7 @@ try {
   await touch('touchEnd', []);
   assert.equal(await page.evaluate(() => window.__scene().editSession.pending), false);
   await capture('mobile-concave-touch-pinch');
-  await page.locator('[data-view-mode="walk"]').click();
+  await page.locator('button[data-view-mode="walk"]').click();
   const joystick = await page.locator('[data-walkthrough-joystick]').boundingBox();
   const start = await page.evaluate(() => window.__scene().camera.position.toArray());
   await change(`window.__scene().camera.position.x !== ${start[0]} || window.__scene().camera.position.z !== ${start[2]}`, () => touch('touchStart', [{ x: joystick.x + joystick.width / 2, y: joystick.y + joystick.height * 0.3, id: 1 }]));

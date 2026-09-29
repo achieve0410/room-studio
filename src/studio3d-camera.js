@@ -1,4 +1,46 @@
 import * as THREE from 'three';
+import { getDoorLeafSegments, pointInZone, segmentEndpoints, spaceIdOf, structureSegment, zonePoints } from './geometry.js';
+
+/** Frame one logical space, including its furniture and the full swing of boundary openings. */
+export function studioRoomPoints(layout, roomId, center, meshes, cutaway = true) {
+  const zones = layout.zones.filter(zone => spaceIdOf(zone) === roomId);
+  const points = [];
+  const add = (point, height) => points.push(new THREE.Vector3(
+    (point.x - center.x) / 100, height / 100, (point.y - center.y) / 100,
+  ));
+  for (const zone of zones) {
+    const height = zone.height ?? layout.wallHeight;
+    for (const point of zonePoints(zone)) {
+      add(point, 0);
+      add(point, cutaway ? Math.min(65, height) : height);
+    }
+  }
+  const inside = point => zones.some(zone => pointInZone(point, zone));
+  const itemIds = new Set(layout.items.filter(inside).map(item => item.id));
+  points.push(...studioSpatialPoints(meshes.filter(mesh => {
+    for (let node = mesh; node; node = node.parent) {
+      if (node.userData.type === 'furniture') return itemIds.has(node.userData.id);
+    }
+    return false;
+  })));
+  for (const structure of layout.structures.filter(inside)) {
+    const { start, end } = segmentEndpoints(structureSegment(structure));
+    const bottom = structure.sillHeight ?? 0;
+    const top = structure.type === 'wall' && cutaway
+      ? Math.min(65, structure.height) : bottom + structure.height;
+    for (const point of [start, end]) {
+      add(point, bottom);
+      add(point, top);
+    }
+    for (const leaf of getDoorLeafSegments([structure])) {
+      for (const point of [leaf.start, leaf.end]) {
+        add(point, 0);
+        add(point, structure.height);
+      }
+    }
+  }
+  return points;
+}
 
 /** Visible mesh envelopes, rather than empty corners of the aggregate room box. */
 export function studioSpatialPoints(meshes) {
@@ -119,6 +161,7 @@ export function createStudioNavigation({ camera, size, target, mode, onChange })
       const current = center(points);
       const dx = current.x - gesture.center.x;
       const dy = current.y - gesture.center.y;
+      if (dx === 0 && dy === 0 && (points.length === 1 || separation(points) === gesture.separation)) return true;
       if (points.length > 1 || gesture.pan) {
         const scale =
           (2 * gesture.distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / size().height;
