@@ -161,8 +161,15 @@ try {
     };
     const handlePoints = async mode => {
       await settleBrowserPaint(page);
-      const rectangle = await page.locator(`[data-studio-handle="${mode}"]`).boundingBox();
-      assert.ok(rectangle && rectangle.width >= 44 && rectangle.height >= 44);
+      const handle = page.locator(`[data-studio-handle="${mode}"]`);
+      const size = await handle.evaluate(node => {
+        const style = getComputedStyle(node);
+        return [parseFloat(style.width), parseFloat(style.height)];
+      });
+      assert.ok(size.every(value => value >= 44), `Handle CSS target is at least 44px: ${size}`);
+      const rectangle = await handle.boundingBox();
+      // Translated 44px boxes can measure 43.99998474121094px across a float32 boundary.
+      assert.ok(rectangle && rectangle.width >= 44 - 0.0001 && rectangle.height >= 44 - 0.0001);
       const from = { x: rectangle.x + rectangle.width / 2, y: rectangle.y + rectangle.height / 2 };
       const to = await page.evaluate(({ from, mode }) => {
         const state = window.__workbench3d();
