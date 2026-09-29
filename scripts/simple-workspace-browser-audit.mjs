@@ -204,15 +204,21 @@ try {
     assert.equal(await page('document.querySelector("#app").inert'), false);
   };
   const chooseTarget = async value => {
+    await click('[data-studio-list]');
     const chosen = await armState(`document.querySelector('[data-studio-target]').value === ${JSON.stringify(value)}`, ['change']);
     // Use the real HTML select, not platform-specific native popup key routing.
     await controlPage.locator('[data-studio-target]').selectOption(value, { timeout: 15000 });
     await chosen();
   };
+  const catalog = async (kind = 'item') => {
+    await click('[data-studio-add]');
+    if (await controlPage.locator('[data-studio-category]').isVisible()) await controlPage.locator('[data-studio-category]').selectOption(kind);
+    else await click(`[data-studio-tab="${kind}"]`);
+  };
 
   await noLegacyDetails();
   await open3d();
-  await click('[data-studio-tab="item"]');
+  await catalog();
   await input('[data-studio-search]', '소파');
   assert.deepEqual(await page(`[...document.querySelectorAll('[data-studio-asset]:not([hidden])')].map(button => button.dataset.studioAsset).sort()`),
     ['seoul-coffee-table', 'seoul-sofa'], '3D search returns the sofa and matching table, not unrelated models');
@@ -228,7 +234,7 @@ try {
   assert.equal(draft.items.length, 1);
   assert.equal(draft.items[0].assetId, 'seoul-sofa');
   const sofaId = draft.items[0].id;
-  await click('[data-view-mode="top"]');
+  await click('button[data-view-mode="top"]');
   const placement = await page(`window.__simpleWorkflowScene().projectItem(${JSON.stringify(sofaId)})`);
   assert.equal(await page(`document.elementFromPoint(${placement.x}, ${placement.y})?.matches('[data-walkthrough-canvas]')`), true, 'preview is on the actual scene');
   const moved = await armState(`window.__simpleWorkflowScene().items[0].x !== ${draft.items[0].x}`);
@@ -318,14 +324,17 @@ try {
     }
     await noLegacyDetails();
     await open3d(touch ? '.mobile-nav [data-open-detail]' : '#open-walkthrough');
-    await click('[data-studio-tab="item"]');
+    await catalog();
     await input('[data-studio-search]', '소파');
     const geometry = await page(`(() => {
       const stage = document.querySelector('[data-walkthrough-stage]').getBoundingClientRect();
       const panel = document.querySelector('.studio3d-shell').getBoundingClientRect();
       const apply = document.querySelector('[data-studio-apply]').getBoundingClientRect();
+      const shell = document.querySelector('.studio3d-shell');
+      const idleCatalog = shell.dataset.catalogIdle === 'true' && shell.classList.contains('is-expanded');
       return { separated: stage.right <= panel.left || stage.bottom <= panel.top, height: stage.height,
-        overflow: document.documentElement.scrollWidth > innerWidth, applyVisible: apply.top >= 0 && apply.bottom <= innerHeight };
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        applyVisible: idleCatalog ? apply.height === 0 : apply.height >= 44 && apply.top >= 0 && apply.bottom <= innerHeight };
     })()`);
     assert.equal(geometry.separated, true, `${width} 3D panel does not cover the scene`);
     assert.ok(geometry.height >= 150, `${width} has a usable 3D stage`);
@@ -368,6 +377,7 @@ try {
   assert.equal((await state()).structures.find(({ id }) => id === door.id).openAngle, 90);
   await screenshot('mobile-3d-door-actions');
   const beforeWall = await state();
+  await catalog('structure');
   await click('[data-studio-structure="wall"]');
   await apply3d();
   const wall = (await state()).structures.at(-1);

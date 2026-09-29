@@ -84,10 +84,22 @@ try {
     const count = await page.evaluate(() => window.__actions.length);
     await change(`window.__actions.length === ${count + 1} && !window.__detailScene().editSession.pending`, () => page.locator('[data-studio-apply]').click());
   };
-  const choose = async value => { await page.locator('[data-studio-target]').selectOption(value); };
+  const choose = async value => {
+    await page.locator('[data-studio-list]').click();
+    await page.locator('[data-studio-target]').selectOption(value);
+  };
+  const catalog = async kind => {
+    await page.locator('[data-studio-add]').click();
+    if (await page.locator('[data-studio-category]').isVisible()) await page.locator('[data-studio-category]').selectOption(kind);
+    else await page.locator(`[data-studio-tab="${kind}"]`).click();
+  };
   const field = async (key, value) => {
     const control = page.locator(`[data-studio-value="${key}"]`);
-    await control.fill(String(value)); await control.press('Tab');
+    if (await control.evaluate(node => node.closest('[data-studio-precision]')?.open === false)) {
+      await page.locator('[data-studio-precision] > summary').click();
+    }
+    if (await control.evaluate(node => node.tagName === 'SELECT')) await control.selectOption(String(value));
+    else { await control.fill(String(value)); await control.press('Tab'); }
   };
   const cdp = await page.context().newCDPSession(page);
   const touch = async (type, points) => {
@@ -113,9 +125,12 @@ try {
       const stage = document.querySelector('[data-walkthrough-stage]').getBoundingClientRect();
       const panel = document.querySelector('.studio3d-shell').getBoundingClientRect();
       const apply = document.querySelector('[data-studio-apply]').getBoundingClientRect();
+      const shell = document.querySelector('.studio3d-shell');
+      const idleCatalog = shell.dataset.catalogIdle === 'true' && shell.classList.contains('is-expanded');
       return { separate: stage.bottom <= panel.top || stage.right <= panel.left, sceneHeight: stage.height,
         cameraAspect: window.__detailScene().camera.aspect, stageAspect: stage.width / stage.height,
-        applyVisible: apply.bottom <= innerHeight && apply.top >= 0, overflow: document.documentElement.scrollWidth > innerWidth,
+        applyVisible: idleCatalog ? apply.height === 0 : apply.height >= 44 && apply.bottom <= innerHeight && apply.top >= 0,
+        overflow: document.documentElement.scrollWidth > innerWidth,
         smallControls: [...document.querySelectorAll('.studio3d-shell button, .studio3d-shell input, .studio3d-shell select')]
           .filter(el => el.getClientRects().length && !el.closest('[hidden]')).filter(el => el.getBoundingClientRect().height < 44).length };
     });
@@ -173,6 +188,7 @@ try {
   }
   assert.equal(await page.evaluate(() => window.__actions.length), actionCount + 1, 'canceled native drags do not write history');
   report.checks.push('actual object drag previews until Apply; pointercancel and second contact cancel the moved draft without history');
+  await catalog('item');
   await page.locator('[data-studio-template="laundryTower"]').click();
   const placementId = await page.locator('.studio3d-shell').getAttribute('data-selection-id');
   const blank = await page.locator('[data-walkthrough-stage]').evaluate(stage => {
@@ -196,14 +212,14 @@ try {
     'a second contact without an object drag preserves numeric changes');
   await page.locator('[data-studio-cancel]').click();
   report.checks.push('camera-only contacts preserve pending placement and numeric rotation; no object drag is mistaken for camera intent');
-  await page.locator('[data-studio-tab="structure"]').click();
+  await catalog('structure');
   await page.locator('[data-studio-structure="swing"]').click();
   const door = await page.evaluate(() => window.__detailScene().sceneStructures[0]);
   assert.equal(door.y, 0); assert.equal(door.orientation, 'horizontal');
   assert.equal(await page.evaluate(() => window.__layout.structures.length), 0);
   await field('width', 110);
-  await page.locator('[data-studio-value="hinge"]').selectOption('end');
-  await page.locator('[data-studio-value="openSide"]').selectOption('1');
+  await field('hinge', 'end');
+  await field('openSide', '1');
   await page.locator('[data-studio-opening="1"]').click();
   await page.screenshot({ path: join(output, 'portrait-door-preview.png') });
   await containment();
@@ -217,12 +233,15 @@ try {
   await page.locator('[data-studio-wall-target]').selectOption(wallOption);
   assert.equal(await page.evaluate(() => window.__detailScene().sceneStructures[0].x), 500);
   await apply();
+  await catalog('structure');
   await page.locator('[data-studio-structure="window"]').click();
   await field('sillHeight', 80); await field('height', 130); await page.locator('[data-studio-opening="1"]').click(); await apply();
   assert.equal(await page.evaluate(() => window.__layout.structures.find(s => s.type === 'window').openRatio), 100);
+  await catalog('structure');
   await page.locator('[data-studio-structure="wall"]').click();
   await field('x', 250); await field('y', 200); await field('length', 300); await apply();
   const wall = await page.evaluate(() => window.__layout.structures.find(s => s.type === 'wall'));
+  await catalog('structure');
   await page.locator('[data-studio-structure="sliding"]').click(); await apply();
   assert.equal(await page.evaluate(() => window.__layout.structures.at(-1).wallId), wall.id);
   await choose(`structure:${wall.id}`); await field('y', 230); await apply();
@@ -238,7 +257,7 @@ try {
   await choose(`structure:${wall.id}`);
   await containment();
   await page.screenshot({ path: join(output, 'landscape-wall-inspector.png') });
-  await page.locator('[data-view-mode="walk"]').click();
+  await page.locator('button[data-view-mode="walk"]').click();
   assert.equal(await page.locator('.studio3d-shell').isVisible(), false);
   assert.equal(await page.evaluate(() => window.__detailScene().editSession.pending), false);
   await page.locator('[data-walkthrough-exit]').first().click();

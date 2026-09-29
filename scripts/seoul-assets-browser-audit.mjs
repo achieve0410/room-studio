@@ -155,6 +155,7 @@ try {
   assert.equal((await saved()).items.length, beforeAdd, 'one undo removes only the new model');
   receipt.checks.push('retired 2D detail controls absent; real 3D catalog preview, model reference and one-step undo');
   const sofa = (await saved()).items.find((item) => item.type === 'sofa');
+  await click('[data-studio-list]');
   await chromePage.locator('[data-studio-target]').selectOption(`item:${sofa.id}`);
   const materialPath = join(output, 'material-inspector.png');
   await capture(cdp, materialPath);
@@ -173,6 +174,7 @@ try {
   await click('[data-option-create]');
   await click('[data-option-select="B"]');
   await change(ready, () => click('#open-walkthrough'));
+  await click('[data-studio-list]');
   await chromePage.locator('[data-studio-target]').selectOption(`item:${sofa.id}`);
   await click('[data-studio-rotate]');
   await change(applied, () => click('[data-studio-apply]'));

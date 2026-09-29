@@ -3,14 +3,16 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { createStudioEditSession, studioWallRuns } from './studio3d-edit.js';
 import { createStudioAssets, disposeStudioScene } from './studio3d-assets.js';
 import { createStudioPanel } from './studio3d-panel.js';
-import { studioSpatialPoints, fitStudioCamera, createStudioNavigation } from './studio3d-camera.js';
+import { studioSpatialPoints, studioRoomPoints, fitStudioCamera, createStudioNavigation } from './studio3d-camera.js';
+import { renderWorkbenchNavigation } from './workbench-ui.js';
 import {
   doorsForAutomaticWallSegment,
   getExteriorWallSegments,
   getDoorLeafSegments,
   getInteriorWallSegments,
   getLayoutBounds,
-  itemBounds,
+  resizeItemFromHandle,
+  rotationFromPointer,
   snap,
   isPointBlockedByFurniture,
   isPointBlockedByDoorLeaves,
@@ -73,30 +75,45 @@ export function createWallPresentation(scene) {
   const plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.65);
   const materials = new Map();
   const walls = [];
+  const position = new THREE.Vector3();
+  const variants = (entry) => {
+    if (!materials.has(entry)) {
+      const full = entry.clone();
+      const cut = entry.clone();
+      full.clippingPlanes = null;
+      full.clipShadows = false;
+      cut.clippingPlanes = [plane];
+      cut.clipShadows = true;
+      materials.set(entry, { full, cut });
+    }
+    return materials.get(entry);
+  };
   scene.traverse((object) => {
     if (!object.isMesh || !['wall', 'wall-trim'].includes(object.userData.type)
       || object.userData.doorFramePart) return;
     const original = object.material;
-    const clone = (entry) => {
-      if (!materials.has(entry)) materials.set(entry, entry.clone());
-      return materials.get(entry);
-    };
-    object.material = Array.isArray(original) ? original.map(clone) : clone(original);
-    walls.push({ object, original });
+    const full = Array.isArray(original) ? original.map(entry => variants(entry).full) : variants(original).full;
+    const cut = Array.isArray(original) ? original.map(entry => variants(entry).cut) : variants(original).cut;
+    object.material = full;
+    walls.push({ object, original, full, cut });
   });
   return {
-    setMode(mode, enabled = true) {
+    setMode(mode, enabled = true, camera = null, target = null) {
       const cutaway = enabled && (mode === 'dollhouse' || mode === 'top');
-      materials.forEach((entry) => {
-        entry.clippingPlanes = cutaway ? [plane] : null;
-        entry.clipShadows = cutaway;
-        entry.needsUpdate = true;
-      });
+      for (const wall of walls) {
+        let near = true;
+        if (cutaway && mode === 'dollhouse' && camera && target) {
+          wall.object.getWorldPosition(position);
+          near = (position.x - target.x) * (camera.position.x - target.x)
+            + (position.z - target.z) * (camera.position.z - target.z) >= 0;
+        }
+        wall.object.material = cutaway && near ? wall.cut : wall.full;
+      }
       return cutaway;
     },
     dispose() {
       walls.forEach(({ object, original }) => { object.material = original; });
-      materials.forEach((entry) => entry.dispose());
+      materials.forEach(({ full, cut }) => { full.dispose(); cut.dispose(); });
     },
   };
 }
@@ -508,16 +525,16 @@ function createFloorTexture(zone) {
   const tiled = ['주방', '욕실', '다용도실'].includes(zone.type);
 
   if (tiled) {
-    context.fillStyle = zone.type === '욕실' ? '#b9c8c8' : '#d3d0c7';
+    context.fillStyle = zone.type === '욕실' ? '#ccd6d5' : '#d6d8d4';
     context.fillRect(0, 0, 512, 512);
     context.strokeStyle = 'rgba(255,255,255,.72)';
-    context.lineWidth = 5;
+    context.lineWidth = 1.5;
     for (let position = 0; position <= 512; position += 128) {
       context.beginPath(); context.moveTo(position, 0); context.lineTo(position, 512); context.stroke();
       context.beginPath(); context.moveTo(0, position); context.lineTo(512, position); context.stroke();
     }
   } else {
-    context.fillStyle = zone.type === '거실' ? '#ad855f' : '#b99670';
+    context.fillStyle = '#c5b391';
     context.fillRect(0, 0, 512, 512);
     for (let row = 0; row < 8; row += 1) {
       for (let column = -1; column < 5; column += 1) {
@@ -526,8 +543,8 @@ function createFloorTexture(zone) {
         const shade = (row * 17 + column * 23 + 80) % 28;
         context.fillStyle = `rgba(255,245,225,${0.025 + shade / 800})`;
         context.fillRect(x + 2, y + 2, 124, 60);
-        context.strokeStyle = 'rgba(74,45,24,.22)';
-        context.lineWidth = 2;
+        context.strokeStyle = 'rgba(74,45,24,.12)';
+        context.lineWidth = 1;
         context.strokeRect(x, y, 128, 64);
         context.strokeStyle = 'rgba(255,255,255,.08)';
         context.beginPath(); context.moveTo(x + 12, y + 20); context.lineTo(x + 110, y + 20); context.stroke();
@@ -539,7 +556,10 @@ function createFloorTexture(zone) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(Math.max(1, zone.width / 320), Math.max(1, zone.depth / 320));
+  const tileWidth = tiled ? 240 : 480;
+  const tileDepth = tiled ? 240 : 144;
+  texture.repeat.set(zone.width / tileWidth, zone.depth / tileDepth);
+  texture.offset.set(zone.x / tileWidth, -(zone.y + zone.depth) / tileDepth);
   texture.anisotropy = 8;
   return texture;
 }
@@ -938,6 +958,7 @@ export function buildScene(scene, zones, items, structures, wallHeight, center, 
   const doorControllers = doors.map((door) => buildDoorLeaf(scene, door, center, doorMaterial, trimMaterial));
   const windowControllers = windows.map((windowStructure) => buildWindowSash(scene, windowStructure, center, trimMaterial));
 
+  let contactShadowMaterial;
   items.forEach((item) => {
     const group = item.assetId ? assets.furniture(item) : createFurnitureGroup(item);
     const world = toWorld(item.x, item.y);
@@ -946,12 +967,27 @@ export function buildScene(scene, zones, items, structures, wallHeight, center, 
     scene.add(group);
 
     if (item.type !== 'rug') {
+      if (!contactShadowMaterial) {
+        const pixels = new Uint8Array(64 * 64 * 4);
+        for (let y = 0; y < 64; y++) {
+          for (let x = 0; x < 64; x++) {
+            const index = (y * 64 + x) * 4;
+            const fade = Math.max(0, 1 - Math.hypot((x - 31.5) / 31.5, (y - 31.5) / 31.5));
+            pixels.set([32, 35, 30, Math.round(fade * fade * 64)], index);
+          }
+        }
+        const texture = new THREE.DataTexture(pixels, 64, 64);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.minFilter = texture.magFilter = THREE.LinearFilter;
+        texture.needsUpdate = true;
+        contactShadowMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false });
+      }
       const shadow = new THREE.Mesh(
-        new THREE.CircleGeometry(Math.max(item.width, item.depth) / 190, 32),
-        new THREE.MeshBasicMaterial({ color: 0x30281e, transparent: true, opacity: 0.08, depthWrite: false }),
+        new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+        contactShadowMaterial,
       );
-      shadow.rotation.x = -Math.PI / 2;
-      shadow.scale.z = Math.max(0.45, item.depth / item.width);
+      shadow.scale.set((item.width + 16) / 100, 1, (item.depth + 16) / 100);
+      shadow.rotation.y = -(item.rotation ?? 0) * Math.PI / 180;
       shadow.position.set(world.x, 0.006, world.z);
       shadow.userData = { type: 'furniture-shadow', id: item.id };
       scene.add(shadow);
@@ -1049,8 +1085,10 @@ export function openWalkthrough({
   items,
   structures = [],
   wallHeight = 240,
+  projectName = '내 공간',
   focus = null,
   initialMode = 'walk',
+  initialView = null,
   onDoorChange = null,
   onStructureChange = onDoorChange,
   onClose = null,
@@ -1063,6 +1101,10 @@ export function openWalkthrough({
   furnitureTemplates = [],
 }) {
   activeCleanup?.();
+  if (initialView) {
+    focus = initialView.selection;
+    initialMode = initialView.mode;
+  }
 
   const previousFocus = document.activeElement;
   const background = document.querySelector('#app');
@@ -1078,42 +1120,22 @@ export function openWalkthrough({
   const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
   const openingPromptCopy = coarsePointer ? '탭하여' : '클릭 또는 E로';
   const overlay = document.createElement('section');
-  overlay.className = 'walkthrough-overlay';
+  overlay.className = 'walkthrough-overlay is-workbench';
   overlay.dataset.walkthrough = 'true';
   overlay.innerHTML = `
-    <style>
-      .walkthrough-overlay .walkthrough-view-tools button { min-width: 44px; min-height: 44px; font-size: 12px; color: #fffaf3; }
-      .walkthrough-overlay .walkthrough-view-tools button.is-active,
-      .walkthrough-overlay .walkthrough-view-tools button:hover { color: #242a26; }
-      .walkthrough-overlay button:focus-visible { outline: 3px solid #e9a06e; outline-offset: 2px; }
-      .walkthrough-overlay .walkthrough-view-tools { top: calc(68px + env(safe-area-inset-top)); max-width: calc(100% - 24px); overflow: visible; z-index: 1; }
-      .walkthrough-overlay .walkthrough-more-panel { position: absolute; top: calc(100% + 8px); right: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(320px, calc(100vw - 24px)); max-height: calc(100dvh - 148px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid rgba(255,255,255,.23); border-radius: 5px; background: #1a211e; box-shadow: 0 10px 32px rgba(0,0,0,.3); }
-      .walkthrough-overlay .walkthrough-more-panel[hidden] { display: none; }
-      .walkthrough-overlay .walkthrough-more-panel button { border: 1px solid rgba(255,255,255,.16); }
-      .walkthrough-overlay .walkthrough-location { top: calc(12px + env(safe-area-inset-top)); min-width: 0; max-width: calc(100% - 100px); padding: 8px 12px; }
-      .walkthrough-overlay .walkthrough-location strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .walkthrough-overlay .walkthrough-location small { display: none; }
-      .walkthrough-overlay.is-overview .walkthrough-stage { top: calc(134px + env(safe-area-inset-top)); height: auto; }
-      @media (max-width: 900px) {
-        .walkthrough-overlay .walkthrough-location strong { font-size: 19px; }
-        .walkthrough-overlay .walkthrough-view-tools { left: 12px; right: 12px; transform: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-        .walkthrough-overlay .walkthrough-view-modes button { flex: 1; }
-        .walkthrough-overlay .walkthrough-view-tools button { padding: 0 6px; }
-        .walkthrough-overlay .walkthrough-status { top: auto; bottom: calc(12px + env(safe-area-inset-bottom)); font-size: 12px; }
-        .walkthrough-overlay.is-overview .walkthrough-stage { bottom: 44px; }
-        .walkthrough-overlay:not(.is-overview) .walkthrough-status { display: none; }
-      }
-    </style>
     <div class="walkthrough-stage" data-walkthrough-stage></div>
     <div class="walkthrough-vignette"></div>
     <div class="walkthrough-curtain"></div>
+    <header class="workbench-header">
+      ${renderWorkbenchNavigation(projectName, 'studio')}
+      <div class="workbench-utilities"><select data-studio-room aria-label="작업 공간 보기"></select><button type="button" data-save-snapshot>이미지 저장</button></div>
+    </header>
     <div class="walkthrough-hud">
-      <div class="walkthrough-location"><span>NOW EXPLORING</span><strong data-current-room>불러오는 중</strong><small>직접 걸으며 배치를 확인하세요</small></div>
-      <div class="walkthrough-status" data-walkthrough-status role="status" aria-live="polite"><i></i> 둘러보기 준비</div>
-      <button class="walkthrough-exit" data-walkthrough-exit type="button" aria-label="3D 둘러보기 닫기"><span>닫기</span>×</button>
+      <strong class="sr-only" data-current-room>불러오는 중</strong>
+      <div class="sr-only" data-walkthrough-status role="status" aria-live="polite">둘러보기 준비</div>
       <div class="walkthrough-view-tools" aria-label="3D 보기 도구">
         <div class="walkthrough-view-modes">
-          <button data-view-mode="dollhouse" type="button">전체 보기</button>
+          <button data-view-mode="dollhouse" type="button">입체 보기</button>
           <button data-view-mode="top" type="button">위에서</button>
           <button data-view-mode="walk" type="button">걸어보기</button>
         </div>
@@ -1122,7 +1144,6 @@ export function openWalkthrough({
           <button data-toggle-ceiling type="button" aria-pressed="false">천장 숨기기</button>
           <button data-toggle-walls type="button" aria-pressed="true" aria-label="발표용 벽 낮추기" title="전체 보기·위에서 보기에서만 벽을 낮춰 표시합니다. 실제 벽 높이와 통행 충돌은 유지됩니다.">발표용 벽 낮추기</button>
           <button data-focus-selection type="button" ${focus ? '' : 'disabled'}>선택 보기</button>
-          <button data-save-snapshot type="button">PNG 저장</button>
         </div>
       </div>
       <div class="walkthrough-minimap" data-minimap>${miniMapMarkup(zones, layout)}</div>
@@ -1184,11 +1205,32 @@ export function openWalkthrough({
   const ceilingButton = overlay.querySelector('[data-toggle-ceiling]');
   const wallButton = overlay.querySelector('[data-toggle-walls]');
   const focusButton = overlay.querySelector('[data-focus-selection]');
+  const roomSelector = overlay.querySelector('[data-studio-room]');
+  const focusedZone = focus?.kind === 'zone' && zones.find(zone => zone.id === focus.id);
+  let focusedRoom = initialView?.roomId ?? (focusedZone ? spaceIdOf(focusedZone) : '');
+  const sceneRooms = new Map();
+  const syncRoomSelector = () => {
+    const signature = JSON.stringify(zones.map(zone => [zone.id, spaceIdOf(zone), zone.name, zone.width, zone.depth]));
+    if (roomSelector.dataset.signature !== signature) {
+      roomSelector.dataset.signature = signature;
+      sceneRooms.clear();
+      for (const zone of zones) {
+        const previous = sceneRooms.get(spaceIdOf(zone));
+        if (!previous || zone.width * zone.depth > previous.width * previous.depth) sceneRooms.set(spaceIdOf(zone), zone);
+      }
+      roomSelector.replaceChildren(new Option('전체 공간', ''));
+      for (const [id, zone] of sceneRooms) roomSelector.add(new Option(zone.name, id));
+    }
+    if (!sceneRooms.has(focusedRoom)) focusedRoom = '';
+    roomSelector.value = focusedRoom;
+    roomSelector.disabled = !zones.length;
+    overlay.dataset.focusedRoom = focusedRoom;
+  };
+  syncRoomSelector();
   const moreButton = overlay.querySelector('[data-walkthrough-more]');
   const morePanel = overlay.querySelector('[data-walkthrough-more-panel]');
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xcbd2d1);
-  scene.fog = new THREE.FogExp2(0xcbd2d1, 0.025);
+  scene.background = new THREE.Color(0xe6e9e7);
   const renderProfile = walkthroughRendererProfile(window.__roomStudioQaRenderProfile);
   const renderer = createWalkthroughRenderer(stage, overlay, renderProfile);
   renderer.domElement.dataset.walkthroughCanvas = 'true';
@@ -1249,18 +1291,34 @@ export function openWalkthrough({
   let wallPresentation = createWallPresentation(scene);
   scene.traverse((object) => {
     if (object.userData.type === 'furniture-label') furnitureLabels.push(object);
-    if (object.userData.type === 'ceiling' || object.userData.type === 'ceiling-fixture') ceilingObjects.push(object);
+    if (object.userData.type === 'ceiling' || object.userData.type === 'ceiling-fixture' || object.isPointLight) ceilingObjects.push(object);
   });
   let selectedFocusTarget = focusTargetForSelection(focus, zones, items, sceneStructures, center, wallHeight);
   focusButton.disabled = !selectedFocusTarget;
   const labelWorldPosition = new THREE.Vector3();
   const raycaster = new THREE.Raycaster();
   const rayPointer = new THREE.Vector2();
-  scene.add(new THREE.HemisphereLight(0xe7f0f4, 0x5f574c, 1.2));
-  scene.add(new THREE.AmbientLight(0xfffbf2, 0.3));
-  const sun = new THREE.DirectionalLight(0xfff1d7, 0.85);
-  sun.position.set(-4, 7, 3);
-  scene.add(sun);
+  scene.add(new THREE.HemisphereLight(0xf5f7f4, 0xb1aaa0, 1.8));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+  const sun = new THREE.DirectionalLight(0xfff5e6, 2);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0001;
+  sun.shadow.normalBias = 0.02;
+  sun.shadow.radius = 2;
+  const updateDaylight = () => {
+    const height = Math.max(wallHeight, ...zones.map(zone => zone.height ?? wallHeight)) / 100;
+    const extent = Math.max(6, Math.hypot(layout.width, layout.depth) / 100);
+    const shadowExtent = extent + height / 2;
+    sun.position.set(-extent * 0.6, Math.max(6, height * 3), extent * 0.5);
+    Object.assign(sun.shadow.camera, {
+      left: -shadowExtent, right: shadowExtent, top: shadowExtent, bottom: -shadowExtent,
+      near: 0.1, far: extent * 5 + height * 3,
+    });
+    sun.shadow.camera.updateProjectionMatrix();
+  };
+  updateDaylight();
+  scene.add(sun, sun.target);
 
   const startView = findStartView(zones, items);
   const startZone = zones.find((zone) => pointInZone(startView.point, zone));
@@ -1298,6 +1356,7 @@ export function openWalkthrough({
   let overviewTarget = null;
   const overviewOrbitTarget = new THREE.Vector3();
   let overviewNavigated = false;
+  let frameLoadedAssets = true;
   const overviewNavigation = createStudioNavigation({
     camera,
     target: overviewOrbitTarget,
@@ -1306,6 +1365,7 @@ export function openWalkthrough({
     onChange: () => {
       overviewNavigated = true;
       overlay.dataset.cameraRevision = String(Number(overlay.dataset.cameraRevision ?? 0) + 1);
+      if (focusedRoom) syncWallPresentation();
     },
   });
   let animationFrame = 0;
@@ -1337,11 +1397,12 @@ export function openWalkthrough({
   };
   const setCeilingsVisible = (visible) => {
     ceilingsVisible = Boolean(visible);
-    ceilingObjects.forEach((object) => { object.visible = ceilingsVisible; });
+    ceilingObjects.forEach((object) => { object.visible = object.isPointLight ? viewMode === 'walk' : ceilingsVisible; });
     syncViewToolState();
   };
   const syncWallPresentation = () => {
-    const active = wallPresentation.setMode(viewMode, presentationWalls);
+    const active = wallPresentation.setMode(viewMode, presentationWalls,
+      focusedRoom ? camera : null, focusedRoom ? overviewOrbitTarget : null);
     overlay.dataset.dollhouseCutaway = String(active);
     syncViewToolState();
   };
@@ -1363,7 +1424,11 @@ export function openWalkthrough({
   const setOverviewCamera = (mode, target = null) => {
     overviewTarget = target;
     const targetPoint = target ?? { x: 0, y: 0.65, z: 0, name: mode === 'top' ? '상공 보기' : '돌하우스 보기' };
-    const bounds = overviewSpatialBounds(scene);
+    const meshes = overviewSpatialMeshes(scene);
+    const points = !target && focusedRoom
+      ? studioRoomPoints({ zones, items, structures: sceneStructures, wallHeight }, focusedRoom, center, meshes, presentationWalls && mode === 'top')
+      : studioSpatialPoints(meshes);
+    const bounds = new THREE.Box3().setFromPoints(points);
     if (bounds.isEmpty()) {
       bounds.set(
         new THREE.Vector3(-layout.width / 200, 0, -layout.depth / 200),
@@ -1372,12 +1437,11 @@ export function openWalkthrough({
     }
     fitOverviewCamera(camera, bounds, mode, target);
     overviewOrbitTarget.copy(target ? new THREE.Vector3(target.x, target.y, target.z) : bounds.getCenter(new THREE.Vector3()));
-    // Legacy drawings keep their audited envelope; asset scenes fit the visible mesh envelope.
-    if (!target && (items.some(item => item.assetId) || zones.some(zone => zone.floorMaterialId || zone.wallMaterialId))) {
-      overviewOrbitTarget.copy(fitStudioCamera(camera, studioSpatialPoints(overviewSpatialMeshes(scene)), overviewOrbitTarget));
-    }
+    if (!target) overviewOrbitTarget.copy(fitStudioCamera(camera, points, overviewOrbitTarget));
     overviewNavigated = false;
-    currentRoom.textContent = targetPoint.name ?? (mode === 'top' ? '상공 보기' : '돌하우스 보기');
+    frameLoadedAssets = true;
+    currentRoom.textContent = sceneRooms.get(focusedRoom)?.name ?? targetPoint.name;
+    syncWallPresentation();
   };
   const activateOverview = (mode, target = null) => {
     if (viewMode === 'walk') {
@@ -1485,6 +1549,8 @@ export function openWalkthrough({
     if (event.code === 'Escape' && (editSession?.pending || editDrag)) {
       event.preventDefault();
       editDrag = null;
+      editPointers.clear();
+      overviewNavigation.cancel();
       studioPanel.cancel();
       return;
     }
@@ -1512,7 +1578,7 @@ export function openWalkthrough({
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    if (viewMode !== 'walk' && !overviewNavigated) setOverviewCamera(viewMode, overviewTarget);
+    if (viewMode !== 'walk' && !overviewNavigated && !editDrag) setOverviewCamera(viewMode, overviewTarget);
   };
   // Observe the actual scene viewport, not only the window or the supporting panel.
   const stageResizeObserver = new ResizeObserver(onResize);
@@ -1563,11 +1629,64 @@ export function openWalkthrough({
     document.exitPointerLock?.();
     menu.querySelector('[data-walkthrough-start]').focus({ preventScroll: true });
   };
-  const selectionRing = new THREE.Box3Helper(new THREE.Box3(), 0xad4b32);
-  selectionRing.material.depthTest = false;
+  const selectionRing = new THREE.LineLoop(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0x18201d, depthTest: false }),
+  );
+  selectionRing.frustumCulled = false;
   selectionRing.renderOrder = 5;
   selectionRing.visible = false;
   scene.add(selectionRing);
+  const transformTools = document.createElement('div');
+  transformTools.className = 'studio-transform-overlay';
+  transformTools.hidden = true;
+  transformTools.innerHTML = `
+    <output class="studio-transform-readout" data-studio-transform-readout></output>
+    <button type="button" data-studio-handle="rotate" aria-label="가구 회전 손잡이. 끌어서 회전하거나 Enter로 15도 회전" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+    <button type="button" data-studio-handle="resize" aria-label="가구 크기 손잡이. 끌어서 조절하거나 Enter로 가로 세로 10cm 늘리기" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m18 8v5h-5M3 3l7 7m11 11l-7-7"/></svg></button>`;
+  stage.append(transformTools);
+  const transformReadout = transformTools.querySelector('[data-studio-transform-readout]');
+  const rotationHandle = transformTools.querySelector('[data-studio-handle="rotate"]');
+  const resizeHandle = transformTools.querySelector('[data-studio-handle="resize"]');
+  const itemPoint = (item, x, y) => {
+    const angle = THREE.MathUtils.degToRad(item.rotation ?? 0);
+    return {
+      x: item.x + x * Math.cos(angle) - y * Math.sin(angle),
+      y: item.y + x * Math.sin(angle) + y * Math.cos(angle),
+    };
+  };
+  const updateTransformControls = () => {
+    const item = studioPanel?.selection?.kind === 'item' ? studioPanel.current : null;
+    const mode = studioPanel?.transformMode ?? 'move';
+    const visible = Boolean(item && !item.locked && viewMode !== 'walk'
+      && (mode !== 'move' || editDrag?.moved));
+    if (transformTools.hidden === visible) transformTools.hidden = !visible;
+    if (!visible) return;
+    const width = stage.clientWidth, height = stage.clientHeight;
+    const project = (point, elevation) => {
+      const projected = new THREE.Vector3(
+        (point.x - center.x) / 100, elevation / 100, (point.y - center.y) / 100,
+      ).project(camera);
+      return { x: (projected.x + 1) * width / 2, y: (1 - projected.y) * height / 2 };
+    };
+    const top = project(item, (item.elevation ?? 0) + item.height);
+    const corner = project(itemPoint(item, item.width / 2, item.depth / 2), item.elevation ?? 0);
+    const position = (node, point, offsetY = 0) => {
+      const x = THREE.MathUtils.clamp(point.x, 22, width - 22);
+      const y = THREE.MathUtils.clamp(point.y + offsetY, 22, height - 22);
+      const value = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+      if (node.style.transform !== value) node.style.transform = value;
+    };
+    if (rotationHandle.hidden !== (mode !== 'rotate')) rotationHandle.hidden = mode !== 'rotate';
+    if (resizeHandle.hidden !== (mode !== 'resize')) resizeHandle.hidden = mode !== 'resize';
+    position(rotationHandle, top, -44);
+    position(resizeHandle, corner);
+    const label = mode === 'rotate'
+      ? `${Math.round(item.rotation ?? 0)}°`
+      : `${Math.round(item.width)} × ${Math.round(item.depth)} cm`;
+    if (transformReadout.textContent !== label) transformReadout.textContent = label;
+    position(transformReadout, { x: THREE.MathUtils.clamp(top.x, 96, width - 96), y: top.y }, mode === 'rotate' ? -80 : -36);
+  };
   const updateSelection = (selection = studioPanel?.selection ?? focus) => {
     focus = selection;
     selectedFocusTarget = focusTargetForSelection(selection, zones, items, sceneStructures, center, wallHeight);
@@ -1577,14 +1696,21 @@ export function openWalkthrough({
     const structure = selection?.kind === 'structure' ? sceneStructures.find(entry => entry.id === selection.id) : null;
     selectionRing.visible = Boolean(onEdit && (item || zone || structure) && viewMode !== 'walk');
     if (item || zone || structure) {
-      const bounds = item ? itemBounds(item) : structure ? structureBounds(structure) : { left: zone.x, right: zone.x + zone.width, top: zone.y, bottom: zone.y + zone.depth };
+      const bounds = structure && structureBounds(structure);
+      const outline = item
+        ? [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => itemPoint(item, x * item.width / 2, y * item.depth / 2))
+        : zone ? zonePoints(zone)
+          : [{ x: bounds.left, y: bounds.top }, { x: bounds.right, y: bounds.top },
+            { x: bounds.right, y: bounds.bottom }, { x: bounds.left, y: bounds.bottom }];
       const bottom = item?.elevation ?? structure?.sillHeight ?? 0;
-      const height = item?.height ?? structure?.height ?? 1.5;
-      selectionRing.box.set(
-        new THREE.Vector3((bounds.left - center.x) / 100, bottom / 100 + 0.01, (bounds.top - center.y) / 100),
-        new THREE.Vector3((bounds.right - center.x) / 100, (bottom + height) / 100 + 0.02, (bounds.bottom - center.y) / 100),
-      );
+      if (selectionRing.geometry.getAttribute('position')?.count !== outline.length) {
+        selectionRing.geometry.dispose();
+        selectionRing.geometry = new THREE.BufferGeometry();
+      }
+      selectionRing.geometry.setFromPoints(outline.map(point =>
+        new THREE.Vector3((point.x - center.x) / 100, bottom / 100 + 0.01, (point.y - center.y) / 100)));
     }
+    updateTransformControls();
   };
   const geometryKey = value => JSON.stringify({
     ...value,
@@ -1596,12 +1722,15 @@ export function openWalkthrough({
     if (destroyed || !next) return;
     const nextKey = geometryKey({ zones: next.zones, items: next.items, structures: next.structures ?? [], wallHeight: next.wallHeight ?? wallHeight });
     const outlineChanged = JSON.stringify(zones.map(zonePoints)) !== JSON.stringify(next.zones.map(zonePoints));
+    if (!outlineChanged && nextKey !== sceneKey) frameLoadedAssets = false;
     zones = structuredClone(next.zones);
     items = structuredClone(next.items);
     wallHeight = next.wallHeight ?? wallHeight;
     layout = getLayoutBounds(zones);
+    syncRoomSelector();
     if (force || nextKey !== sceneKey) {
       sceneKey = nextKey;
+      updateDaylight();
       wallPresentation.dispose();
       disposeStudioScene(worldRoot);
       assets.begin();
@@ -1621,7 +1750,7 @@ export function openWalkthrough({
       ceilingObjects.length = 0;
       scene.traverse(object => {
         if (object.userData.type === 'furniture-label') furnitureLabels.push(object);
-        if (['ceiling', 'ceiling-fixture'].includes(object.userData.type)) ceilingObjects.push(object);
+        if (['ceiling', 'ceiling-fixture'].includes(object.userData.type) || object.isPointLight) ceilingObjects.push(object);
       });
       setCeilingsVisible(ceilingsVisible);
       syncWallPresentation();
@@ -1638,9 +1767,9 @@ export function openWalkthrough({
         const item = items.find(item => item.id === object.userData.id);
         object.position.x = (item.x - center.x) / 100;
         object.position.z = (item.y - center.y) / 100;
+        object.rotation.y = -(item.rotation ?? 0) * Math.PI / 180;
         if (object.userData.type === 'furniture') {
           object.position.y = (item.elevation ?? 0) / 100;
-          object.rotation.y = -(item.rotation ?? 0) * Math.PI / 180;
         }
       });
     }
@@ -1670,19 +1799,20 @@ export function openWalkthrough({
     wallPresentation = createWallPresentation(scene);
     syncWallPresentation();
     updateSelection();
-    if (viewMode !== 'walk' && !editDrag && !overviewNavigated) setOverviewCamera(viewMode, overviewTarget);
+    if (viewMode !== 'walk' && !editDrag && !overviewNavigated && frameLoadedAssets) setOverviewCamera(viewMode, overviewTarget);
   };
   const editPointers = new Set();
   let editDrag = null;
+  let editTap = null;
   const setEditRay = (event) => {
     const rect = renderer.domElement.getBoundingClientRect();
     rayPointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
     scene.updateMatrixWorld(true);
     raycaster.setFromCamera(rayPointer, camera);
   };
-  const groundPoint = (event) => {
+  const groundPoint = (event, elevation = 0) => {
     setEditRay(event);
-    const point = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+    const point = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevation / 100), new THREE.Vector3());
     return point ? { x: point.x * 100 + center.x, y: point.z * 100 + center.y } : null;
   };
   const pickEditable = (event) => {
@@ -1694,15 +1824,15 @@ export function openWalkthrough({
         if (ancestor.userData.type === 'furniture') furniture = ancestor;
       }
       if (invisible || ['furniture-shadow','furniture-label'].includes(object.userData.type)) continue;
+      const hitMaterial = Array.isArray(object.material) ? object.material[hit.face.materialIndex] : object.material;
+      if (hitMaterial.clippingPlanes?.some(plane => plane.distanceToPoint(hit.point) < 0)) continue;
       if (furniture) return { kind: 'item', id: furniture.userData.id };
       if (object.userData.openingController) return { kind: 'structure', id: object.userData.openingController.structure.id };
       if (object.userData.structureId) {
-        if (presentationWalls && hit.point.y > 0.65 && !object.userData.doorFramePart) continue;
         return { kind: 'structure', id: object.userData.structureId };
       }
       if (object.userData.type === 'floor') return { kind: 'zone', id: object.userData.id, surface: 'floor' };
       if (object.userData.type === 'wall') {
-        if (presentationWalls && hit.point.y > 0.65 && !object.userData.doorFramePart) continue;
         const runs = object.userData.wallRuns ?? [];
         const run = runs.find(run => {
           const frame = segmentFrame(run.segment);
@@ -1731,13 +1861,18 @@ export function openWalkthrough({
       if (editPointers.size > 1) {
         const editDragging = Boolean(editDrag?.moved);
         editDrag = null;
+        editTap = null;
         // Camera contacts must not discard an unrelated numeric/placement preview.
         if (editSession?.pending && editDragging) studioPanel?.cancel();
         overviewNavigation.down(event);
         return;
       }
       const selection = studioPanel && event.button === 0 && !event.shiftKey ? pickEditable(event) : null;
-      if (studioPanel && event.button === 0 && !event.shiftKey && (selection || !editSession?.pending)) studioPanel.select(selection);
+      editTap = null;
+      if (studioPanel && event.button === 0 && !event.shiftKey) {
+        if (['item', 'structure'].includes(selection?.kind)) studioPanel.select(selection);
+        else editTap = { id: event.pointerId, selection, x: event.clientX, y: event.clientY };
+      }
       const item = studioPanel?.current;
       const point = groundPoint(event);
       if (['item', 'structure'].includes(selection?.kind) && !item.locked && point) {
@@ -1762,13 +1897,28 @@ export function openWalkthrough({
     renderer.domElement.setPointerCapture?.(event.pointerId);
   };
   const onPointerMove = (event) => {
+    if (editTap?.id === event.pointerId
+      && Math.hypot(event.clientX - editTap.x, event.clientY - editTap.y) >= 4) editTap = null;
     if (editDrag?.id === event.pointerId) {
       overviewNavigation.move(event);
       if (Math.hypot(event.clientX - editDrag.clientX, event.clientY - editDrag.clientY) < 4 && !editDrag.moved) return;
-      const point = groundPoint(event);
+      const point = groundPoint(event, editDrag.item?.elevation ?? 0);
       if (point) {
         editDrag.moved = true;
-        studioPanel.move(snap(editDrag.x + point.x - editDrag.point.x, 1), snap(editDrag.y + point.y - editDrag.point.y, 1));
+        if (editDrag.mode === 'rotate') {
+          studioPanel.transform({ rotation: rotationFromPointer(
+            editDrag.item, editDrag.item.rotation ?? 0, editDrag.point, point, event.shiftKey ? 15 : 1,
+          ) });
+        } else if (editDrag.mode === 'resize') {
+          const resized = resizeItemFromHandle(editDrag.item, 'se', {
+            x: editDrag.corner.x + point.x - editDrag.point.x,
+            y: editDrag.corner.y + point.y - editDrag.point.y,
+          }, 20, 600);
+          const { x, y, width, depth, shape } = resized;
+          studioPanel.transform({ x, y, width, depth, shape });
+        } else {
+          studioPanel.move(snap(editDrag.x + point.x - editDrag.point.x, 1), snap(editDrag.y + point.y - editDrag.point.y, 1));
+        }
       }
       return;
     }
@@ -1808,6 +1958,12 @@ export function openWalkthrough({
         // Release leaves a visible draft; only the explicit Apply control writes history.
         if (event.type !== 'pointerup') studioPanel.cancel();
       }
+      if (editTap?.id === event.pointerId) {
+        const tap = editTap;
+        editTap = null;
+        // A surface becomes a selection only after a tap, never while starting camera navigation.
+        if (event.type === 'pointerup' && (tap.selection || !editSession?.pending)) studioPanel.select(tap.selection);
+      }
       return;
     }
     const pointerLocked = document.pointerLockElement === renderer.domElement;
@@ -1830,6 +1986,40 @@ export function openWalkthrough({
   };
   const onOverviewContextMenu = (event) => {
     if (viewMode !== 'walk') event.preventDefault();
+  };
+  const onTransformDown = (event) => {
+    const handle = event.target.closest('[data-studio-handle]');
+    const item = studioPanel?.current;
+    if (!handle || event.button !== 0 || !item || item.locked) return;
+    event.preventDefault();
+    if (editPointers.size) {
+      onPointerDown(event);
+      return;
+    }
+    const point = groundPoint(event, item.elevation ?? 0);
+    if (!point) return;
+    editPointers.add(event.pointerId);
+    handle.setPointerCapture(event.pointerId);
+    handle.focus({ preventScroll: true });
+    editDrag = {
+      id: event.pointerId, mode: handle.dataset.studioHandle, item: structuredClone(item),
+      point, corner: itemPoint(item, item.width / 2, item.depth / 2),
+      clientX: event.clientX, clientY: event.clientY, moved: false,
+    };
+    overviewNavigation.down(event, true);
+  };
+  const onTransformClick = (event) => {
+    const handle = event.target.closest('[data-studio-handle]');
+    const item = studioPanel?.current;
+    if (event.detail !== 0 || !handle || !item || item.locked) return;
+    if (handle.dataset.studioHandle === 'rotate') {
+      studioPanel.transform({ rotation: ((item.rotation ?? 0) + 15) % 360 });
+    } else {
+      const { x, y, width, depth, shape } = resizeItemFromHandle(
+        item, 'se', itemPoint(item, item.width / 2 + 10, item.depth / 2 + 10), 20, 600,
+      );
+      studioPanel.transform({ x, y, width, depth, shape });
+    }
   };
 
   const updateJoystick = (clientX, clientY) => {
@@ -1975,10 +2165,13 @@ export function openWalkthrough({
       furnitureLabels.forEach((label) => { label.visible = false; });
     }
     selectionRing.visible = Boolean(onEdit && selectedFocusTarget && focus && ['item','zone','structure'].includes(focus.kind) && viewMode !== 'walk');
+    updateTransformControls();
     renderer.render(scene, camera);
   };
 
   const saveSnapshot = () => {
+    const wasSelected = selectionRing.visible;
+    selectionRing.visible = false;
     renderer.render(scene, camera);
     renderer.domElement.toBlob((blob) => {
       if (!blob) {
@@ -1994,10 +2187,28 @@ export function openWalkthrough({
       overlay.dataset.lastSnapshot = 'png';
       setStatusMessage(status, '현재 3D 화면을 PNG로 저장했습니다');
     }, 'image/png');
+    selectionRing.visible = wasSelected;
   };
 
   const cleanup = () => {
     if (destroyed) return;
+    const view = {
+      mode: viewMode,
+      roomId: focusedRoom,
+      selection: focus && { ...focus },
+      panelOpen: studioPanel?.expanded,
+      presentationWalls,
+      target: overviewTarget && { ...overviewTarget },
+      position: camera.position.toArray(),
+      quaternion: camera.quaternion.toArray(),
+      up: camera.up.toArray(),
+      orbitTarget: overviewOrbitTarget.toArray(),
+      walkPosition: walkPose.position.toArray(),
+      walkQuaternion: walkPose.quaternion.toArray(),
+      fov: camera.fov,
+      zoom: camera.zoom,
+      far: camera.far,
+    };
     let snapshotError;
     try {
       if (onSnapshot && !editSession?.pending && !assetState.pending && !assetState.errors.length) {
@@ -2024,6 +2235,7 @@ export function openWalkthrough({
     clearTimeout(toastTimer);
     clearTimeout(bumpTimer);
     window.removeEventListener('resize', onResize);
+    compactToolsQuery.removeEventListener('change', syncToolLocation);
     stageResizeObserver.disconnect();
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('keyup', onKeyUp);
@@ -2038,6 +2250,13 @@ export function openWalkthrough({
     renderer.domElement.removeEventListener('pointerup', onPointerUp);
     renderer.domElement.removeEventListener('pointercancel', onPointerUp);
     renderer.domElement.removeEventListener('lostpointercapture', onPointerUp);
+    transformTools.removeEventListener('touchstart', onTouchStart);
+    transformTools.removeEventListener('pointerdown', onTransformDown);
+    transformTools.removeEventListener('pointermove', onPointerMove);
+    transformTools.removeEventListener('pointerup', onPointerUp);
+    transformTools.removeEventListener('pointercancel', onPointerUp);
+    transformTools.removeEventListener('lostpointercapture', onPointerUp);
+    transformTools.removeEventListener('click', onTransformClick);
     joystick.removeEventListener('pointerdown', onJoystickDown);
     joystick.removeEventListener('pointermove', onJoystickMove);
     joystick.removeEventListener('pointerup', onJoystickEnd);
@@ -2059,7 +2278,7 @@ export function openWalkthrough({
       if (previousHidden === null) background.removeAttribute('aria-hidden');
       else background.setAttribute('aria-hidden', previousHidden);
     }
-    if (onClose) onClose();
+    if (onClose) onClose(view);
     else previousFocus?.focus({ preventScroll: true });
     if (snapshotError) throw snapshotError;
   };
@@ -2082,6 +2301,13 @@ export function openWalkthrough({
   renderer.domElement.addEventListener('pointerup', onPointerUp);
   renderer.domElement.addEventListener('pointercancel', onPointerUp);
   renderer.domElement.addEventListener('lostpointercapture', onPointerUp);
+  transformTools.addEventListener('touchstart', onTouchStart, { passive: false });
+  transformTools.addEventListener('pointerdown', onTransformDown);
+  transformTools.addEventListener('pointermove', onPointerMove);
+  transformTools.addEventListener('pointerup', onPointerUp);
+  transformTools.addEventListener('pointercancel', onPointerUp);
+  transformTools.addEventListener('lostpointercapture', onPointerUp);
+  transformTools.addEventListener('click', onTransformClick);
   joystick.addEventListener('pointerdown', onJoystickDown);
   joystick.addEventListener('pointermove', onJoystickMove);
   joystick.addEventListener('pointerup', onJoystickEnd);
@@ -2093,6 +2319,15 @@ export function openWalkthrough({
     moreButton.focus({ preventScroll: true });
     if (open) stopMovement();
   };
+  const toolUtilities = overlay.querySelector('.workbench-utilities');
+  const toolHeader = toolUtilities.parentElement;
+  const compactToolsQuery = window.matchMedia('(max-width: 900px) and (max-height: 500px) and (orientation: portrait)');
+  const syncToolLocation = () => {
+    (compactToolsQuery.matches ? morePanel : toolHeader).append(toolUtilities);
+    moreButton.textContent = compactToolsQuery.matches ? '방·보기' : '도구 더보기';
+  };
+  compactToolsQuery.addEventListener('change', syncToolLocation);
+  syncToolLocation();
   moreButton.addEventListener('click', () => setMoreOpen(morePanel.hidden));
   overlay.addEventListener('keydown', (event) => {
     if (event.key === 'Tab') {
@@ -2125,9 +2360,26 @@ export function openWalkthrough({
   wallButton.addEventListener('click', () => {
     presentationWalls = !presentationWalls;
     syncWallPresentation();
+    if (viewMode !== 'walk') setOverviewCamera(viewMode, overviewTarget);
   });
   focusButton.addEventListener('click', () => {
-    if (selectedFocusTarget) activateOverview('dollhouse', selectedFocusTarget);
+    if (!selectedFocusTarget) return;
+    const selected = studioPanel?.current;
+    const room = focus?.kind === 'zone' ? selected
+      : selected && zones.find(zone => pointInZone(selected, zone));
+    if (room) {
+      focusedRoom = spaceIdOf(room);
+      syncRoomSelector();
+      activateOverview('dollhouse');
+    } else activateOverview('dollhouse', selectedFocusTarget);
+  });
+  roomSelector.addEventListener('change', () => {
+    focusedRoom = roomSelector.value;
+    const room = sceneRooms.get(focusedRoom);
+    if (room && !editSession?.pending) studioPanel?.select({ kind: 'zone', id: room.id, surface: 'floor' });
+    studioPanel?.setRoom(room?.id ?? null);
+    syncRoomSelector();
+    activateOverview(viewMode === 'top' ? 'top' : 'dollhouse');
   });
   overlay.querySelector('[data-save-snapshot]').addEventListener('click', saveSnapshot);
   overlay.querySelector('[data-walkthrough-start]').addEventListener('click', async () => {
@@ -2144,7 +2396,8 @@ export function openWalkthrough({
   if (onEdit) {
     const showEditError = error => setStatusMessage(status, `변경을 적용하지 못했습니다 · ${error.message}`);
     editSession = createStudioEditSession({ layout: { zones, items, structures, wallHeight }, getLayout, onEdit, onPreview: refreshLayout });
-    studioPanel = createStudioPanel({ overlay, session: editSession, focus, furnitureTemplates, onSelection: updateSelection, onResize, onUndo, onRedo, historyState, onError: showEditError });
+    studioPanel = createStudioPanel({ overlay, session: editSession, focus, furnitureTemplates, onSelection: updateSelection, onTransformMode: updateTransformControls, onResize, onUndo, onRedo, historyState, onError: showEditError });
+    studioPanel.setRoom(sceneRooms.get(focusedRoom)?.id ?? null);
     studioPanel.onRetry(() => refreshLayout(editSession.layout, true));
     studioPanel.setAssets(assetState);
     studioPanel.setMode(initialMode);
@@ -2160,6 +2413,28 @@ export function openWalkthrough({
     activateOverview(initialMode);
   } else {
     syncViewToolState();
+  }
+  if (initialView) {
+    if (initialMode === 'walk') activateNavigation();
+    presentationWalls = initialView.presentationWalls;
+    overviewTarget = initialView.target;
+    overviewOrbitTarget.fromArray(initialView.orbitTarget);
+    camera.position.fromArray(initialView.position);
+    camera.quaternion.fromArray(initialView.quaternion);
+    camera.up.fromArray(initialView.up);
+    camera.fov = initialView.fov;
+    camera.zoom = initialView.zoom;
+    camera.far = initialView.far;
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+    syncWallPresentation();
+    walkPose.position.fromArray(initialView.walkPosition);
+    walkPose.quaternion.fromArray(initialView.walkQuaternion);
+    lookTarget.yaw = camera.rotation.y;
+    lookTarget.pitch = camera.rotation.x;
+    overviewNavigated = true;
+    if (typeof initialView.panelOpen === 'boolean') studioPanel?.setExpanded(initialView.panelOpen);
+    overlay.dataset.restoredView = 'true';
   }
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');

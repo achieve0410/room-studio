@@ -43,10 +43,16 @@ export async function captureRoomScene(page, path) {
   }));
   const rectangle = await page.locator('[data-walkthrough-stage]').boundingBox();
   const apply = await page.locator('[data-studio-apply]').boundingBox();
-  assert.ok(apply || await page.locator('[data-walkthrough]').getAttribute('data-view-mode') === 'walk',
-    'The editing footer is visible in overview modes');
+  const walking = await page.locator('[data-walkthrough]').getAttribute('data-view-mode') === 'walk';
+  const catalogIdle = !walking && await page.locator('.studio3d-shell').evaluate(node =>
+    node.dataset.catalogIdle === 'true' && node.classList.contains('is-expanded'));
+  if (!walking) assert.equal(Boolean(apply), !catalogIdle, 'Only an idle expanded catalog omits the editing footer');
+  const control = apply ?? (catalogIdle
+    ? await page.locator('[data-studio-category]:visible, [data-studio-search]:visible, [data-studio-catalog] button:visible').first().boundingBox()
+    : null);
+  assert.ok(control || walking, 'Overview exposes a real editing or catalog control');
   const screenshot = await page.screenshot({ path });
-  const painted = await page.evaluate(async ({ data, rectangle, apply }) => {
+  const painted = await page.evaluate(async ({ data, rectangle, control }) => {
     const image = new Image();
     image.src = data;
     await image.decode();
@@ -60,19 +66,19 @@ export async function captureRoomScene(page, path) {
     for (let i = 0; i < pixels.length; i += 4) {
       if (pixels[i + 3] && pixels[i] - pixels[i + 1] > 8 && pixels[i + 1] - pixels[i + 2] > 8) count += 1;
     }
-    if (!apply) return { roomPixels: count, buttonContrast: null };
-    sample.width = Math.round(apply.width - 16);
-    sample.height = Math.round(apply.height - 16);
-    context.drawImage(image, (apply.x + 8) * scale, (apply.y + 8) * scale,
-      (apply.width - 16) * scale, (apply.height - 16) * scale, 0, 0, sample.width, sample.height);
+    if (!control) return { roomPixels: count, controlContrast: null };
+    sample.width = Math.round(control.width - 16);
+    sample.height = Math.round(control.height - 16);
+    context.drawImage(image, (control.x + 8) * scale, (control.y + 8) * scale,
+      (control.width - 16) * scale, (control.height - 16) * scale, 0, 0, sample.width, sample.height);
     const buttonPixels = context.getImageData(0, 0, sample.width, sample.height).data;
     let lightest = 0, darkest = 255;
     for (let i = 0; i < buttonPixels.length; i += 4) {
       const lightness = (buttonPixels[i] + buttonPixels[i + 1] + buttonPixels[i + 2]) / 3;
       lightest = Math.max(lightest, lightness); darkest = Math.min(darkest, lightness);
     }
-    return { roomPixels: count, buttonContrast: lightest - darkest };
-  }, { data: `data:image/png;base64,${screenshot.toString('base64')}`, rectangle, apply });
+    return { roomPixels: count, controlContrast: lightest - darkest };
+  }, { data: `data:image/png;base64,${screenshot.toString('base64')}`, rectangle, control });
   assert.ok(painted.roomPixels >= 24, `Screenshot contains no painted room: ${path} (${painted.roomPixels} warm pixels)`);
-  if (apply) assert.ok(painted.buttonContrast >= 35, `Screenshot contains no readable Apply label: ${path} (${painted.buttonContrast})`);
+  if (control) assert.ok(painted.controlContrast >= 35, `Screenshot contains no readable control label: ${path} (${painted.controlContrast})`);
 }

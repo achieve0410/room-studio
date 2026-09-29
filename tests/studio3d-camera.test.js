@@ -2,12 +2,56 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { fitOverviewCamera, overviewSpatialBounds, overviewSpatialMeshes } from '../src/walkthrough3d.js';
-import { createStudioNavigation, fitStudioCamera, studioSpatialPoints } from '../src/studio3d-camera.js';
+import { createStudioNavigation, fitStudioCamera, studioRoomPoints, studioSpatialPoints } from '../src/studio3d-camera.js';
 
 const projectedRange = (points, camera, axis) => {
   const values = points.map((point) => point.clone().project(camera)[axis]);
   return { min: Math.min(...values), max: Math.max(...values) };
 };
+
+test('room framing includes compound outlines, local furniture and open door leaves without fitting neighboring rooms', () => {
+  const layout = {
+    zones: [
+      { id: 'a', spaceId: 'living', x: 0, y: 0, width: 400, depth: 300, height: 240 },
+      { id: 'b', spaceId: 'living', x: 400, y: 0, width: 100, depth: 200, height: 240 },
+      { id: 'other', x: 1200, y: 0, width: 500, depth: 400, height: 280 },
+    ],
+    items: [{ id: 'sofa', x: 200, y: 150 }, { id: 'wardrobe', x: 1400, y: 150 }],
+    structures: [{ id: 'door', type: 'door', doorType: 'swing', x: 0, y: 150, width: 90, height: 205,
+      orientation: 'vertical', hinge: 'start', openAngle: 90, openSide: 1 }],
+    wallHeight: 240,
+  };
+  const original = structuredClone(layout);
+  const scene = new THREE.Scene();
+  for (const item of layout.items) {
+    const group = new THREE.Group();
+    group.userData = { type: 'furniture', id: item.id };
+    group.position.set(item.x / 100, 0, item.y / 100);
+    const height = item.id === 'sofa' ? 0.9 : 2.8;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, height, 1), new THREE.MeshBasicMaterial());
+    mesh.position.y = height / 2;
+    group.add(mesh);
+    scene.add(group);
+  }
+  const points = studioRoomPoints(layout, 'living', { x: 0, y: 0 }, overviewSpatialMeshes(scene));
+  assert.ok(points.some(point => Math.abs(point.x + 0.9) < 1e-9), 'the open door swing remains in frame');
+  assert.ok(points.some(point => point.x === 5), 'all parts of the logical room contribute');
+  assert.ok(points.some(point => Math.abs(point.y - 0.9) < 1e-6), 'actual furniture bounds contribute');
+  assert.ok(points.every(point => point.x <= 5 && point.y <= 2.05), 'unrelated rooms and tall furniture do not enlarge the frame');
+  const bounds = new THREE.Box3().setFromPoints(points);
+  for (const mode of ['top', 'dollhouse']) {
+    for (const aspect of [390 / 338, 1128 / 866, 516 / 282]) {
+      const camera = new THREE.PerspectiveCamera(48, aspect, 0.05, 100);
+      fitOverviewCamera(camera, bounds, mode);
+      fitStudioCamera(camera, points, bounds.getCenter(new THREE.Vector3()));
+      for (const axis of ['x', 'y']) {
+        const range = projectedRange(points, camera, axis);
+        assert.ok(range.min >= -0.900001 && range.max <= 0.900001, JSON.stringify({ mode, aspect, axis, range }));
+      }
+    }
+  }
+  assert.deepEqual(layout, original);
+});
 
 test('visible-envelope fitting balances the room without discarding tall open doors or changing geometry', () => {
   const scene = new THREE.Scene();
@@ -60,6 +104,10 @@ test('overview orbit, pan and zoom change only camera state; reserved furniture 
   });
   const event = (id, x, y, extra = {}) => ({ pointerId: id, clientX: x, clientY: y, button: 0, ...extra });
   const initial = camera.position.clone();
+  navigation.down(event(0, 20, 20));
+  navigation.move(event(0, 20, 20));
+  navigation.up(event(0, 20, 20));
+  assert.equal(changes, 0, 'a stationary surface tap does not claim camera navigation');
   navigation.down(event(1, 20, 20), true);
   navigation.move(event(1, 40, 20));
   assert.ok(camera.position.equals(initial));

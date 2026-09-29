@@ -4,7 +4,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { settleBrowserPaint } from './browser-rendering.mjs';
 
-const outputDirectory = resolve('.omx/artifacts/direct-space-editor');
+const outputDirectory = resolve(process.env.DIRECT_SPACE_OUTPUT ?? '.omx/artifacts/direct-space-editor');
 let server;
 let browser;
 

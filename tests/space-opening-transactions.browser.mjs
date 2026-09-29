@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 import { zoneFromPoints, attachOpeningToZoneEdge } from '../src/geometry.js';
 
 const root = resolve(import.meta.dirname, '..');
-const output = join(root, '.omx/artifacts/direct-space-editor/transactions');
+const output = resolve(process.env.SPACE_TRANSACTIONS_OUTPUT ?? join(root, '.omx/artifacts/direct-space-editor/transactions'));
 await mkdir(output, { recursive: true });
 const report = { checks: [], failures: [], errors: [] };
 const server = await createServer({

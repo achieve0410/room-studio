@@ -195,6 +195,7 @@ try {
       await click('[data-studio-toggle]', `!document.querySelector('.studio3d-body').hidden`);
     }
     if (itemId) {
+      await click('[data-studio-list]');
       await select('[data-studio-target]', `item:${itemId}`);
       assert.equal(await evaluatePage('document.querySelector(".studio3d-shell").dataset.selectionId'), itemId);
     }
@@ -207,6 +208,7 @@ try {
   const moveFurniture = async (item) => {
     const before = await state();
     await openStudio(item.id);
+    if (!await evaluatePage('document.querySelector("[data-studio-precision]").open')) await click('[data-studio-precision] > summary');
     await input('[data-studio-value="x"]', String(item.x + 1));
     await armState(`document.querySelector('.studio3d-shell').dataset.pending === 'true'`);
     await key('Tab', 9);
@@ -496,6 +498,7 @@ try {
     await viewport(width, height);
     const itemCount = (await state()).items.length;
     await openStudio();
+    await click('[data-studio-add]');
     await click('[data-studio-asset="seoul-side-table"]', `document.querySelector('.studio3d-shell').dataset.pending === 'true' && ${studioReady}`);
     const placementId = await evaluatePage('document.querySelector(".studio3d-shell").dataset.selectionId');
     assert.equal((await state()).items.length, itemCount, 'Catalog selection only previews furniture');
@@ -525,6 +528,7 @@ try {
     assert.equal((await state()).items.find(item => item.id === placementId).assetId, 'seoul-side-table');
     await click('[data-studio-undo]', `JSON.parse(localStorage.getItem('room-studio-layout-v2')).items.length === ${itemCount}`);
     assert.equal((await state()).items.length, itemCount);
+    await click('[data-studio-add]');
     await click('[data-studio-asset="seoul-side-table"]', `document.querySelector('.studio3d-shell').dataset.pending === 'true' && ${studioReady}`);
     await click('[data-studio-cancel]', `document.querySelector('.studio3d-shell').dataset.pending === 'false'`);
     assert.equal((await state()).items.length, itemCount, 'the cancel control remains interactive');

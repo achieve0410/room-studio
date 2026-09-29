@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createWallPresentation, pickWalkthroughOpening } from '../src/walkthrough3d.js';
+import { buildScene, createWallPresentation, pickWalkthroughOpening } from '../src/walkthrough3d.js';
 import { disposeStudioScene } from '../src/studio3d-assets.js';
 
 test('hidden selection helpers cannot intercept physical opening raycasts', () => {
@@ -73,4 +73,27 @@ test('renderer disposes its shared resources once and leaves catalog-owned resou
   assert.deepEqual(counters, { geometry: 1, material: 1, texture: 1, borrowed: 0 });
   borrowed.geometry.dispose();
   borrowed.material.dispose();
+});
+
+test('contact shadows follow the furniture footprint and share one fading texture per scene', () => {
+  const scene = new THREE.Scene();
+  const items = [
+    { id: 'sofa', type: 'sofa', x: 100, y: 100, width: 200, depth: 60, height: 80, rotation: 90, color: '#c8a777' },
+    { id: 'table', type: 'table', x: 400, y: 100, width: 80, depth: 80, height: 70, rotation: 0, color: '#c8a777' },
+  ];
+  buildScene(scene, [], items, [], 240, { x: 0, y: 0 }, {});
+  const shadows = scene.children.filter(object => object.userData.type === 'furniture-shadow');
+  assert.equal(shadows.length, 2);
+  const size = new THREE.Box3().setFromObject(shadows[0]).getSize(new THREE.Vector3());
+  assert.ok(Math.abs(size.x - 0.76) < 1e-6);
+  assert.ok(Math.abs(size.z - 2.16) < 1e-6);
+  assert.ok(size.y < 1e-6);
+  assert.equal(shadows[0].material, shadows[1].material);
+  const texture = shadows[0].material.map;
+  assert.equal(texture.image.data[3], 0);
+  assert.ok(texture.image.data[(32 * 64 + 32) * 4 + 3] > 0);
+  let disposed = 0;
+  texture.addEventListener('dispose', () => disposed++);
+  disposeStudioScene(scene);
+  assert.equal(disposed, 1);
 });

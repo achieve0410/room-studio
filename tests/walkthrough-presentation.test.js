@@ -63,6 +63,34 @@ test('renderer enables material-local clipping without global scene clipping', (
   assert.equal(renderer.shadowMap.enabled, true);
 });
 
+test('focused room cutaway lowers foreground walls and follows camera orbit without changing geometry', () => {
+  const scene = new THREE.Scene();
+  const shared = new THREE.MeshStandardMaterial();
+  const walls = [-2, 2].map(z => {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(4, 2.4, 0.06), shared);
+    wall.position.set(0, 1.2, z);
+    wall.userData.type = 'wall';
+    scene.add(wall);
+    return wall;
+  });
+  const camera = new THREE.PerspectiveCamera();
+  camera.position.set(0, 4, 5);
+  const target = new THREE.Vector3();
+  const presentation = walkthrough.createWallPresentation(scene);
+  presentation.setMode('dollhouse', true, camera, target);
+  assert.equal(walls[0].material.clippingPlanes, null);
+  assert.equal(walls[1].material.clippingPlanes.length, 1);
+  camera.position.z = -5;
+  presentation.setMode('dollhouse', true, camera, target);
+  assert.equal(walls[0].material.clippingPlanes.length, 1);
+  assert.equal(walls[1].material.clippingPlanes, null);
+  presentation.setMode('top', true, camera, target);
+  assert.ok(walls.every(wall => wall.material.clippingPlanes.length === 1));
+  assert.ok(walls.every(wall => wall.geometry.parameters.height === 2.4 && wall.position.y === 1.2));
+  presentation.dispose();
+  assert.ok(walls.every(wall => wall.material === shared));
+});
+
 test('renderer construction failure removes the partial overlay and preserves the cause', () => {
   let removed = false;
   const cause = new Error('WebGL context unavailable');

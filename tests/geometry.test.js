@@ -100,6 +100,15 @@ test('non-uniformly resizing a circle turns it into an ellipse', () => {
   assert.equal(resized.depth, 100);
 });
 
+test('bounded direct resizing keeps the opposite rotated corner fixed', () => {
+  const resized = resizeItemFromHandle({ ...item, rotation: 90 }, 'se', { x: -9000, y: 9000 }, 20, 200);
+  assert.equal(resized.width, 200);
+  assert.equal(resized.depth, 200);
+  assertClose(resized.x + resized.depth / 2, item.x + item.depth / 2);
+  assertClose(resized.y - resized.width / 2, item.y - item.width / 2);
+  assert.equal(item.width, 120);
+});
+
 test('alignment snap matches nearby edges and returns guide positions', () => {
   const result = getAlignmentSnap(
     { left: 0, right: 100, top: 0, bottom: 100 },

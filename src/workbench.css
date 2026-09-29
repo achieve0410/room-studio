@@ -1,0 +1,210 @@
+:root {
+  --workbench-heading-height: 64px;
+  --workbench-tools-height: 56px;
+  --workbench-room-width: 160px;
+  --scene-background: #e6e9e7;
+}
+
+.topbar.workbench-header,
+.walkthrough-overlay .workbench-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--workbench-heading-height);
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+.workbench-project { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.workbench-project .brand-mark { flex: none; }
+.workbench-project > div { min-width: 0; }
+.workbench-product { display: block; overflow: hidden; color: var(--muted-readable); font-size: var(--text-caption); line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.workbench-project h1 { overflow: hidden; margin: 0; font-size: var(--text-section); font-weight: 650; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.workbench-modes { display: flex; flex: none; gap: var(--space-1); padding: var(--space-1); border-radius: var(--radius-control); background: var(--surface); }
+.workbench-modes button,
+.workbench-modes .walkthrough-exit {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: var(--target);
+  min-height: var(--target);
+  height: auto;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted-readable);
+  font: 600 var(--text-control)/1.4 var(--font-ui);
+  white-space: nowrap;
+  backdrop-filter: none;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.workbench-modes button span,
+.workbench-modes .walkthrough-exit span { display: inline; color: inherit; font: inherit; font-variant-numeric: tabular-nums; }
+.workbench-modes button:hover { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--ink); }
+.workbench-modes button[aria-pressed='true'] { background: var(--ink); color: var(--surface-raised); }
+.workbench-modes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.workbench-header .topbar-cloud { justify-content: flex-end; gap: var(--space-2); }
+.workbench-header .save-state:not([data-state='error']) { display: none; }
+.workbench-header .project-account-button { border-radius: var(--radius-control); }
+.workbench-header .workspace-mode-button { padding-inline: var(--space-2); }
+.workbench-utilities { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 0; }
+.workbench-utilities button,
+.workbench-utilities select {
+  min-width: var(--target);
+  min-height: var(--target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: 600 var(--text-control)/1.4 var(--font-ui);
+}
+.workbench-utilities select { width: var(--workbench-room-width); max-width: 100%; margin: 0; }
+.workbench-utilities :is(button, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.walkthrough-overlay.is-workbench { background: var(--surface); color: var(--ink); font-family: var(--font-ui); }
+.walkthrough-overlay.is-workbench .workbench-header { z-index: 10; pointer-events: auto; }
+.walkthrough-overlay.is-workbench.is-overview .walkthrough-stage {
+  top: calc(var(--workbench-heading-height) + var(--workbench-tools-height));
+  height: auto;
+}
+.walkthrough-overlay.is-workbench.is-overview .walkthrough-vignette { display: none; }
+.walkthrough-overlay.is-workbench .walkthrough-curtain { background: var(--scene-background); }
+.walkthrough-overlay.is-workbench .walkthrough-view-tools {
+  top: var(--workbench-heading-height);
+  left: var(--space-3);
+  right: var(--space-3);
+  width: auto;
+  max-width: none;
+  min-height: var(--workbench-tools-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: none;
+  overflow: visible;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.walkthrough-overlay.is-workbench.has-studio3d.is-overview .walkthrough-view-tools { right: calc(var(--asset-panel-width, 336px) + var(--space-6)); }
+.walkthrough-overlay.is-workbench .walkthrough-view-modes { display: flex; gap: var(--space-1); padding: var(--space-1); border: 0; border-radius: var(--radius-control); background: var(--surface-raised); }
+.walkthrough-overlay.is-workbench .walkthrough-view-tools button {
+  min-width: var(--target);
+  min-height: var(--target);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--muted-readable);
+  font: 600 var(--text-caption)/1.4 var(--font-ui);
+  white-space: nowrap;
+}
+.walkthrough-overlay.is-workbench .walkthrough-view-tools button:hover { background: var(--surface); color: var(--ink); }
+.walkthrough-overlay.is-workbench .walkthrough-view-tools button.is-active { background: var(--ink); color: var(--surface-raised); }
+.walkthrough-overlay.is-workbench button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.walkthrough-overlay.is-workbench .walkthrough-more-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  width: min(320px, 100%);
+  max-height: calc(100dvh - var(--workbench-heading-height) - var(--workbench-tools-height) - var(--space-6));
+  padding: var(--space-2);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-panel);
+}
+.walkthrough-overlay.is-workbench .walkthrough-more-panel[hidden] { display: none; }
+.workspace .canvas-toolbar.workbench-scope { display: block; height: auto; margin: 0; }
+.workspace .workbench-scope .planning-scope { position: static; max-width: none; margin: 0; }
+.workspace .workbench-scope .planning-scope strong { border: 0; padding: 0; color: var(--muted-readable); }
+#app > footer { color: var(--muted-readable); font-size: var(--text-caption); }
+.mobile-nav > [data-open-detail] { color: var(--ink); }
+
+.studio-transform-overlay { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.studio-transform-overlay button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: var(--target);
+  height: var(--target);
+  padding: var(--space-2);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--ink);
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+.studio-transform-overlay button:active { cursor: grabbing; background: var(--ink); color: var(--surface-raised); }
+.studio-transform-overlay svg { width: var(--space-6); height: var(--space-6); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.studio-transform-readout { position: absolute; top: 0; left: 0; max-width: 192px; padding: var(--space-1) var(--space-2); border-radius: var(--radius-control); background: var(--surface-raised); color: var(--ink); font: 600 var(--text-caption)/1.4 var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.studio-transform-overlay[hidden],
+.studio-transform-overlay [hidden] { display: none; }
+
+@media (max-width: 900px) {
+  :root { --workbench-heading-height: 96px; --workspace-header: 96px; --workbench-room-width: 128px; }
+  .topbar.workbench-header,
+  .walkthrough-overlay .workbench-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: var(--target) var(--target);
+    gap: 0 var(--space-2);
+    padding: var(--space-1) var(--space-3);
+  }
+  .workbench-project { gap: var(--space-2); }
+  .workbench-project .brand-mark { display: none; }
+  .workbench-project h1 { font-size: var(--text-body); }
+  .workbench-modes { grid-column: 1 / -1; grid-row: 2; padding: 0; }
+  .workbench-modes button { flex: 1; }
+  .workbench-header .topbar-cloud { grid-column: 2; grid-row: 1; gap: var(--space-1); }
+  .workbench-utilities { grid-column: 2; grid-row: 1; }
+  .workbench-utilities select { font-size: var(--text-input-mobile); }
+  .workbench-header .project-account-button { padding-inline: var(--space-2); }
+  .workbench-header .workspace-mode-button { font-size: var(--text-caption); }
+  .walkthrough-overlay.is-workbench.has-studio3d.is-overview .walkthrough-view-tools { right: var(--space-3); }
+  .walkthrough-overlay.is-workbench .walkthrough-view-tools { justify-content: space-between; }
+  .walkthrough-overlay.is-workbench .walkthrough-view-tools button { padding-inline: var(--space-2); }
+}
+@media (max-width: 900px) and (max-height: 600px) and (orientation: landscape) {
+  :root { --workbench-heading-height: 56px; --workspace-header: 56px; --workbench-tools-height: 52px; }
+  .topbar.workbench-header,
+  .walkthrough-overlay .workbench-header { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-rows: 1fr; gap: var(--space-2); padding-inline: var(--space-2); }
+  .workbench-project .brand-mark, .workbench-product { display: none; }
+  .workbench-project h1 { font-size: var(--text-control); }
+  .workbench-modes { grid-column: 2; grid-row: 1; padding: 0; }
+  .workbench-modes button { padding-inline: var(--space-2); }
+  .workbench-header .topbar-cloud { grid-column: 3; gap: var(--space-1); }
+  .workbench-utilities { grid-column: 3; }
+  .walkthrough-overlay.is-workbench.has-studio3d.is-overview .walkthrough-view-tools { right: calc(var(--asset-panel-width, 304px) + var(--space-6)); }
+  .workbench-header .project-account-button,
+  .workbench-header .workspace-mode-button { padding-inline: var(--space-2); font-size: var(--text-caption); }
+}
+@media (max-width: 900px) and (max-height: 500px) and (orientation: portrait) {
+  .walkthrough-overlay.is-workbench { --workbench-heading-height: 56px; --workbench-tools-height: 52px; }
+  .walkthrough-overlay .workbench-header { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 1fr; }
+  .walkthrough-overlay .workbench-modes { grid-column: 2; grid-row: 1; }
+  .walkthrough-overlay .workbench-modes button { padding-inline: var(--space-2); }
+  .walkthrough-more-panel .workbench-utilities { grid-column: 1 / -1; grid-row: auto; padding-top: var(--space-2); border-top: 1px solid var(--line); }
+  .walkthrough-more-panel .workbench-utilities select { flex: 1; min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workbench-modes button { transition: none; }
+}
