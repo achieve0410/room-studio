@@ -63,6 +63,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: Run syntax, unit, and build checks
         run: npm run check
+      - name: Run image-first floor-plan setup audit
+        run: npm run test:browser:floorplan
       - name: Run browser interaction audit
         run: npm run test:browser:mobile
       - name: Run simple workspace and direct manipulation audit
@@ -79,6 +81,14 @@ jobs:
         with:
           name: browser-audit-${{ github.run_attempt }}
           path: .omx/artifacts/mobile-ux-hardening/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload image-first setup artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: floorplan-import-audit-${{ github.run_attempt }}
+          path: .omx/artifacts/floorplan-import/browser/
           if-no-files-found: warn
           retention-days: 7
       - name: Upload simple workspace artifacts
