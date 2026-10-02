@@ -627,15 +627,21 @@ try {
       await capture('photo-corrected');
       if (mobile) {
         await page.setViewportSize({ width: 844, height: 390 });
+        // Font metrics can place controls on fractional CSS pixels.
+        await page.locator('.plan-import-workspace').evaluate(node => { node.style.marginTop = '0.25px'; });
         for (const button of await page.locator('.plan-import-toolbar button').all()) {
-          await button.scrollIntoViewIfNeeded();
-          const reachable = await button.evaluate(node => {
+          await button.evaluate(node => node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }));
+          const visibility = await button.evaluate(node => {
             const rect = node.getBoundingClientRect(), body = document.querySelector('.plan-import-body').getBoundingClientRect();
-            return rect.top >= body.top && rect.bottom <= body.bottom
-              && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest('button') === node;
+            return { action: node.dataset.action, top: rect.top, bottom: rect.bottom, height: rect.height,
+              bodyTop: body.top, bodyBottom: body.bottom,
+              reachable: rect.top >= body.top && rect.bottom <= body.bottom
+                && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest('button') === node };
           });
-          assert.equal(reachable, true, 'Every landscape canvas control must scroll fully above the footer');
+          assert.ok(visibility.height >= 44, `Landscape controls retain 44px targets: ${JSON.stringify(visibility)}`);
+          assert.equal(visibility.reachable, true, `Every landscape canvas control must scroll fully above the footer: ${JSON.stringify(visibility)}`);
         }
+        await page.locator('.plan-import-workspace').evaluate(node => { node.style.removeProperty('margin-top'); });
         await activate('[data-action="vertices"]');
         assert.equal(await page.locator('[data-action="vertices"]').getAttribute('aria-pressed'), 'true');
         await capture('landscape-tools');
