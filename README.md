@@ -52,6 +52,9 @@ Open the [public Room Studio demo](https://achieve0410.github.io/room-studio/). 
 
 ## Highlights
 
+See the [image import workflow and recognition boundaries](docs/FLOORPLAN_IMPORT.md) (Korean).
+
+- Extract editable spaces from a floor-plan photo or screenshot, correct the outlines, confirm a real length, and continue directly to 3D furnishing.
 - Record the client brief, compare independent A/B layouts, and export a branded recommendation document without requiring cloud login.
 - Draw concave and angled spaces directly, edit vertices and wall lengths, or retain existing compound rectangular spaces.
 - Import a PNG or JPG floor plan, calibrate it from two known points, and control its opacity or movement lock.

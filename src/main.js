@@ -453,6 +453,9 @@ let cloudFeedback = cloudConfigured ? '로그인 기능을 준비하는 중…' 
 let cloudFeedbackTone = '';
 let starterDialogOpen = startsWithoutStoredLayout;
 let demoGalleryOpen = false;
+let demoSearch = '';
+let openingPlanImport = false;
+let activePlanImportCleanup = null;
 let pendingDemoId = null;
 let pendingDemo3d = false;
 let active3dCleanup = null;
@@ -715,6 +718,45 @@ function apply3dEdit(action) {
     throw new Error('지원하지 않는 3D 편집 동작입니다.');
   }
   return layoutSnapshot();
+}
+
+async function openPlanImporter(file) {
+  if (openingPlanImport || activePlanImportCleanup) return;
+  openingPlanImport = true;
+  const startedInStarter = starterDialogOpen;
+  const sourceDocument = documentGeneration;
+  try {
+    const { openFloorplanImporter } = await import('./floorplan-import-ui.js');
+    if (sourceDocument !== documentGeneration) return;
+    starterDialogOpen = false;
+    render();
+    activePlanImportCleanup = openFloorplanImporter({
+      file,
+      onApply(document) {
+        if (sourceDocument !== documentGeneration) throw new Error('열린 프로젝트가 바뀌었습니다. 닫은 뒤 도면을 다시 가져와주세요.');
+        const checked = parseProjectFile(serializeProjectFile(document));
+        if (!canReplaceCurrentDraft()) return false;
+        applyProjectDocument({ projectName: checked.projectName, layout: checked.layout });
+        workspaceMode = 'simple';
+        workspacePanel = 'spaces';
+        mobilePanel = 'canvas';
+        editorNotice = '도면과 기준 길이를 가져왔습니다.';
+        return true;
+      },
+      onClose({ applied, open3d }) {
+        activePlanImportCleanup = null;
+        starterDialogOpen = !applied && startedInStarter;
+        pendingFocus = { kind: starterDialogOpen ? 'starter-sample' : 'canvas' };
+        render();
+        if (applied && open3d) void open3dEditor();
+      },
+    });
+  } catch (error) {
+    editorNotice = error.message || '도면 가져오기를 열지 못했습니다.';
+    render();
+  } finally {
+    openingPlanImport = false;
+  }
 }
 
 async function open3dEditor() {
@@ -1029,6 +1071,7 @@ function hasMeaningfulLocalLayout() {
 function openDemoGallery() {
   starterDialogOpen = false;
   demoGalleryOpen = true;
+  demoSearch = '';
   pendingDemoId = null;
   pendingDemo3d = false;
   render();
@@ -3289,9 +3332,18 @@ function renderStarterDialog() {
         <h2 id="starter-dialog-title">내 공간 꾸미기</h2></div>
         <button class="cloud-dialog-close" data-start-close type="button" aria-label="시작 화면 닫기">×</button>
       </header>
-      <p>방 크기를 입력하거나 아파트 예시를 선택하세요.</p>
+      <p>도면 한 장에서 시작해 가구가 놓일 공간을 확인하세요.</p>
+      <div class="starter-plan-entry" data-start-plan-entry>
+        <button class="starter-plan-button" data-start-plan type="button">
+          <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M10 5h19l9 9v29H10V5Zm19 0v9h9M17 26h14M24 19v14" stroke="currentColor" stroke-width="2"/></svg>
+          <span><strong>우리 집 도면 올리기</strong><small>사진·캡처에서 공간을 찾고, 실제 길이만 확인하세요.</small></span>
+          <span class="starter-plan-arrow" aria-hidden="true">↗</span>
+        </button>
+        <input data-start-plan-file type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        <p>PNG · JPG · WebP · 끌어놓기와 붙여넣기 가능 · 사진은 기기 안에서 처리</p>
+      </div>
       <form class="starter-room-form" data-start-room-form>
-        <div class="starter-room-preview" aria-hidden="true"><span>내 공간</span><small>가구를 자유롭게 놓아보세요</small></div>
+        <div class="starter-room-preview"><span>도면이 없나요?</span><small>방 크기로도 시작할 수 있어요.</small></div>
         <div class="starter-room-fields">
           <label>가로 <span>cm</span><input name="roomWidth" type="number" inputmode="numeric" min="100" max="1200" step="1" value="400" required></label>
           <label>세로 <span>cm</span><input name="roomDepth" type="number" inputmode="numeric" min="100" max="1200" step="1" value="300" required></label>
@@ -3299,7 +3351,7 @@ function renderStarterDialog() {
         </div>
       </form>
       <section class="starter-examples" aria-label="서울 아파트 3D 예시">
-        <h3>서울 아파트 3D 예시</h3>
+        <div class="starter-examples-heading"><h3>아파트 예시에서 시작</h3><button data-start-gallery type="button">전체 예시 찾기</button></div>
         <div class="starter-example-grid">${REGIONAL_DEMO_LAYOUTS.map((demo) => `<button type="button" data-start-studio="${demo.id}">
           <img src="${import.meta.env.BASE_URL}assets/seoul-examples/${demo.assetStyle.cover}-dollhouse.webp" srcset="${sampleCoverSrcSet(demo.assetStyle.cover)}" sizes="(max-width: 792px) calc((100vw - 144px) / 3), (max-width: 900px) 216px, 210px" alt="" width="1128" height="866" fetchpriority="high">
           <strong>${escapeHtml(demo.region)}</strong><span>${escapeHtml(demo.assetStyle.name)}</span>
@@ -3342,6 +3394,7 @@ function renderDemoGallery() {
         <button class="cloud-dialog-close" data-demo-close type="button" aria-label="모델 홈 갤러리 닫기">×</button>
       </header>
       <p>대치동·압구정동·도곡동의 공개 평면 참고 샘플과 기존 LH 샘플입니다. 열린 거실·주방은 문 없이 연결하며, 치수와 가구 배치는 편집용 추정입니다. 출처 표기 면적은 편집기 구역 면적과 다릅니다.</p>
+      <label class="demo-search">등록된 예시 찾기<input data-demo-search type="search" value="${escapeHtml(demoSearch)}" placeholder="예: 대치, 렉슬, 74A"></label>
       <div class="demo-grid">
         ${galleryLayouts.map((demo) => {
     // Include the full swing envelope, not just the floor footprint or door center.
@@ -3354,7 +3407,8 @@ function renderDemoGallery() {
     const width = Math.max(...bounds.map((bound) => bound.right)) - left;
     const height = Math.max(...bounds.map((bound) => bound.bottom)) - top;
     const sourceUrl = demo.source.referenceUrl || demo.source.datasetUrl;
-    return `<article class="demo-card${demo.assetStyle ? ' has-asset-cover' : ''}" data-demo-card="${demo.id}">
+    const searchText = `${demo.name} ${demo.region ?? ''} ${demo.source.planType} ${demo.source.areaLabel ?? ''}`.toLowerCase().replace(/\s/g, '');
+    return `<article class="demo-card${demo.assetStyle ? ' has-asset-cover' : ''}" data-demo-card="${demo.id}" data-demo-search-text="${escapeHtml(searchText)}" ${searchText.includes(demoSearch.toLowerCase().replace(/\s/g, '')) ? '' : 'hidden'}>
           ${demo.assetStyle ? `<img class="demo-card-cover" data-sample-cover src="${import.meta.env.BASE_URL}assets/seoul-examples/${demo.assetStyle.cover}-dollhouse.webp" srcset="${sampleCoverSrcSet(demo.assetStyle.cover)}" sizes="(max-width: 338px) calc(100vw - 104px), 235px" alt="${escapeHtml(demo.region)} ${escapeHtml(demo.assetStyle.name)} 3D 예시" width="1128" height="866" loading="lazy" decoding="async">` : ''}
           <div class="demo-card-plan" style="--bounds-x:${left};--bounds-y:${top};--bounds-w:${width};--bounds-h:${height}" aria-hidden="true">
             ${demo.zones.map((zone) => `<i style="--x:${zone.x};--y:${zone.y};--w:${zone.width};--d:${zone.depth};--c:${zone.color}"></i>`).join('')}
@@ -3375,6 +3429,7 @@ function renderDemoGallery() {
         </article>`;
   }).join('')}
       </div>
+      <p data-demo-empty ${galleryLayouts.some(demo => `${demo.name} ${demo.region ?? ''} ${demo.source.planType} ${demo.source.areaLabel ?? ''}`.toLowerCase().replace(/\s/g, '').includes(demoSearch.toLowerCase().replace(/\s/g, ''))) ? 'hidden' : ''}>등록된 예시가 없습니다. 시작 화면에서 우리 집 도면을 올려주세요.</p>
       <p class="demo-license">LH 샘플 3종에만 적용 · 공공데이터포털 <a href="${DEMO_LAYOUTS[0].source.datasetUrl}" target="_blank" rel="noreferrer">한국토지주택공사 주택 평면도 현황</a> · ${escapeHtml(DEMO_LAYOUTS[0].source.license)}</p>
       ${pendingDemo ? `<div class="demo-confirm" data-demo-confirm role="alertdialog" aria-modal="true" aria-labelledby="demo-confirm-title">
         <strong id="demo-confirm-title">현재 도면을 바꿀까요?</strong>
@@ -3466,6 +3521,7 @@ function renderBlueprintControls() {
   const background = state.backgroundPlan;
   return `<div class="blueprint-tools">
     <div class="blueprint-heading"><strong>실도면 밑그림</strong><small>PNG·JPG</small></div>
+    <button class="blueprint-create" data-open-plan-import type="button">이미지에서 공간 만들기</button>
     <label class="blueprint-file-button">도면 이미지 가져오기
       <input id="background-file" type="file" accept="image/png,image/jpeg" />
     </label>
@@ -3647,7 +3703,7 @@ function focusPendingTarget() {
     'panel-heading': '#inspector-heading',
     'context-menu': '[data-context-action="move"]',
     canvas: '#plan-canvas',
-    'starter-sample': '[name="roomWidth"]',
+    'starter-sample': '[data-start-plan]',
     'starter-room': '[name="roomWidth"]',
     'group-move': '[data-group-action="move"]',
   }[focusRequest.kind] ?? `#mobile-tab-${focusRequest.panel}`;
@@ -3668,6 +3724,40 @@ function moveMobileTabFocus(event, currentPanel) {
 }
 
 function bindEvents() {
+  document.querySelector('[data-start-plan]')?.addEventListener('click', () => {
+    document.querySelector('[data-start-plan-file]').click();
+  });
+  document.querySelector('[data-start-plan-file]')?.addEventListener('change', event => {
+    const [file] = event.target.files;
+    if (file) void openPlanImporter(file);
+  });
+  document.querySelector('[data-open-plan-import]')?.addEventListener('click', () => void openPlanImporter());
+  document.querySelector('[data-start-gallery]')?.addEventListener('click', openDemoGallery);
+  const planEntry = document.querySelector('[data-start-plan-entry]');
+  planEntry?.addEventListener('dragover', event => {
+    event.preventDefault();
+    planEntry.dataset.dragging = 'true';
+  });
+  planEntry?.addEventListener('dragleave', event => {
+    if (!planEntry.contains(event.relatedTarget)) delete planEntry.dataset.dragging;
+  });
+  planEntry?.addEventListener('drop', event => {
+    event.preventDefault();
+    delete planEntry.dataset.dragging;
+    const [file] = event.dataTransfer.files;
+    if (file) void openPlanImporter(file);
+  });
+  planEntry?.addEventListener('paste', event => {
+    const image = [...(event.clipboardData?.items ?? [])].find(item => item.type.startsWith('image/'));
+    if (image) { event.preventDefault(); void openPlanImporter(image.getAsFile()); }
+  });
+  document.querySelector('[data-demo-search]')?.addEventListener('input', event => {
+    demoSearch = event.target.value;
+    const query = demoSearch.toLowerCase().replace(/\s/g, '');
+    const cards = [...document.querySelectorAll('[data-demo-search-text]')];
+    cards.forEach(card => { card.hidden = !card.dataset.demoSearchText.includes(query); });
+    document.querySelector('[data-demo-empty]').hidden = cards.some(card => !card.hidden);
+  });
   document.querySelector('[data-workspace-mode]')?.addEventListener('click', () => {
     if (numericEdit) commitQuickNumericEdit();
     workspaceMode = workspaceMode === 'simple' ? 'advanced' : 'simple';
