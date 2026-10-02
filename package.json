@@ -48,9 +48,9 @@
   },
   "dependencies": {
     "@tesseract.js-data/eng": "1.0.0",
-    "@supabase/supabase-js": "^2.110.8",
+    "@supabase/supabase-js": "^2.117.2",
     "tesseract.js": "7.0.0",
     "tesseract.js-core": "7.0.0",
-    "three": "^0.185.1"
+    "three": "^0.186.1"
   }
 }
