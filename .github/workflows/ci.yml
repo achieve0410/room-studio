@@ -77,7 +77,7 @@ jobs:
         run: npm run test:browser:consultation
       - name: Upload browser audit artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: browser-audit-${{ github.run_attempt }}
           path: .omx/artifacts/mobile-ux-hardening/
@@ -85,7 +85,7 @@ jobs:
           retention-days: 7
       - name: Upload image-first setup artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: floorplan-import-audit-${{ github.run_attempt }}
           path: .omx/artifacts/floorplan-import/browser/
@@ -93,7 +93,7 @@ jobs:
           retention-days: 7
       - name: Upload simple workspace artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: simple-workspace-audit-${{ github.run_attempt }}
           path: |
@@ -104,7 +104,7 @@ jobs:
           retention-days: 7
       - name: Upload prebuilt asset and 3D editing artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: seoul-assets-audit-${{ github.run_attempt }}
           path: |
@@ -114,7 +114,7 @@ jobs:
           retention-days: 7
       - name: Upload space and detail editing artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: space-detail-audit-${{ github.run_attempt }}
           path: |
@@ -127,7 +127,7 @@ jobs:
           retention-days: 7
       - name: Upload consultation browser artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: consultation-browser-audit-${{ github.run_attempt }}
           path: |
@@ -171,7 +171,7 @@ jobs:
         run: npm run "$AUDIT_SCRIPT"
       - name: Upload this example's browser artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: plan-${{ matrix.id }}-${{ github.run_attempt }}
           path: |
