@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "playwright-core": "1.62.1",
-    "vite": "^8.1.5"
+    "vite": "^8.1.6"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "1.0.0",
